@@ -1,0 +1,5 @@
+target/
+Dockerfile
+docker-compose.yml
+__pycache__/
+**/libm.so.6
