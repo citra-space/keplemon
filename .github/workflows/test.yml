@@ -7,16 +7,16 @@ on:
 
 jobs:
   test-linux-arm:
-    runs-on: ubuntu-22.04-arm64
+    runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU for ARM emulation
-        run: |
-          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+      - uses: actions/checkout@v3
+      - name: setup python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -47,8 +47,3 @@ jobs:
               $PIP install --upgrade pip setuptools wheel auditwheel && \
               maturin build --release --compatibility manylinux2014 -i $PY_BIN
             '
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-arm-${{ matrix.python-version }}-whl
-          path: target/wheels/*.whl
