@@ -7,7 +7,7 @@ on:
 
 jobs:
   test-linux-arm:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04-arm64
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
@@ -17,12 +17,6 @@ jobs:
       - name: Set up QEMU for ARM emulation
         run: |
           docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-
-      - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential
-
-      - name: Clean cargo artifacts
-        run: cargo clean
 
       - uses: actions-rs/toolchain@v1
         with:
