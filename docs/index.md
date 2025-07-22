@@ -15,7 +15,7 @@ installed locally by following the steps below.
 
 1. `git clone https://github.com/citra-space/keplemon.git`
 2. `cargo install cargo-make`
-3. `cargo make build-<os>-<architecture>` (e.g. for Linux x86 `cargo make build-linux-amd`)
+3. `cargo make build-<os>-<architecture>` (e.g. for Linux x86 `cargo make build-linux-x86`)
 4. `pip install target/wheels/*.whl`
 
 ## Environment Settings

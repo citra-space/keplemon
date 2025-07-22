@@ -40,7 +40,7 @@ jobs:
           name: windows-${{ matrix.python-version }}-whl
           path: target/wheels/*.whl
 
-  test-linux-amd:
+  test-linux-x86:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -70,7 +70,7 @@ jobs:
               export OPENSSL_DIR=/usr && \
               export OPENSSL_LIB_DIR=/usr/lib64 && \
               export OPENSSL_INCLUDE_DIR=/usr/include && \
-              cargo make copy-linux-amd && \
+              cargo make copy-linux-x86 && \
               PYTHON_VERSION=${{ matrix.python-version }} && \
               TAG=${PYTHON_VERSION//./} && \
               PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
@@ -82,7 +82,51 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: linux-amd-${{ matrix.python-version }}-whl
+          name: linux-x86-${{ matrix.python-version }}-whl
+          path: target/wheels/*.whl
+
+  test-linux-arm:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build for ${{ matrix.python-version }}
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/io \
+            -e HOME=/root \
+            -w /io quay.io/pypa/manylinux2014_aarch64 \
+            bash -c '
+              yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
+              source "$CARGO_HOME/env" && \
+              cargo install --locked cargo-make && \
+              cargo install --locked maturin && \
+              export OPENSSL_DIR=/usr && \
+              export OPENSSL_LIB_DIR=/usr/lib64 && \
+              export OPENSSL_INCLUDE_DIR=/usr/include && \
+              cargo make copy-linux-arm && \
+              PYTHON_VERSION=${{ matrix.python-version }} && \
+              TAG=${PYTHON_VERSION//./} && \
+              PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
+              PIP="${PY_BIN%/python}/pip" && \
+              $PIP install --upgrade pip setuptools wheel auditwheel && \
+              maturin build --release --compatibility manylinux2014 -i $PY_BIN
+            '
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm-${{ matrix.python-version }}-whl
           path: target/wheels/*.whl
 
   test-macos-arm:
@@ -118,7 +162,7 @@ jobs:
           name: mac-arm-${{ matrix.python-version }}-whl
           path: target/wheels/*.whl
 
-  test-macos-amd:
+  test-macos-x86:
     runs-on: macos-13
     strategy:
       fail-fast: false
@@ -143,10 +187,10 @@ jobs:
           pip install ".[dev]"
 
       - name: Test build
-        run: cargo make test-mac-amd
+        run: cargo make test-mac-x86
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: mac-amd-${{ matrix.python-version }}-whl
+          name: mac-x86-${{ matrix.python-version }}-whl
           path: target/wheels/*.whl

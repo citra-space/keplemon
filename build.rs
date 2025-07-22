@@ -11,12 +11,12 @@ fn main() {
     let lib_dir = match target_os.as_str() {
         "macos" => match target_arch.as_str() {
             "aarch64" => Path::new("lib/mac/arm"),
-            "x86_64" => Path::new("lib/mac/amd"),
+            "x86_64" => Path::new("lib/mac/x86"),
             other => panic!("Unsupported macOS architecture: {}", other),
         },
         "linux" => match target_arch.as_str() {
             "aarch64" => Path::new("lib/linux/arm"),
-            "x86_64" => Path::new("lib/linux/amd"),
+            "x86_64" => Path::new("lib/linux/x86"),
             other => panic!("Unsupported Linux architecture: {}", other),
         },
         "windows" => Path::new("lib/windows"),

@@ -16,9 +16,9 @@ description = "Copy the SAAL binaries for macOS ARM"
 script = ["cp lib/mac/arm/* python/keplemon/"]
 dependencies = ["clean-all"]
 
-[tasks.copy-mac-amd]
-description = "Copy the SAAL binaries for macOS AMD"
-script = ["cp lib/mac/amd/* python/keplemon/"]
+[tasks.copy-mac-x86]
+description = "Copy the SAAL binaries for macOS x86"
+script = ["cp lib/mac/x86/* python/keplemon/"]
 dependencies = ["clean-all"]
 
 [tasks.copy-linux-arm]
@@ -26,9 +26,9 @@ description = "Copy the SAAL binaries for Linux ARM"
 script = ["cp lib/linux/arm/* python/keplemon/"]
 dependencies = ["clean-all"]
 
-[tasks.copy-linux-amd]
-description = "Copy the SAAL binaries for Linux AMD"
-script = ["cp lib/linux/amd/* python/keplemon/"]
+[tasks.copy-linux-x86]
+description = "Copy the SAAL binaries for Linux x86"
+script = ["cp lib/linux/x86/* python/keplemon/"]
 dependencies = ["clean-all"]
 
 [tasks.copy-windows]
@@ -41,10 +41,10 @@ description = "Build the wheel for macOS ARM"
 script = ["maturin build --release"]
 dependencies = ["copy-mac-arm"]
 
-[tasks.build-mac-amd]
-description = "Build the wheel for macOS AMD"
+[tasks.build-mac-x86]
+description = "Build the wheel for macOS x86"
 script = ["maturin build --release"]
-dependencies = ["copy-mac-amd"]
+dependencies = ["copy-mac-x86"]
 
 [tasks.build-linux-arm]
 description = "Build the wheel for Linux ARM"
@@ -53,12 +53,12 @@ script = [
 ]
 dependencies = ["copy-linux-arm"]
 
-[tasks.build-linux-amd]
-description = "Build the wheel for Linux AMD"
+[tasks.build-linux-x86]
+description = "Build the wheel for Linux x86"
 script = [
     "maturin build --release --target x86_64-unknown-linux-gnu --compatibility manylinux2014",
 ]
-dependencies = ["copy-linux-amd"]
+dependencies = ["copy-linux-x86"]
 
 
 [tasks.build-windows]
@@ -71,20 +71,20 @@ description = "Install the wheel for macOS ARM"
 script = ["pip install --force-reinstall target/wheels/*.whl"]
 dependencies = ["build-mac-arm"]
 
-[tasks.install-mac-amd]
-description = "Install the wheel for macOS AMD"
+[tasks.install-mac-x86]
+description = "Install the wheel for macOS x86"
 script = ["pip install --force-reinstall target/wheels/*.whl"]
-dependencies = ["build-mac-amd"]
+dependencies = ["build-mac-x86"]
 
 [tasks.install-linux-arm]
 description = "Install the wheel for Linux ARM"
 script = ["pip install --force-reinstall target/wheels/*.whl"]
 dependencies = ["build-linux-arm"]
 
-[tasks.install-linux-amd]
-description = "Install the wheel for Linux AMD"
+[tasks.install-linux-x86]
+description = "Install the wheel for Linux x86"
 script = ["pip install --force-reinstall target/wheels/*.whl"]
-dependencies = ["build-linux-amd"]
+dependencies = ["build-linux-x86"]
 
 [tasks.install-windows]
 description = "Install the wheel for Windows"
@@ -97,11 +97,11 @@ command = "pytest"
 args = ["-v", "--tb=short", "tests"]
 dependencies = ["install-mac-arm"]
 
-[tasks.test-mac-amd]
-description = "Run the tests for macOS AMD"
+[tasks.test-mac-x86]
+description = "Run the tests for macOS x86"
 command = "pytest"
 args = ["-v", "--tb=short", "tests"]
-dependencies = ["install-mac-amd"]
+dependencies = ["install-mac-x86"]
 
 [tasks.test-linux-arm]
 description = "Run the tests for Linux ARM"
@@ -109,11 +109,11 @@ command = "pytest"
 args = ["-v", "--tb=short", "tests"]
 dependencies = ["install-linux-arm"]
 
-[tasks.test-linux-amd]
-description = "Run the tests for Linux AMD"
+[tasks.test-linux-x86]
+description = "Run the tests for Linux x86"
 command = "pytest"
 args = ["-v", "--tb=short", "tests"]
-dependencies = ["install-linux-amd"]
+dependencies = ["install-linux-x86"]
 
 [tasks.test-windows]
 description = "Run the tests for Windows"
@@ -127,11 +127,11 @@ command = "twine"
 args = ["upload", "target/wheels/*"]
 dependencies = ["test-mac-arm"]
 
-[tasks.publish-mac-amd]
-description = "Publish the wheel for macOS AMD"
+[tasks.publish-mac-x86]
+description = "Publish the wheel for macOS x86"
 command = "twine"
 args = ["upload", "target/wheels/*"]
-dependencies = ["test-mac-amd"]
+dependencies = ["test-mac-x86"]
 
 [tasks.publish-linux-arm]
 description = "Publish the wheel for Linux ARM"
@@ -139,11 +139,11 @@ command = "twine"
 args = ["upload", "target/wheels/*"]
 dependencies = ["test-linux-arm"]
 
-[tasks.publish-linux-amd]
-description = "Publish the wheel for Linux AMD"
+[tasks.publish-linux-x86]
+description = "Publish the wheel for Linux x86"
 command = "twine"
 args = ["upload", "target/wheels/*"]
-dependencies = ["test-linux-amd"]
+dependencies = ["test-linux-x86"]
 
 [tasks.publish-windows]
 description = "Publish the wheel for Windows"

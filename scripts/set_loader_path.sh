@@ -13,7 +13,7 @@ for lib in ./lib/mac/arm/*.dylib; do
   codesign --force --sign "Developer ID Application: Brandon Sexton (AR7B22KF2Q)" "$lib"
 done
 
-for lib in ./lib/mac/amd/*.dylib; do 
+for lib in ./lib/mac/x86/*.dylib; do 
   echo "Patching install name for $lib..."
   install_name_tool -id "@loader_path/$(basename "$lib")" "$lib"
   for dep in $(otool -L "$lib" | awk 'NR>1 {print $1}'); do
@@ -28,5 +28,5 @@ for lib in ./lib/mac/amd/*.dylib; do
   codesign --force --sign "Developer ID Application: Brandon Sexton (AR7B22KF2Q)" "$lib"
 done
 
-find lib/linux/amd -name '*.so*' -exec patchelf --set-rpath '$ORIGIN' {} +
+find lib/linux/x86 -name '*.so*' -exec patchelf --set-rpath '$ORIGIN' {} +
 find lib/linux/arm -name '*.so*' -exec patchelf --set-rpath '$ORIGIN' {} +

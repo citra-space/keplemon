@@ -17,7 +17,7 @@ installed locally by following the steps below.
 
 1. `git clone https://github.com/citra-space/keplemon.git`
 2. `cargo install cargo-make`
-3. `cargo make build-<os>-<architecture>` (e.g. for Linux x86 `cargo make build-linux-amd`)
+3. `cargo make build-<os>-<architecture>` (e.g. for Linux x86 `cargo make build-linux-x86`)
 4. `pip install target/wheels/*.whl`
 
 To avoid potential conflicts with system libraries, you can alternatively build the wheel using Docker.
@@ -25,7 +25,7 @@ To avoid potential conflicts with system libraries, you can alternatively build 
 ```bash
 docker buildx build \
   --build-arg OS="${OS:-linux}" \
-  --build-arg ARCH="${ARCH:-amd}" \
+  --build-arg ARCH="${ARCH:-x86}" \
   --build-arg PYTHON_VERSION="${PYTHON_VERSION:-310}" \
   --output type=local,dest=./target .
 ```
