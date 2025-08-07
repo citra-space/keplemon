@@ -115,15 +115,16 @@ impl Ephemeris {
             if old_el_sign != new_el_sign {
                 always_visible = false;
                 let t_guess = estimate_horizon_crossing_epoch(&old_horizon, min_el);
-
-                if let Some(crossing) = refine_horizon_crossing(sensor, self, t_guess, min_el) {
-                    if crossing.get_elevation_rate().unwrap() > 0.0 {
-                        last_entry = crossing;
-                    } else if crossing.epoch - last_entry.epoch >= min_duration {
-                        accesses.push(HorizonAccess::new(self.satellite_id, &last_entry, &crossing));
-                    }
-                    if crossing.epoch > next_epoch {
-                        next_epoch = crossing.epoch;
+                if t_guess > start_epoch && t_guess < end_epoch {
+                    if let Some(crossing) = refine_horizon_crossing(sensor, self, t_guess, min_el) {
+                        if crossing.get_elevation_rate().unwrap() > 0.0 {
+                            last_entry = crossing;
+                        } else if crossing.epoch - last_entry.epoch >= min_duration {
+                            accesses.push(HorizonAccess::new(self.satellite_id, &last_entry, &crossing));
+                        }
+                        if crossing.epoch > next_epoch {
+                            next_epoch = crossing.epoch;
+                        }
                     }
                 }
             }
@@ -266,8 +267,8 @@ fn refine_horizon_crossing(
     }
 
     Some(HorizonState::from_teme_states(
-        sensor_ephem.get_state_at_epoch(t).unwrap(),
-        sat_ephem.get_state_at_epoch(t).unwrap(),
+        sensor_ephem.get_state_at_epoch(t)?,
+        sat_ephem.get_state_at_epoch(t)?,
     ))
 }
 
