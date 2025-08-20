@@ -11,19 +11,11 @@ def test_earth():
 
 
 def test_constellation():
-    celestrak_tles = Constellation.from_tle_catalog(
-        TLECatalog.from_tle_file("tests/2025-04-15-celestrak.tle")
-    )
+    celestrak_tles = Constellation.from_tle_catalog(TLECatalog.from_tle_file("tests/2025-04-15-celestrak.tle"))
 
-    space_track_tles = Constellation.from_tle_catalog(
-        TLECatalog.from_tle_file("tests/2025-04-15-space-track.tle")
-    )
-    space_track_3les = Constellation.from_tle_catalog(
-        TLECatalog.from_tle_file("tests/2025-04-15-space-track.3le")
-    )
-    celestrak_3les = Constellation.from_tle_catalog(
-        TLECatalog.from_tle_file("tests/2025-04-15-celestrak.3le")
-    )
+    space_track_tles = Constellation.from_tle_catalog(TLECatalog.from_tle_file("tests/2025-04-15-space-track.tle"))
+    space_track_3les = Constellation.from_tle_catalog(TLECatalog.from_tle_file("tests/2025-04-15-space-track.3le"))
+    celestrak_3les = Constellation.from_tle_catalog(TLECatalog.from_tle_file("tests/2025-04-15-celestrak.3le"))
 
     assert space_track_3les.count == 27485
     assert celestrak_3les.count == 11304
@@ -42,7 +34,7 @@ def test_satellite():
     tle = TLE.from_lines(line_1, line_2)
 
     sat = Satellite.from_tle(tle)
-    assert sat.satellite_id == 25544
+    assert sat.norad_id == 25544
 
     line_1 = "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990"
     line_2 = "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950"

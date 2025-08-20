@@ -875,6 +875,11 @@ pub fn py_teme_to_topo(
     teme_to_topo(theta, lat, &sen_pos, &sat_pos, &sat_vel)
 }
 
+#[pyfunction(name = "mean_motion_to_sma")]
+pub fn py_mean_motion_to_sma(mean_motion: f64) -> f64 {
+    mean_motion_to_sma(mean_motion)
+}
+
 pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let astro_func_interface = PyModule::new(parent_module.py(), "astro_func_interface")?;
     astro_func_interface.add_function(wrap_pyfunction!(py_teme_to_topo, &astro_func_interface)?)?;
@@ -882,6 +887,7 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add_function(wrap_pyfunction!(py_ra_dec_to_az_el, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_theta_teme_to_lla, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_time_teme_to_lla, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_mean_motion_to_sma, &astro_func_interface)?)?;
     astro_func_interface.add("XA_TOPO_RA", XA_TOPO_RA)?;
     astro_func_interface.add("XA_TOPO_DEC", XA_TOPO_DEC)?;
     astro_func_interface.add("XA_TOPO_AZ", XA_TOPO_AZ)?;

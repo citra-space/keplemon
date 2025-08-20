@@ -8,7 +8,7 @@ def test_tle():
     line_2 = "2 25544  51.6456 123.4567 0001234  12.3456  78.9012 15.1234567800000"
     tle = TLE.from_lines(line_1, line_2)
 
-    assert tle.satellite_id == 25544
+    assert tle.norad_id == 25544
     assert tle.designator == "98067A"
     assert tle.classification == Classification.Unclassified
     assert tle.type == KeplerianType.MeanKozaiGP

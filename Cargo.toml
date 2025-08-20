@@ -1,6 +1,6 @@
 [package]
 name = "keplemon"
-version = "0.3.4"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -9,13 +9,14 @@ nalgebra = "0.33.2"
 pyo3 = { version = "0.24.1", features = ["extension-module"] }
 rayon = "1.10.0"
 reqwest = "0.12.15"
+uuid = { version = "1.18.0", features = ["v4"] }
 
 [target.'cfg(target_env = "musl")'.dependencies]
 openssl = { version = "0.10.72", default-features = false, features = [
-    "vendored",
+  "vendored",
 ] }
 openssl-sys = { version = "0.9.108", default-features = false, features = [
-    "vendored",
+  "vendored",
 ] }
 
 [lib]

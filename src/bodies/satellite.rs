@@ -1,4 +1,4 @@
-use crate::configs::CONJUNCTION_STEP_MINUTES;
+use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID};
 use crate::elements::{CartesianState, Ephemeris, KeplerianState, TLE};
 use crate::enums::{Classification, KeplerianType};
 use crate::estimation::Observation;
@@ -12,7 +12,8 @@ use pyo3::prelude::*;
 #[pyclass(subclass)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Satellite {
-    satellite_id: i32,
+    id: String,
+    norad_id: i32,
     name: Option<String>,
     force_properties: ForceProperties,
     keplerian_state: Option<KeplerianState>,
@@ -65,9 +66,10 @@ impl Satellite {
 #[pymethods]
 impl Satellite {
     #[new]
-    pub fn new(satellite_id: i32) -> Self {
+    pub fn new(id: String) -> Self {
         Self {
-            satellite_id,
+            norad_id: DEFAULT_NORAD_ANALYST_ID,
+            id,
             name: None,
             force_properties: ForceProperties::default(),
             keplerian_state: None,
@@ -78,7 +80,8 @@ impl Satellite {
     pub fn to_tle(&self) -> PyResult<Option<TLE>> {
         match self.get_keplerian_state() {
             Some(state) => match TLE::new(
-                self.satellite_id,
+                self.id.clone(),
+                self.norad_id,
                 self.name.clone(),
                 Classification::Unclassified,
                 "".to_string(),
@@ -95,7 +98,8 @@ impl Satellite {
     #[staticmethod]
     pub fn from_tle(tle: TLE) -> Self {
         Self {
-            satellite_id: tle.get_satellite_id(),
+            id: tle.get_id(),
+            norad_id: tle.get_norad_id(),
             name: tle.get_name(),
             force_properties: tle.get_force_properties(),
             keplerian_state: Some(tle.get_keplerian_state()),
@@ -104,8 +108,8 @@ impl Satellite {
     }
 
     #[getter]
-    pub fn get_satellite_id(&self) -> i32 {
-        self.satellite_id
+    pub fn get_satellite_id(&self) -> String {
+        self.id.clone()
     }
 
     #[getter]
@@ -130,7 +134,12 @@ impl Satellite {
 
     #[setter]
     pub fn set_satellite_id(&mut self, satellite_id: i32) {
-        self.satellite_id = satellite_id;
+        self.norad_id = satellite_id;
+    }
+
+    #[getter]
+    pub fn get_norad_id(&self) -> i32 {
+        self.norad_id
     }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
@@ -148,7 +157,8 @@ impl Satellite {
             )),
             _ => {
                 let tle = TLE::new(
-                    self.satellite_id,
+                    self.id.clone(),
+                    self.norad_id,
                     self.name.clone(),
                     Classification::Unclassified,
                     "".to_string(),
@@ -168,7 +178,8 @@ impl Satellite {
         if let Some(state) = self.get_keplerian_state() {
             if state.get_type() != KeplerianType::Osculating {
                 let tle = TLE::new(
-                    self.satellite_id,
+                    self.id.clone(),
+                    self.norad_id,
                     self.name.clone(),
                     Classification::Unclassified,
                     "".to_string(),
@@ -189,7 +200,7 @@ impl Satellite {
     pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
         match self.get_state_at_epoch(start_epoch) {
             Some(state) => {
-                let ephemeris = Ephemeris::new(self.satellite_id, state);
+                let ephemeris = Ephemeris::new(self.id.clone(), state);
                 let mut next_epoch: Epoch = start_epoch + step;
                 while next_epoch <= end_epoch {
                     match self.get_state_at_epoch(next_epoch) {

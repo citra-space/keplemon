@@ -13,7 +13,7 @@ use std::collections::HashMap;
 #[derive(Default)]
 pub struct Constellation {
     name: Option<String>,
-    satellites: HashMap<i32, Satellite>,
+    satellites: HashMap<String, Satellite>,
 }
 
 #[pymethods]
@@ -30,7 +30,7 @@ impl Constellation {
     pub fn from_tle_catalog(catalog: TLECatalog) -> Self {
         let mut constellation = Constellation::new();
         for satellite_id in catalog.keys() {
-            if let Some(tle) = catalog.get(satellite_id) {
+            if let Some(tle) = catalog.get(satellite_id.clone()) {
                 let sat = Satellite::from_tle(tle);
                 constellation.add(satellite_id, sat);
             }
@@ -39,12 +39,12 @@ impl Constellation {
         constellation
     }
 
-    pub fn get_states_at_epoch(&self, epoch: Epoch) -> HashMap<i32, Option<CartesianState>> {
+    pub fn get_states_at_epoch(&self, epoch: Epoch) -> HashMap<String, Option<CartesianState>> {
         self.satellites
             .par_iter()
             .map(|(satellite_id, sat)| {
                 let state = sat.get_state_at_epoch(epoch);
-                (*satellite_id, state)
+                (satellite_id.clone(), state)
             })
             .collect()
     }
@@ -164,18 +164,18 @@ impl Constellation {
         start_epoch: Epoch,
         end_epoch: Epoch,
         step_size: TimeSpan,
-    ) -> HashMap<i32, Option<Ephemeris>> {
+    ) -> HashMap<String, Option<Ephemeris>> {
         self.satellites
             .par_iter()
             .map(|(satellite_id, sat)| {
                 let ephemeris = sat.get_ephemeris(start_epoch, end_epoch, step_size);
-                (*satellite_id, ephemeris)
+                (satellite_id.clone(), ephemeris)
             })
             .collect()
     }
 
-    fn __getitem__(&self, satellite_id: i32) -> PyResult<Satellite> {
-        match self.get(satellite_id) {
+    fn __getitem__(&self, satellite_id: String) -> PyResult<Satellite> {
+        match self.get(satellite_id.clone()) {
             Some(sat) => Ok(sat),
             None => Err(pyo3::exceptions::PyKeyError::new_err(format!(
                 "Invalid key: {}",
@@ -184,15 +184,15 @@ impl Constellation {
         }
     }
 
-    pub fn add(&mut self, satellite_id: i32, sat: Satellite) {
+    pub fn add(&mut self, satellite_id: String, sat: Satellite) {
         self.satellites.insert(satellite_id, sat);
     }
 
-    pub fn get(&self, satellite_id: i32) -> Option<Satellite> {
+    pub fn get(&self, satellite_id: String) -> Option<Satellite> {
         self.satellites.get(&satellite_id).cloned()
     }
 
-    pub fn remove(&mut self, satellite_id: i32) {
+    pub fn remove(&mut self, satellite_id: String) {
         self.satellites.remove(&satellite_id);
     }
 

@@ -184,7 +184,8 @@ impl InertialPropagator {
                 }
                 let state = KeplerianState::new(epoch, elements, ReferenceFrame::TEME, tle.get_type());
                 Ok(Self::from_tle(TLE::new(
-                    tle.get_satellite_id(),
+                    tle.get_id(),
+                    tle.get_norad_id(),
                     tle.get_name(),
                     tle.get_classification(),
                     tle.get_designator(),

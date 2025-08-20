@@ -4,11 +4,12 @@ use crate::enums::ReferenceFrame;
 use crate::saal::astro_func_interface;
 use crate::time::{Epoch, TimeSpan};
 use pyo3::prelude::*;
+use uuid::Uuid;
 
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observatory {
-    site_id: Option<i32>,
+    site_id: String,
     name: String,
     latitude: f64,
     longitude: f64,
@@ -18,7 +19,7 @@ pub struct Observatory {
 
 impl Observatory {
     pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Ephemeris {
-        let ephemeris = Ephemeris::new(1, self.get_state_at_epoch(start_epoch));
+        let ephemeris = Ephemeris::new(self.site_id.clone(), self.get_state_at_epoch(start_epoch));
         let mut next_epoch: Epoch = start_epoch + step;
         while next_epoch <= end_epoch {
             ephemeris.add_state(self.get_state_at_epoch(next_epoch));
@@ -33,7 +34,7 @@ impl Observatory {
     #[new]
     pub fn new(name: String, latitude: f64, longitude: f64, altitude: f64) -> Self {
         Self {
-            site_id: None,
+            site_id: Uuid::new_v4().to_string(),
             name,
             latitude,
             longitude,
@@ -43,8 +44,8 @@ impl Observatory {
     }
 
     #[getter]
-    pub fn get_site_id(&self) -> Option<i32> {
-        self.site_id
+    pub fn get_site_id(&self) -> String {
+        self.site_id.clone()
     }
 
     #[getter]
@@ -73,8 +74,8 @@ impl Observatory {
     }
 
     #[setter]
-    pub fn set_site_id(&mut self, site_id: i32) {
-        self.site_id = Some(site_id);
+    pub fn set_site_id(&mut self, site_id: String) {
+        self.site_id = site_id;
     }
 
     #[setter]

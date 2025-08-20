@@ -1,5 +1,17 @@
 # flake8: noqa: F401
 
+def mean_motion_to_sma(mean_motion: float) -> float:
+    """
+    Convert mean motion to semi-major axis.
+
+    Args:
+        mean_motion: Mean motion in revolutions/day.
+
+    Returns:
+        Semi-major axis in kilometers.
+    """
+    ...
+
 def ra_dec_to_az_el(
     theta: float,
     lat: float,

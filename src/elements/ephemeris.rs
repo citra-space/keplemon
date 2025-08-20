@@ -1,5 +1,5 @@
 use crate::bodies::Earth;
-use crate::configs::{CONJUNCTION_STEP_MINUTES, MAX_NEWTON_ITERATIONS, NEWTON_TOLERANCE};
+use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MAX_NEWTON_ITERATIONS, NEWTON_TOLERANCE};
 use crate::elements::{CartesianState, CartesianVector, HorizonState};
 use crate::enums::{ReferenceFrame, TimeSystem};
 use crate::events::{CloseApproach, HorizonAccess};
@@ -11,7 +11,8 @@ use pyo3::prelude::*;
 #[derive(Debug, PartialEq)]
 pub struct Ephemeris {
     key: i64,
-    satellite_id: i32,
+    satellite_id: String,
+    norad_id: i32,
 }
 
 impl Drop for Ephemeris {
@@ -23,7 +24,7 @@ impl Drop for Ephemeris {
 #[pymethods]
 impl Ephemeris {
     #[new]
-    pub fn new(satellite_id: i32, state: CartesianState) -> Self {
+    pub fn new(satellite_id: String, state: CartesianState) -> Self {
         let frame = match state.get_frame() {
             ReferenceFrame::TEME => ext_ephem_interface::COORD_ECI,
             ReferenceFrame::EFG => ext_ephem_interface::COORD_EFG,
@@ -31,13 +32,17 @@ impl Ephemeris {
             ReferenceFrame::J2000 => ext_ephem_interface::COORD_J2K,
         };
         let key = ext_ephem_interface::add_satellite(
-            satellite_id,
+            DEFAULT_NORAD_ANALYST_ID,
             state.get_epoch().days_since_1950,
             Earth::get_equatorial_radius(),
             Earth::get_ke(),
             frame,
         );
-        let ephem = Self { key, satellite_id };
+        let ephem = Self {
+            key,
+            satellite_id,
+            norad_id: DEFAULT_NORAD_ANALYST_ID,
+        };
         ext_ephem_interface::add_satellite_state(
             key,
             state.get_epoch().days_since_1950,
@@ -120,7 +125,7 @@ impl Ephemeris {
                         if crossing.get_elevation_rate().unwrap() > 0.0 {
                             last_entry = crossing;
                         } else if crossing.epoch - last_entry.epoch >= min_duration {
-                            accesses.push(HorizonAccess::new(self.satellite_id, &last_entry, &crossing));
+                            accesses.push(HorizonAccess::new(self.norad_id, &last_entry, &crossing));
                         }
                         if crossing.epoch > next_epoch {
                             next_epoch = crossing.epoch;
@@ -134,7 +139,7 @@ impl Ephemeris {
 
         if accesses.is_empty() && always_visible && self.get_state_at_epoch(end_epoch).is_some() {
             accesses.push(HorizonAccess::new(
-                self.satellite_id,
+                self.norad_id,
                 &HorizonState::from_teme_states(
                     sensor.get_state_at_epoch(start_epoch).unwrap(),
                     self.get_state_at_epoch(start_epoch).unwrap(),
@@ -194,8 +199,8 @@ impl Ephemeris {
         }
         if min_distance < distance_threshold {
             Some(CloseApproach::new(
-                self.satellite_id,
-                other.satellite_id,
+                self.norad_id,
+                other.norad_id,
                 closest_epoch,
                 min_distance,
             ))
@@ -205,8 +210,8 @@ impl Ephemeris {
     }
 
     #[getter]
-    pub fn get_satellite_id(&self) -> i32 {
-        self.satellite_id
+    pub fn get_satellite_id(&self) -> String {
+        self.satellite_id.clone()
     }
 }
 
@@ -300,5 +305,5 @@ fn refine_close_approach(ephem_1: &Ephemeris, ephem_2: &Ephemeris, t_guess: Epoc
     let state_2 = ephem_2.get_state_at_epoch(t)?;
     let range = (state_1.position - state_2.position).get_magnitude();
 
-    Some(CloseApproach::new(ephem_1.satellite_id, ephem_2.satellite_id, t, range))
+    Some(CloseApproach::new(ephem_1.norad_id, ephem_2.norad_id, t, range))
 }

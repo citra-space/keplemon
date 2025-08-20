@@ -90,7 +90,11 @@ class KeplerianElements:
     ) -> None: ...
 
 class TLE:
-    satellite_id: int
+
+    norad_id: int
+    """NORAD catalog ID of the satellite"""
+
+    satellite_id: str
     """"""
 
     name: str

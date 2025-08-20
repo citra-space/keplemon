@@ -8,6 +8,7 @@ use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use pyo3::prelude::*;
 use std::str::FromStr;
+use uuid::Uuid;
 
 const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-8, 1e-6, 1e-4, 1e-4];
 
@@ -15,7 +16,8 @@ const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-8, 1e-6, 1e-4, 1e
 #[derive(Debug, PartialEq)]
 pub struct TLE {
     key: i64,
-    satellite_id: i32,
+    norad_id: i32,
+    satellite_id: String,
     name: Option<String>,
     designator: String,
     classification: Classification,
@@ -33,7 +35,8 @@ impl Clone for TLE {
     fn clone(&self) -> Self {
         let mut tle = Self {
             key: 0,
-            satellite_id: self.satellite_id,
+            norad_id: self.norad_id,
+            satellite_id: self.satellite_id.clone(),
             name: self.name.clone(),
             designator: self.designator.clone(),
             classification: self.classification,
@@ -47,7 +50,8 @@ impl Clone for TLE {
 
 impl TLE {
     pub fn new(
-        satellite_id: i32,
+        satellite_id: String,
+        norad_id: i32,
         name: Option<String>,
         classification: Classification,
         designator: String,
@@ -57,6 +61,7 @@ impl TLE {
         let mut tle = Self {
             key: 0,
             satellite_id,
+            norad_id,
             name,
             classification,
             designator,
@@ -128,7 +133,8 @@ impl TLE {
                 self.get_type(),
             );
             let tle = TLE::new(
-                self.satellite_id,
+                self.get_id(),
+                self.get_norad_id(),
                 self.name.clone(),
                 self.classification,
                 self.designator.clone(),
@@ -150,7 +156,8 @@ impl TLE {
             let epsilon = DEFAULT_EPSILONS[6];
             perturbed_forces.set_drag_coefficient(forces_0.get_drag_coefficient() + epsilon);
             let tle = TLE::new(
-                self.satellite_id,
+                self.get_id(),
+                self.get_norad_id(),
                 self.name.clone(),
                 self.classification,
                 self.designator.clone(),
@@ -178,7 +185,8 @@ impl TLE {
             }
 
             let tle = TLE::new(
-                self.satellite_id,
+                self.get_id(),
+                self.get_norad_id(),
                 self.name.clone(),
                 self.classification,
                 self.designator.clone(),
@@ -217,7 +225,8 @@ impl TLE {
             self.get_type(),
         );
         match TLE::new(
-            self.satellite_id,
+            self.get_id(),
+            self.get_norad_id(),
             self.name.clone(),
             self.classification,
             self.designator.clone(),
@@ -262,7 +271,8 @@ impl TLE {
                 ref_state.get_type(),
             );
             let perturbed_tle = TLE::new(
-                self.satellite_id,
+                self.get_id(),
+                self.get_norad_id(),
                 self.name.clone(),
                 self.classification,
                 self.designator.clone(),
@@ -286,7 +296,8 @@ impl TLE {
             let epsilon = DEFAULT_EPSILONS[6];
             perturbed_forces.set_drag_coefficient(perturbed_forces.get_drag_coefficient() + epsilon);
             let perturbed_tle = TLE::new(
-                self.satellite_id,
+                self.get_id(),
+                self.get_norad_id(),
                 self.name.clone(),
                 self.classification,
                 self.designator.clone(),
@@ -310,7 +321,8 @@ impl TLE {
             let epsilon = DEFAULT_EPSILONS[7];
             perturbed_forces.set_srp_coefficient(perturbed_forces.get_srp_coefficient() + epsilon);
             let perturbed_tle = TLE::new(
-                self.satellite_id,
+                self.get_id(),
+                self.get_norad_id(),
                 self.name.clone(),
                 self.classification,
                 self.designator.clone(),
@@ -332,7 +344,7 @@ impl TLE {
 
     pub fn get_xa_tle(&self) -> [f64; tle_interface::XA_TLE_SIZE] {
         let mut xa_tle = [0.0; tle_interface::XA_TLE_SIZE];
-        xa_tle[tle_interface::XA_TLE_SATNUM] = self.satellite_id as f64;
+        xa_tle[tle_interface::XA_TLE_SATNUM] = self.norad_id as f64;
         xa_tle[tle_interface::XA_TLE_EPOCH] = self.get_epoch().days_since_1950;
         xa_tle[tle_interface::XA_TLE_INCLI] = self.get_inclination();
         xa_tle[tle_interface::XA_TLE_NODE] = self.get_raan();
@@ -393,6 +405,7 @@ impl TLE {
         let keplerian_state = KeplerianState::from_xa_tle(&xa_tle);
         let force_properties = ForceProperties::from_xa_tle(&xa_tle);
         match Self::new(
+            Uuid::new_v4().to_string(),
             xa_tle[tle_interface::XA_TLE_SATNUM] as i32,
             None,
             Classification::from_str(cls_char).unwrap(),
@@ -527,8 +540,13 @@ impl TLE {
     }
 
     #[getter]
-    pub fn get_satellite_id(&self) -> i32 {
-        self.satellite_id
+    pub fn get_norad_id(&self) -> i32 {
+        self.norad_id
+    }
+
+    #[getter]
+    pub fn get_id(&self) -> String {
+        self.satellite_id.clone()
     }
 
     #[getter]
@@ -545,6 +563,7 @@ mod tests {
     use crate::saal::astro_func_interface;
     use crate::time::Epoch;
     use approx::assert_abs_diff_eq;
+    use uuid::Uuid;
 
     const SGP_LINE_1: &str = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
     const SGP_LINE_2: &str = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
@@ -572,6 +591,7 @@ mod tests {
         );
         let force_properties = ForceProperties::new(0.01, 1.0, 0.02, 1.0, 1.0, 0.0, 0.0);
         TLE::new(
+            Uuid::new_v4().to_string(),
             25544,
             None,
             Classification::Unclassified,
@@ -604,6 +624,7 @@ mod tests {
         let force_properties = ForceProperties::new(0.0, 0.0, 0.0, 0.0, 1.0, 0.00000884, 0.000022898);
 
         TLE::new(
+            Uuid::new_v4().to_string(),
             25544,
             None,
             Classification::Unclassified,
@@ -617,7 +638,7 @@ mod tests {
     #[test]
     fn test_sgp_from_lines() {
         let tle = sgp_tle_from_lines();
-        assert_eq!(tle.satellite_id, 25544);
+        assert_eq!(tle.norad_id, 25544);
         assert_eq!(tle.get_epoch().days_since_1950, 25767.51605324);
         assert_eq!(tle.get_inclination(), 51.6443);
         assert_eq!(tle.get_raan(), 93.0);
@@ -638,7 +659,7 @@ mod tests {
     #[test]
     fn test_xp_from_lines() {
         let tle = xp_tle_from_lines();
-        assert_eq!(tle.satellite_id, 25544);
+        assert_eq!(tle.norad_id, 25544);
         assert_eq!(tle.get_inclination(), 51.6443);
         assert_eq!(tle.get_raan(), 93.0);
         assert_eq!(tle.get_eccentricity(), 0.0001400);

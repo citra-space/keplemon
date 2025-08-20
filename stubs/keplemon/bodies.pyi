@@ -17,12 +17,11 @@ class Earth:
     def get_kem() -> float: ...
 
 class Satellite:
-    satellite_id: int
-    """Number used to distinguish the satellite from other objects.
-    
-    !!! note
-        Every attempt should be made to make this unique to support satellite methods that perform comparisons or
-        bookkeeping.
+    id: str
+    """Unique identifier for the satellite."""
+
+    norad_id: int
+    """Number corresponding to the satellite's NORAD catalog ID.
     """
     name: str | None
     """Human-readable name of the satellite"""
@@ -100,7 +99,7 @@ class Constellation:
         start: Epoch,
         end: Epoch,
         step: TimeSpan,
-    ) -> dict[int, Ephemeris]:
+    ) -> dict[str, Ephemeris]:
         """
         Args:
             start: UTC epoch of the start of the ephemeris
@@ -155,7 +154,7 @@ class Constellation:
         """
         ...
 
-    def __getitem__(self, satellite_id: int) -> Satellite: ...
+    def __getitem__(self, satellite_id: str) -> Satellite: ...
     def get_horizon_access_report(
         self,
         site: Observatory,
