@@ -184,6 +184,10 @@ impl Constellation {
         }
     }
 
+    fn __setitem__(&mut self, satellite_id: String, state: Satellite) {
+        self.satellites.insert(satellite_id, state);
+    }
+
     pub fn add(&mut self, satellite_id: String, sat: Satellite) {
         self.satellites.insert(satellite_id, sat);
     }
