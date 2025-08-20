@@ -31,7 +31,7 @@ class CloseApproachReport:
 
 class HorizonAccess:
 
-    satellite_id: int
+    satellite_id: str
     """ID of the satellite for which the access is calculated"""
 
     start: HorizonState

@@ -5,13 +5,13 @@ use pyo3::prelude::*;
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct HorizonAccess {
-    satellite_id: i32,
+    satellite_id: String,
     start: HorizonState,
     end: HorizonState,
 }
 
 impl HorizonAccess {
-    pub fn new(satellite_id: i32, start: &HorizonState, end: &HorizonState) -> Self {
+    pub fn new(satellite_id: String, start: &HorizonState, end: &HorizonState) -> Self {
         Self {
             satellite_id,
             start: *start,
@@ -23,8 +23,8 @@ impl HorizonAccess {
 #[pymethods]
 impl HorizonAccess {
     #[getter]
-    pub fn get_satellite_id(&self) -> i32 {
-        self.satellite_id
+    pub fn get_satellite_id(&self) -> String {
+        self.satellite_id.clone()
     }
 
     #[getter]
