@@ -26,9 +26,7 @@ def test_raise_od_exception():
         # Keys here are only available because the input example data is UDL-formatted
         epoch = Epoch.from_iso(json_ob["epoch"], TimeSystem.UTC)
 
-        site = Observatory(
-            "Dummy Site", issue_data["sensor"]["lat"], issue_data["sensor"]["lon"], issue_data["sensor"]["alt"]
-        )
+        site = Observatory(issue_data["sensor"]["lat"], issue_data["sensor"]["lon"], issue_data["sensor"]["alt"])
         observer_teme = site.get_state_at_epoch(epoch)
 
         # KepLemon expects TEME.  The `from_j2000` constructor will be needed for most observations
