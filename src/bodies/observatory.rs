@@ -9,8 +9,8 @@ use uuid::Uuid;
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observatory {
-    site_id: String,
-    name: String,
+    id: String,
+    name: Option<String>,
     latitude: f64,
     longitude: f64,
     altitude: f64,
@@ -19,7 +19,7 @@ pub struct Observatory {
 
 impl Observatory {
     pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Ephemeris {
-        let ephemeris = Ephemeris::new(self.site_id.clone(), self.get_state_at_epoch(start_epoch));
+        let ephemeris = Ephemeris::new(self.id.clone(), self.get_state_at_epoch(start_epoch));
         let mut next_epoch: Epoch = start_epoch + step;
         while next_epoch <= end_epoch {
             ephemeris.add_state(self.get_state_at_epoch(next_epoch));
@@ -32,10 +32,10 @@ impl Observatory {
 #[pymethods]
 impl Observatory {
     #[new]
-    pub fn new(name: String, latitude: f64, longitude: f64, altitude: f64) -> Self {
+    pub fn new(latitude: f64, longitude: f64, altitude: f64) -> Self {
         Self {
-            site_id: Uuid::new_v4().to_string(),
-            name,
+            id: Uuid::new_v4().to_string(),
+            name: None,
             latitude,
             longitude,
             altitude,
@@ -44,12 +44,12 @@ impl Observatory {
     }
 
     #[getter]
-    pub fn get_site_id(&self) -> String {
-        self.site_id.clone()
+    pub fn get_id(&self) -> String {
+        self.id.clone()
     }
 
     #[getter]
-    pub fn get_name(&self) -> String {
+    pub fn get_name(&self) -> Option<String> {
         self.name.clone()
     }
 
@@ -74,12 +74,12 @@ impl Observatory {
     }
 
     #[setter]
-    pub fn set_site_id(&mut self, site_id: String) {
-        self.site_id = site_id;
+    pub fn set_id(&mut self, site_id: String) {
+        self.id = site_id;
     }
 
     #[setter]
-    pub fn set_name(&mut self, name: String) {
+    pub fn set_name(&mut self, name: Option<String>) {
         self.name = name;
     }
 

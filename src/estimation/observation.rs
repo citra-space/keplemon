@@ -65,7 +65,7 @@ impl Observation {
             }
             None => Err(format!(
                 "Error propagating satellite {} to {}",
-                satellite.get_satellite_id(),
+                satellite.get_id(),
                 self.get_epoch().to_iso()
             )),
         }

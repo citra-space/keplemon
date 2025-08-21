@@ -197,10 +197,9 @@ impl BatchLeastSquares {
     }
 
     fn reset(&mut self) {
-        self.current_estimate = Satellite::new(self.a_priori.get_satellite_id());
-        if let Some(name) = self.a_priori.get_name() {
-            self.current_estimate.set_name(name);
-        }
+        self.current_estimate = Satellite::new();
+        self.current_estimate.set_norad_id(self.a_priori.get_norad_id());
+        self.current_estimate.set_name(self.a_priori.get_name());
         self.iteration_count = 0;
         self.converged = false;
         self.delta_x = None;

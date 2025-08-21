@@ -8,6 +8,7 @@ use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use uuid::Uuid;
 
 #[pyclass(subclass)]
 #[derive(Debug, Clone, PartialEq)]
@@ -63,13 +64,19 @@ impl Satellite {
     }
 }
 
+impl Default for Satellite {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[pymethods]
 impl Satellite {
     #[new]
-    pub fn new(id: String) -> Self {
+    pub fn new() -> Self {
         Self {
             norad_id: DEFAULT_NORAD_ANALYST_ID,
-            id,
+            id: Uuid::new_v4().to_string(),
             name: None,
             force_properties: ForceProperties::default(),
             keplerian_state: None,
@@ -108,7 +115,7 @@ impl Satellite {
     }
 
     #[getter]
-    pub fn get_satellite_id(&self) -> String {
+    pub fn get_id(&self) -> String {
         self.id.clone()
     }
 
@@ -118,8 +125,8 @@ impl Satellite {
     }
 
     #[setter]
-    pub fn set_name(&mut self, name: String) {
-        self.name = Some(name);
+    pub fn set_name(&mut self, name: Option<String>) {
+        self.name = name;
     }
 
     #[getter]
@@ -133,13 +140,18 @@ impl Satellite {
     }
 
     #[setter]
-    pub fn set_satellite_id(&mut self, satellite_id: i32) {
-        self.norad_id = satellite_id;
+    pub fn set_id(&mut self, satellite_id: String) {
+        self.id = satellite_id;
     }
 
     #[getter]
     pub fn get_norad_id(&self) -> i32 {
         self.norad_id
+    }
+
+    #[setter]
+    pub fn set_norad_id(&mut self, norad_id: i32) {
+        self.norad_id = norad_id;
     }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {

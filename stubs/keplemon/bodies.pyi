@@ -29,6 +29,7 @@ class Satellite:
     keplerian_state: KeplerianState | None
     """Keplerian state of the satellite at the epoch of the TLE, if available"""
 
+    def __init__(self) -> None: ...
     @classmethod
     def from_tle(cls, tle: TLE) -> Satellite:
         """
@@ -62,10 +63,6 @@ class Satellite:
         ...
 
 class Constellation:
-    """
-    Args:
-        name: Identifier of the constellation
-    """
 
     count: int
     """Number of satellites in the constellation"""
@@ -73,7 +70,7 @@ class Constellation:
     name: str | None
     """Human-readable name of the constellation"""
 
-    def __init__(self, name: str) -> None: ...
+    def __init__(self) -> None: ...
     @classmethod
     def from_tle_catalog(cls, tle_catalog: TLECatalog) -> Constellation:
         """
@@ -201,13 +198,14 @@ class Sensor:
 class Observatory:
     """
     Args:
-        name: Identifier of the observatory
         latitude: Latitude in **_degrees_**
         longitude: Longitude in **_degrees_**
         altitude: Altitude in **_kilometers_**
     """
 
     name: str
+    id: str
+    """Unique identifier for the observatory."""
     latitude: float
     longitude: float
     altitude: float
@@ -215,7 +213,6 @@ class Observatory:
     """List of sensors at the observatory"""
     def __init__(
         self,
-        name: str,
         latitude: float,
         longitude: float,
         altitude: float,
