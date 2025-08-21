@@ -159,3 +159,13 @@ impl ForceProperties {
         self.mean_motion_dot_dot = mean_motion_dot_dot;
     }
 }
+
+#[pyfunction]
+pub fn b_star_to_drag_coefficient(b_star: f64) -> f64 {
+    b_star * B_STAR_TO_B_TERM
+}
+
+#[pyfunction]
+pub fn drag_coefficient_to_b_star(drag_coefficient: f64) -> f64 {
+    drag_coefficient / B_STAR_TO_B_TERM
+}

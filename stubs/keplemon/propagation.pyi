@@ -17,3 +17,11 @@ class ForceProperties:
         mean_motion_dot: float,
         mean_motion_dot_dot: float,
     ) -> None: ...
+
+def b_star_to_drag_coefficient(b_star: float) -> float:
+    """Convert B* to drag coefficient."""
+    ...
+
+def drag_coefficient_to_b_star(drag_coefficient: float) -> float:
+    """Convert drag coefficient to B*."""
+    ...

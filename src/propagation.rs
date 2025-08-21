@@ -16,6 +16,14 @@ pub fn register_propagation(parent_module: &Bound<'_, PyModule>) -> PyResult<()>
     propagation.add_class::<ForceProperties>()?;
     propagation.add_class::<InertialPropagator>()?;
     propagation.add_class::<SGP4Output>()?;
+    propagation.add_function(wrap_pyfunction!(
+        force_properties::b_star_to_drag_coefficient,
+        &propagation
+    )?)?;
+    propagation.add_function(wrap_pyfunction!(
+        force_properties::drag_coefficient_to_b_star,
+        &propagation
+    )?)?;
     py_run!(
         parent_module.py(),
         propagation,
