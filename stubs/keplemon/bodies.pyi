@@ -3,6 +3,7 @@ from keplemon.elements import TLE, CartesianState, Ephemeris, KeplerianState
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
 from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport
+from keplemon.propagation import ForceProperties
 
 class Earth:
     @staticmethod
@@ -17,12 +18,17 @@ class Earth:
     def get_kem() -> float: ...
 
 class Satellite:
+
     id: str
     """Unique identifier for the satellite."""
 
     norad_id: int
     """Number corresponding to the satellite's NORAD catalog ID.
     """
+
+    force_properties: ForceProperties
+    """Force properties of the satellite used for propagation"""
+
     name: str | None
     """Human-readable name of the satellite"""
 
