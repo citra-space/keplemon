@@ -2,7 +2,7 @@ use super::Satellite;
 use crate::bodies::Observatory;
 use crate::catalogs::TLECatalog;
 use crate::configs;
-use crate::elements::{CartesianState, Ephemeris};
+use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
 use crate::events::{CloseApproachReport, HorizonAccessReport};
 use crate::time::{Epoch, TimeSpan};
 use pyo3::prelude::*;
@@ -47,6 +47,31 @@ impl Constellation {
                 (satellite_id.clone(), state)
             })
             .collect()
+    }
+
+    pub fn get_plot_data(&self, start: Epoch, end: Epoch, step: TimeSpan) -> HashMap<String, OrbitPlotData> {
+        self.satellites
+            .par_iter()
+            .filter_map(|(satellite_id, sat)| {
+                sat.get_plot_data(start, end, step)
+                    .map(|plot_data| (satellite_id.clone(), plot_data))
+            })
+            .collect()
+    }
+
+    pub fn step_to_epoch(&mut self, epoch: Epoch) -> Constellation {
+        let sat_map = self
+            .satellites
+            .par_iter_mut()
+            .filter_map(|(sat_id, sat)| match sat.step_to_epoch(epoch) {
+                Ok(_) => Some((sat_id.clone(), sat.clone())),
+                Err(_) => None,
+            })
+            .collect();
+        let mut new_constellation = Constellation::new();
+        new_constellation.satellites = sat_map;
+        new_constellation.name = self.name.clone();
+        new_constellation
     }
 
     pub fn get_horizon_access_report(
@@ -182,6 +207,10 @@ impl Constellation {
                 satellite_id
             ))),
         }
+    }
+
+    fn keys(&self) -> Vec<String> {
+        self.satellites.keys().cloned().collect()
     }
 
     fn __setitem__(&mut self, satellite_id: String, state: Satellite) {

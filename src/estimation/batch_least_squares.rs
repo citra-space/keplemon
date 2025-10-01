@@ -211,11 +211,15 @@ impl BatchLeastSquares {
         if self.get_estimate_srp() && force_properties.get_srp_coefficient() == 0.0 {
             force_properties.set_srp_coefficient(configs::DEFAULT_SRP_TERM);
             force_properties.set_srp_area(1.0);
+            force_properties.set_mass(1.0);
         }
 
         // Seed drag if not already set
         if self.get_estimate_drag() && force_properties.get_drag_coefficient() == 0.0 {
+            println!("Seeding drag force properties");
             force_properties.set_drag_coefficient(configs::DEFAULT_DRAG_TERM);
+            force_properties.set_drag_area(1.0);
+            force_properties.set_mass(1.0);
         }
         self.current_estimate.set_force_properties(force_properties);
 
@@ -330,7 +334,11 @@ impl BatchLeastSquares {
         }
 
         self.weighted_rms = Some(current_weighted_rms);
+
         self.delta_x = n.lu().solve(&b);
-        Ok(())
+        match self.delta_x {
+            Some(_) => Ok(()),
+            None => Err("Unable to compute delta_x".to_string()),
+        }
     }
 }

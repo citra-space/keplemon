@@ -124,6 +124,11 @@ impl ForceProperties {
         self.drag_coefficient
     }
 
+    #[getter]
+    pub fn get_drag_area(&self) -> f64 {
+        self.drag_area
+    }
+
     #[setter]
     pub fn set_srp_coefficient(&mut self, srp_coefficient: f64) {
         self.srp_coefficient = srp_coefficient;

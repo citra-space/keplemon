@@ -7,6 +7,7 @@ mod horizon_elements;
 mod horizon_state;
 mod keplerian_elements;
 mod keplerian_state;
+mod orbit_plot_data;
 mod spherical_vector;
 mod tle;
 mod topocentric_elements;
@@ -20,6 +21,7 @@ pub use horizon_elements::HorizonElements;
 pub use horizon_state::HorizonState;
 pub use keplerian_elements::KeplerianElements;
 pub use keplerian_state::KeplerianState;
+pub use orbit_plot_data::{OrbitPlotData, OrbitPlotState};
 use pyo3::prelude::*;
 use pyo3::py_run;
 pub use spherical_vector::SphericalVector;
@@ -42,6 +44,8 @@ pub fn register_elements(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     elements.add_class::<GeodeticPosition>()?;
     elements.add_class::<HorizonElements>()?;
     elements.add_class::<HorizonState>()?;
+    elements.add_class::<OrbitPlotState>()?;
+    elements.add_class::<OrbitPlotData>()?;
     py_run!(
         parent_module.py(),
         elements,

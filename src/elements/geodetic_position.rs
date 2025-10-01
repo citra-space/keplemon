@@ -18,4 +18,19 @@ impl GeodeticPosition {
             altitude,
         }
     }
+
+    #[getter]
+    pub fn get_latitude(&self) -> f64 {
+        self.latitude
+    }
+
+    #[getter]
+    pub fn get_longitude(&self) -> f64 {
+        self.longitude
+    }
+
+    #[getter]
+    pub fn get_altitude(&self) -> f64 {
+        self.altitude
+    }
 }

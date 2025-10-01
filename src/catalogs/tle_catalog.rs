@@ -1,4 +1,4 @@
-use crate::elements::TLE;
+use crate::elements::{OrbitPlotData, OrbitPlotState, TLE};
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
@@ -92,5 +92,13 @@ impl TLECatalog {
         }
         catalog.name = Some(file_path.to_string());
         Ok(catalog)
+    }
+
+    pub fn get_plot_data(&self) -> OrbitPlotData {
+        let mut plot_data = OrbitPlotData::new(self.name.clone().unwrap_or_else(|| "TLE Catalog".to_string()));
+        for tle in self.map.values() {
+            plot_data.add_state(OrbitPlotState::from_keplerian_state(&tle.get_keplerian_state()));
+        }
+        plot_data
     }
 }

@@ -1,5 +1,5 @@
 # flake8: noqa
-from keplemon.elements import TLE, CartesianState, Ephemeris, KeplerianState
+from keplemon.elements import TLE, CartesianState, Ephemeris, KeplerianState, GeodeticPosition, OrbitPlotData
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
 from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport
@@ -35,6 +35,9 @@ class Satellite:
     keplerian_state: KeplerianState | None
     """Keplerian state of the satellite at the epoch of the TLE, if available"""
 
+    geodetic_position: GeodeticPosition | None
+    """Geodetic position of the satellite at the epoch of the TLE, if available"""
+
     def __init__(self) -> None: ...
     @classmethod
     def from_tle(cls, tle: TLE) -> Satellite:
@@ -68,6 +71,8 @@ class Satellite:
         """
         ...
 
+    def get_plot_data(self, start: Epoch, end: Epoch, step: TimeSpan) -> OrbitPlotData | None: ...
+
 class Constellation:
 
     count: int
@@ -77,6 +82,7 @@ class Constellation:
     """Human-readable name of the constellation"""
 
     def __init__(self) -> None: ...
+    def get_plot_data(self, start: Epoch, end: Epoch, step: TimeSpan) -> dict[str, OrbitPlotData]: ...
     @classmethod
     def from_tle_catalog(cls, tle_catalog: TLECatalog) -> Constellation:
         """

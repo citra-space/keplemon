@@ -1,9 +1,12 @@
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID};
-use crate::elements::{CartesianState, Ephemeris, KeplerianState, TLE};
-use crate::enums::{Classification, KeplerianType};
+use crate::elements::{
+    CartesianState, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData, OrbitPlotState, TLE,
+};
+use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
 use crate::events::CloseApproach;
 use crate::propagation::{ForceProperties, InertialPropagator};
+use crate::saal::astro_func_interface;
 use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
 use pyo3::exceptions::PyValueError;
@@ -62,6 +65,17 @@ impl Satellite {
 
         Ok(new_satellite)
     }
+
+    pub fn step_to_epoch(&mut self, epoch: Epoch) -> Result<(), String> {
+        match self.inertial_propagator {
+            Some(ref mut propagator) => {
+                propagator.step_to_epoch(epoch)?;
+                self.keplerian_state = Some(propagator.get_keplerian_state().unwrap());
+                Ok(())
+            }
+            None => Err("Inertial propagator is not set".to_string()),
+        }
+    }
 }
 
 impl Default for Satellite {
@@ -81,6 +95,18 @@ impl Satellite {
             force_properties: ForceProperties::default(),
             keplerian_state: None,
             inertial_propagator: None,
+        }
+    }
+
+    #[getter]
+    pub fn get_geodetic_position(&self) -> Option<GeodeticPosition> {
+        match self.keplerian_state {
+            Some(ref state) => {
+                let teme = state.to_cartesian().to_frame(ReferenceFrame::TEME).position;
+                let lla = astro_func_interface::time_teme_to_lla(state.get_epoch().days_since_1950, &teme.into());
+                Some(GeodeticPosition::new(lla[0], lla[1], lla[2]))
+            }
+            None => None,
         }
     }
 
@@ -160,6 +186,12 @@ impl Satellite {
             .map(|propagator| propagator.get_cartesian_state_at_epoch(epoch))?
     }
 
+    #[pyo3(name = "step_to_epoch")]
+    pub fn py_step_to_epoch(&mut self, epoch: Epoch) -> PyResult<()> {
+        self.step_to_epoch(epoch)
+            .map_err(|e| PyErr::new::<PyValueError, _>(e.to_string()))
+    }
+
     #[setter]
     pub fn set_keplerian_state(&mut self, keplerian_state: KeplerianState) -> PyResult<()> {
         self.keplerian_state = Some(keplerian_state);
@@ -226,6 +258,29 @@ impl Satellite {
                     }
                 }
                 Some(ephemeris)
+            }
+            None => None,
+        }
+    }
+
+    pub fn get_plot_data(&self, start: Epoch, end: Epoch, step: TimeSpan) -> Option<OrbitPlotData> {
+        match self.get_state_at_epoch(start) {
+            Some(state) => {
+                let mut plot_data = OrbitPlotData::new(self.id.clone());
+                plot_data.add_state(OrbitPlotState::from_cartesian_state(&state));
+                let mut next_epoch: Epoch = start + step;
+                while next_epoch <= end {
+                    match self.get_state_at_epoch(next_epoch) {
+                        Some(state) => {
+                            plot_data.add_state(OrbitPlotState::from_cartesian_state(&state));
+                            next_epoch += step;
+                        }
+                        None => {
+                            return None;
+                        }
+                    }
+                }
+                Some(plot_data)
             }
             None => None,
         }

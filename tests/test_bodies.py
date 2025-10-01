@@ -52,3 +52,8 @@ def test_satellite():
     assert ca
     assert ca.epoch.to_iso() == "2025-04-15T12:32:28.531"
     assert ca.distance == pytest.approx(6.088, abs=0.1)
+    assert sat_1.geodetic_position is not None
+    assert sat_2.geodetic_position is not None
+    assert sat_1.geodetic_position.latitude == pytest.approx(0.3938497796549098, abs=0.1)
+    assert sat_1.geodetic_position.longitude == pytest.approx(55.074384090833696, abs=0.1)
+    assert sat_1.geodetic_position.altitude == pytest.approx(35808.08113476326, abs=0.1)

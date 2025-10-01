@@ -34,6 +34,20 @@ impl Clone for InertialPropagator {
     }
 }
 
+impl InertialPropagator {
+    pub fn step_to_epoch(&mut self, epoch: Epoch) -> Result<(), String> {
+        match self.tle {
+            Some(ref mut tle) => {
+                let lines = sgp4_prop_interface::reepoch_tle(tle.get_key(), epoch.days_since_1950)?;
+                let new_tle = TLE::from_two_lines(&lines.0, &lines.1)?;
+                self.tle = Some(new_tle);
+                Ok(())
+            }
+            None => Err("Propagation of osculating elements has not been implemented".to_string()),
+        }
+    }
+}
+
 #[pymethods]
 impl InertialPropagator {
     #[staticmethod]

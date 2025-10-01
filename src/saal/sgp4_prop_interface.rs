@@ -2,7 +2,9 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 use super::{main_interface, GetSetString};
+use crate::exceptions::SAALError;
 use pyo3::prelude::*;
+use pyo3::py_run;
 use std::os::raw::c_char;
 
 extern "C" {
@@ -425,4 +427,34 @@ pub fn get_license_file_path() -> String {
     let mut c_str = GetSetString::new();
     unsafe { Sgp4GetLicFilePath(c_str.pointer()) };
     c_str.value().trim().to_string()
+}
+
+pub fn reepoch_tle(sat_key: i64, re_epoch_ds50_utc: f64) -> Result<(String, String), String> {
+    let mut line1_out = GetSetString::new();
+    let mut line2_out = GetSetString::new();
+    let result = unsafe { Sgp4ReepochTLE(sat_key, re_epoch_ds50_utc, line1_out.pointer(), line2_out.pointer()) };
+    match result {
+        0 => Ok((
+            line1_out.value().trim().to_string(),
+            line2_out.value().trim().to_string(),
+        )),
+        _ => Err(main_interface::get_last_error_message()),
+    }
+}
+
+#[pyfunction(name = "reepoch_tle")]
+pub fn py_reepoch_tle(sat_key: i64, re_epoch_ds50_utc: f64) -> PyResult<(String, String)> {
+    reepoch_tle(sat_key, re_epoch_ds50_utc).map_err(SAALError::new_err)
+}
+
+pub fn register_sgp4_prop_interface(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
+    let sgp4_prop_interface = PyModule::new(parent_module.py(), "sgp4_prop_interface")?;
+    sgp4_prop_interface.add_function(wrap_pyfunction!(py_reepoch_tle, &sgp4_prop_interface)?)?;
+    py_run!(
+        parent_module.py(),
+        sgp4_prop_interface,
+        "import sys; sys.modules['keplemon._keplemon.saal.sgp4_prop_interface'] = sgp4_prop_interface"
+    );
+
+    parent_module.add_submodule(&sgp4_prop_interface)
 }

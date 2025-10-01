@@ -4,6 +4,39 @@ from keplemon.time import Epoch
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame
 from keplemon.events import CloseApproach
 
+class OrbitPlotData:
+    satellite_id: str
+    epochs: list[str]
+    semi_major_axes: list[float]
+    eccentricities: list[float]
+    inclinations: list[float]
+    raans: list[float]
+    radii: list[float]
+    apogee_radii: list[float]
+    perigee_radii: list[float]
+    latitudes: list[float]
+    longitudes: list[float]
+    altitudes: list[float]
+
+class GeodeticPosition:
+    """
+    Args:
+        latitude: Latitude in **_degrees_**
+        longitude: Longitude in **_degrees_**
+        altitude: Altitude in **_kilometers_**
+    """
+
+    latitude: float
+    """Latitude in **_degrees_**"""
+
+    longitude: float
+    """Longitude in **_degrees_**"""
+
+    altitude: float
+    """Altitude in **_kilometers_**"""
+
+    def __init__(self, latitude: float, longitude: float, altitude: float) -> None: ...
+
 class HorizonElements:
     """
     Args:

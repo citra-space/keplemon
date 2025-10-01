@@ -9,6 +9,9 @@ from keplemon._keplemon.elements import (  # type: ignore
     TopocentricElements,
     HorizonState,
     HorizonElements,
+    GeodeticPosition,
+    OrbitPlotData,
+    OrbitPlotState,
 )
 
 __all__ = [
@@ -22,4 +25,7 @@ __all__ = [
     "TopocentricElements",
     "HorizonState",
     "HorizonElements",
+    "GeodeticPosition",
+    "OrbitPlotData",
+    "OrbitPlotState",
 ]
