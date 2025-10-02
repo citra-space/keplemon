@@ -78,6 +78,21 @@ def teme_to_topo(
     """
     ...
 
+def topo_date_to_equinox(yr_of_equinox: int, ds50utc: float, ra: float, dec: float) -> tuple[float, float]:
+    """
+    Convert topocentric right ascension and declination to equinox coordinates for a given year of equinox.
+
+    Args:
+        yr_of_equinox: Year of the equinox (e.g., 2000 for J2000).
+        ds50utc: Epoch in DS50 UTC format.
+        ra: Topocentric right ascension in degrees.
+        dec: Topocentric declination in degrees.
+
+    Returns:
+        A tuple containing the equinox right ascension and declination in degrees.
+    """
+    ...
+
 XA_TOPO_AZ: int
 """Index for topocentric azimuth in degrees."""
 
@@ -110,3 +125,9 @@ XA_TOPO_DEC: int
 
 XA_TOPO_SIZE: int
 """Size of XA_TOPO_ array"""
+
+YROFEQNX_2000: int
+"""Year of equinox 2000 constant"""
+
+YROFEQNX_CURR: int
+"""Year of current equinox constant"""

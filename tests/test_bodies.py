@@ -1,9 +1,17 @@
 import pytest
-from keplemon.bodies import Satellite, Constellation, Earth
+from keplemon.bodies import Satellite, Constellation, Earth, Observatory
 from keplemon.catalogs import TLECatalog
-from keplemon.elements import TLE
+from keplemon.elements import TLE, TopocentricElements
 from keplemon.time import Epoch
 from keplemon.enums import TimeSystem
+
+
+def test_observatory():
+    site = Observatory(0, 0, 0)
+    sats = Constellation.from_tle_catalog(TLECatalog.from_tle_file("tests/2025-04-15-celestrak.tle"))
+    epoch = Epoch.from_iso("2025-04-15T12:00:00.000000Z", TimeSystem.UTC)
+    fov_report = site.get_field_of_view_report(epoch, TopocentricElements(0, 0), 10.0, sats)
+    assert len(fov_report.candidates) == 18
 
 
 def test_earth():

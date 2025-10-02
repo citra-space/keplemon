@@ -713,6 +713,15 @@ pub fn topo_equinox_to_date(yr_of_equinox: i32, ds50utc: f64, ra: f64, dec: f64)
     (ra_out, dec_out)
 }
 
+pub fn topo_date_to_equinox(yr_of_equinox: i32, ds50utc: f64, ra: f64, dec: f64) -> (f64, f64) {
+    let mut ra_out = 0.0;
+    let mut dec_out = 0.0;
+    unsafe {
+        RotRADec_DateToEqnx(106, yr_of_equinox, ds50utc, ra, dec, &mut ra_out, &mut dec_out);
+    }
+    (ra_out, dec_out)
+}
+
 pub fn topo_date_to_epoch(ds50_in: f64, ra: f64, dec: f64, ds50_out: f64) -> (f64, f64) {
     let mut ra_out = 0.0;
     let mut dec_out = 0.0;
@@ -880,6 +889,11 @@ pub fn py_mean_motion_to_sma(mean_motion: f64) -> f64 {
     mean_motion_to_sma(mean_motion)
 }
 
+#[pyfunction(name = "topo_date_to_equinox")]
+pub fn py_topo_date_to_equinox(yr_of_equinox: i32, ds50utc: f64, ra: f64, dec: f64) -> (f64, f64) {
+    topo_date_to_equinox(yr_of_equinox, ds50utc, ra, dec)
+}
+
 pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let astro_func_interface = PyModule::new(parent_module.py(), "astro_func_interface")?;
     astro_func_interface.add_function(wrap_pyfunction!(py_teme_to_topo, &astro_func_interface)?)?;
@@ -888,6 +902,7 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add_function(wrap_pyfunction!(py_theta_teme_to_lla, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_time_teme_to_lla, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_mean_motion_to_sma, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_topo_date_to_equinox, &astro_func_interface)?)?;
     astro_func_interface.add("XA_TOPO_RA", XA_TOPO_RA)?;
     astro_func_interface.add("XA_TOPO_DEC", XA_TOPO_DEC)?;
     astro_func_interface.add("XA_TOPO_AZ", XA_TOPO_AZ)?;
@@ -899,6 +914,8 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add("XA_TOPO_ELDOT", XA_TOPO_ELDOT)?;
     astro_func_interface.add("XA_TOPO_RANGEDOT", XA_TOPO_RANGEDOT)?;
     astro_func_interface.add("XA_TOPO_SIZE", XA_TOPO_SIZE)?;
+    astro_func_interface.add("YROFEQNX_2000", YROFEQNX_2000)?;
+    astro_func_interface.add("YROFEQNX_CURR", YROFEQNX_CURR)?;
     py_run!(
         parent_module.py(),
         astro_func_interface,

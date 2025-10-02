@@ -1,9 +1,11 @@
-use super::Sensor;
-use crate::elements::{CartesianState, CartesianVector, Ephemeris};
+use super::{Constellation, Sensor};
+use crate::elements::{CartesianState, CartesianVector, Ephemeris, TopocentricElements};
 use crate::enums::ReferenceFrame;
+use crate::events::{FieldOfViewCandidate, FieldOfViewReport};
 use crate::saal::astro_func_interface;
 use crate::time::{Epoch, TimeSpan};
 use pyo3::prelude::*;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use uuid::Uuid;
 
 #[pyclass]
@@ -100,6 +102,55 @@ impl Observatory {
 
     pub fn add_sensor(&mut self, sensor: Sensor) {
         self.sensors.push(sensor);
+    }
+
+    pub fn get_field_of_view_report(
+        &self,
+        epoch: Epoch,
+        sensor_direction: TopocentricElements,
+        angular_threshold: f64,
+        sats: Constellation,
+    ) -> FieldOfViewReport {
+        let observer_position = self.get_state_at_epoch(epoch).position;
+        let mut report = FieldOfViewReport::new(epoch, observer_position, &sensor_direction, angular_threshold);
+        let teme_direction = sensor_direction.get_observed_direction();
+        let theta_g = epoch.to_fk5_greenwich_angle();
+        let lla = astro_func_interface::theta_teme_to_lla(theta_g, &observer_position.into());
+        let candidates: Vec<FieldOfViewCandidate> = sats
+            .get_satellites()
+            .par_iter()
+            .filter_map(|(sat_id, sat)| {
+                if let Some(sat_state) = sat.get_state_at_epoch(epoch) {
+                    let relative_position = sat_state.position - observer_position;
+                    let angle = teme_direction.angle(&relative_position).to_degrees();
+                    if angle <= angular_threshold {
+                        let topo = astro_func_interface::teme_to_topo(
+                            theta_g + lla[1].to_radians(),
+                            lla[0],
+                            &observer_position.into(),
+                            &sat_state.position.into(),
+                            &sat_state.velocity.into(),
+                        );
+                        let mut elements = TopocentricElements::new(
+                            topo[astro_func_interface::XA_TOPO_RA],
+                            topo[astro_func_interface::XA_TOPO_DEC],
+                        );
+                        elements.set_range(Some(topo[astro_func_interface::XA_TOPO_RANGE]));
+                        elements.set_range_rate(Some(topo[astro_func_interface::XA_TOPO_RANGEDOT]));
+                        elements.set_right_ascension_rate(Some(topo[astro_func_interface::XA_TOPO_RADOT]));
+                        elements.set_declination_rate(Some(topo[astro_func_interface::XA_TOPO_DECDOT]));
+
+                        Some(FieldOfViewCandidate::new(sat_id.clone(), &elements))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        report.set_candidates(candidates);
+        report
     }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> CartesianState {

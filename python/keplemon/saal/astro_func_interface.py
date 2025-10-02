@@ -3,6 +3,7 @@ from keplemon._keplemon.saal.astro_func_interface import (  # type: ignore
     ra_dec_to_az_el_time,
     ra_dec_to_az_el,
     mean_motion_to_sma,
+    topo_date_to_equinox,
     XA_TOPO_RA,
     XA_TOPO_DEC,
     XA_TOPO_AZ,
@@ -14,6 +15,8 @@ from keplemon._keplemon.saal.astro_func_interface import (  # type: ignore
     XA_TOPO_ELDOT,
     XA_TOPO_RANGEDOT,
     XA_TOPO_SIZE,
+    YROFEQNX_2000,
+    YROFEQNX_CURR,
 )
 
 __all__ = [
@@ -32,4 +35,7 @@ __all__ = [
     "XA_TOPO_RANGEDOT",
     "XA_TOPO_SIZE",
     "mean_motion_to_sma",
+    "topo_date_to_equinox",
+    "YROFEQNX_2000",
+    "YROFEQNX_CURR",
 ]

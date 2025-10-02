@@ -1,6 +1,29 @@
 # flake8: noqa
 from keplemon.time import Epoch, TimeSpan
-from keplemon.elements import HorizonState
+from keplemon.elements import HorizonState, CartesianVector, TopocentricElements
+
+class FieldOfViewCandidate:
+    satellite_id: str
+    """ID of the candidate satellite"""
+
+    direction: TopocentricElements
+    """Measured direction to the candidate satellite in the sensor's topocentric frame"""
+
+class FieldOfViewReport:
+    epoch: Epoch
+    """UTC epoch of the field of view report"""
+
+    sensor_position: CartesianVector
+    """TEME position of the sensor in the observatory's topocentric frame in **_kilometers_**"""
+
+    sensor_direction: TopocentricElements
+    """Direction of the sensor in the observatory's topocentric frame"""
+
+    fov_angle: float
+    """Field of view angle of the sensor in **_degrees_**"""
+
+    candidates: list[FieldOfViewCandidate]
+    """List of candidate satellites within the field of view"""
 
 class CloseApproach:
     epoch: Epoch

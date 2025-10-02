@@ -10,10 +10,16 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 #[pyclass]
-#[derive(Default)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct Constellation {
     name: Option<String>,
     satellites: HashMap<String, Satellite>,
+}
+
+impl Constellation {
+    pub fn get_satellites(&self) -> &HashMap<String, Satellite> {
+        &self.satellites
+    }
 }
 
 #[pymethods]

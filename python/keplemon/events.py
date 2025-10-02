@@ -3,6 +3,15 @@ from keplemon._keplemon.events import (  # type: ignore
     CloseApproachReport,
     HorizonAccess,
     HorizonAccessReport,
+    FieldOfViewCandidate,
+    FieldOfViewReport,
 )
 
-__all__ = ["CloseApproach", "CloseApproachReport", "HorizonAccess", "HorizonAccessReport"]
+__all__ = [
+    "CloseApproach",
+    "CloseApproachReport",
+    "HorizonAccess",
+    "HorizonAccessReport",
+    "FieldOfViewCandidate",
+    "FieldOfViewReport",
+]

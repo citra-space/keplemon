@@ -1,8 +1,16 @@
 # flake8: noqa
-from keplemon.elements import TLE, CartesianState, Ephemeris, KeplerianState, GeodeticPosition, OrbitPlotData
+from keplemon.elements import (
+    TLE,
+    CartesianState,
+    Ephemeris,
+    KeplerianState,
+    GeodeticPosition,
+    OrbitPlotData,
+    TopocentricElements,
+)
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
-from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport
+from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport
 from keplemon.propagation import ForceProperties
 
 class Earth:
@@ -259,5 +267,25 @@ class Observatory:
 
         Returns:
             Horizon access report for the satellite from the observatory
+        """
+        ...
+
+    def get_field_of_view_report(
+        self,
+        epoch: Epoch,
+        sensor_direction: TopocentricElements,
+        angular_threshold: float,
+        sats: Constellation,
+    ) -> FieldOfViewReport:
+        """
+        Calculate field of view report for a sensor at the observatory.
+
+        Args:
+            epoch: UTC epoch of the report
+            sensor_direction: Topocentric direction the sensor is pointing
+            angular_threshold: Angular threshold in **_degrees_**
+            sats: Constellation of satellites to check for being in the field of view
+        Returns:
+            Field of view report for the sensor at the observatory containing satellites within the field of view
         """
         ...
