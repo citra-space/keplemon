@@ -3,7 +3,7 @@ use crate::elements::{CartesianState, CartesianVector, KeplerianState, TLE};
 use crate::enums::{ReferenceFrame, TimeSystem};
 use crate::estimation::Observation;
 use crate::saal::{sat_state_interface, sgp4_prop_interface};
-use crate::time::{Epoch, TimeSpan};
+use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use pyo3::prelude::*;
 
@@ -116,34 +116,6 @@ impl InertialPropagator {
             None => Err(pyo3::exceptions::PyRuntimeError::new_err(
                 "Propagation of osculating elements has not been implemented",
             )),
-        }
-    }
-
-    pub fn get_ephemeris(
-        &self,
-        start_epoch: Epoch,
-        end_epoch: Epoch,
-        step_size: TimeSpan,
-    ) -> Option<Vec<CartesianState>> {
-        let mut states = Vec::new();
-        let mut current_epoch = start_epoch;
-
-        while current_epoch <= end_epoch {
-            let result = self.get_cartesian_state_at_epoch(current_epoch);
-            let state = match result {
-                Some(state) => state,
-                None => {
-                    states.clear();
-                    break;
-                }
-            };
-            states.push(state);
-            current_epoch += step_size;
-        }
-
-        match states.is_empty() {
-            true => None,
-            false => Some(states),
         }
     }
 }

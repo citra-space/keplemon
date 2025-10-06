@@ -21,6 +21,12 @@ impl Drop for Ephemeris {
     }
 }
 
+impl Ephemeris {
+    pub fn get_number_of_states(&self) -> Result<i32, String> {
+        ext_ephem_interface::get_number_of_states(self.key)
+    }
+}
+
 #[pymethods]
 impl Ephemeris {
     #[new]
@@ -54,6 +60,12 @@ impl Ephemeris {
         ephem
     }
 
+    #[getter("number_of_states")]
+    pub fn py_get_number_of_states(&self) -> PyResult<i32> {
+        self.get_number_of_states()
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
+    }
+
     pub fn add_state(&self, state: CartesianState) {
         ext_ephem_interface::add_satellite_state(
             self.key,
@@ -78,7 +90,10 @@ impl Ephemeris {
                 let vel = CartesianVector::from(vel);
                 Some(CartesianState::new(epoch, pos, vel, ReferenceFrame::TEME))
             }
-            Err(_) => None,
+            Err(e) => {
+                println!("Error getting state at epoch {}: {}", epoch.to_iso(), e);
+                None
+            }
         }
     }
 

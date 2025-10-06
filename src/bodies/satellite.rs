@@ -1,4 +1,4 @@
-use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID};
+use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
     CartesianState, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData, OrbitPlotState, TLE,
 };
@@ -245,12 +245,15 @@ impl Satellite {
         match self.get_state_at_epoch(start_epoch) {
             Some(state) => {
                 let ephemeris = Ephemeris::new(self.id.clone(), state);
-                let mut next_epoch: Epoch = start_epoch + step;
+                let diff = end_epoch - start_epoch;
+                let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
+                let dt = if step < max_step { step } else { max_step };
+                let mut next_epoch: Epoch = start_epoch + dt;
                 while next_epoch <= end_epoch {
                     match self.get_state_at_epoch(next_epoch) {
                         Some(state) => {
                             ephemeris.add_state(state);
-                            next_epoch += step;
+                            next_epoch += dt;
                         }
                         None => {
                             return None;
