@@ -57,6 +57,9 @@ class HorizonAccess:
     satellite_id: str
     """ID of the satellite for which the access is calculated"""
 
+    observatory_id: str
+    """ID of the observatory for which the access is calculated"""
+
     start: HorizonState
     """State of the satellite at the start of the access period"""
 

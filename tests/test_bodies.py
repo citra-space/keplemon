@@ -2,7 +2,7 @@ import pytest
 from keplemon.bodies import Satellite, Constellation, Earth, Observatory
 from keplemon.catalogs import TLECatalog
 from keplemon.elements import TLE, TopocentricElements
-from keplemon.time import Epoch
+from keplemon.time import Epoch, TimeSpan
 from keplemon.enums import TimeSystem
 
 
@@ -65,3 +65,64 @@ def test_satellite():
     assert sat_1.geodetic_position.latitude == pytest.approx(0.3938497796549098, abs=0.1)
     assert sat_1.geodetic_position.longitude == pytest.approx(55.074384090833696, abs=0.1)
     assert sat_1.geodetic_position.altitude == pytest.approx(35808.08113476326, abs=0.1)
+
+
+def test_satellite_observatory_access_report():
+    line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999"
+    line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660"
+    tle = TLE.from_lines("ISS", line_1, line_2)
+    satellite = Satellite.from_tle(tle)
+
+    obs1 = Observatory(latitude=34.0, longitude=-118.0, altitude=100.0)
+    obs1.name = "LA Observatory"
+    obs2 = Observatory(latitude=51.5, longitude=-0.1, altitude=50.0)
+    obs2.name = "London Observatory"
+    obs3 = Observatory(latitude=-33.9, longitude=18.4, altitude=20.0)
+    obs3.name = "Cape Town Observatory"
+
+    observatories = [obs1, obs2, obs3]
+
+    # Define time range (4 hours)
+    start = Epoch.from_iso("2025-04-18T04:00:00.000000Z", TimeSystem.UTC)
+    end = Epoch.from_iso("2025-04-18T08:00:00.000000Z", TimeSystem.UTC)
+
+    # Set parameters
+    min_elevation = 10.0  # degrees
+    min_duration = TimeSpan.from_minutes(1.0)
+
+    # Get the observatory access report
+    report = satellite.get_observatory_access_report(observatories, start, end, min_elevation, min_duration)
+
+    # Verify report was generated
+    assert report is not None
+    assert report.start == start
+    assert report.end == end
+    assert report.elevation_threshold == min_elevation
+    assert report.duration_threshold.in_minutes() == pytest.approx(min_duration.in_minutes())
+
+    # Verify we get exactly 3 accesses for this specific TLE and time range
+    assert len(report.accesses) == 3
+
+    # Count accesses per observatory
+    la_accesses = [a for a in report.accesses if a.observatory_id == obs1.id]
+    london_accesses = [a for a in report.accesses if a.observatory_id == obs2.id]
+    cape_town_accesses = [a for a in report.accesses if a.observatory_id == obs3.id]
+
+    # Verify specific counts per observatory
+    assert len(la_accesses) == 1, f"Expected 1 LA access, got {len(la_accesses)}"
+    assert len(london_accesses) == 0, f"Expected 0 London accesses, got {len(london_accesses)}"
+    assert len(cape_town_accesses) == 2, f"Expected 2 Cape Town accesses, got {len(cape_town_accesses)}"
+
+    # Verify access properties
+    for access in report.accesses:
+        assert access.observatory_id is not None
+        assert access.satellite_id is not None
+        assert access.start is not None
+        assert access.end is not None
+        # Verify elevation meets or is approximately equal to minimum (within tolerance)
+        assert access.start.elevation >= min_elevation or pytest.approx(access.start.elevation, abs=0.1) == min_elevation
+        assert access.end.elevation >= min_elevation or pytest.approx(access.end.elevation, abs=0.1) == min_elevation
+        
+        # Verify duration meets minimum
+        duration = access.end.epoch - access.start.epoch
+        assert duration.in_minutes() >= min_duration.in_minutes() or pytest.approx(duration.in_minutes(), abs=0.1) == min_duration.in_minutes()

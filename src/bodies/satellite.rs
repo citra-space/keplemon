@@ -1,16 +1,18 @@
+use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
     CartesianState, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData, OrbitPlotState, TLE,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
-use crate::events::CloseApproach;
+use crate::events::{CloseApproach, HorizonAccessReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::saal::astro_func_interface;
 use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use rayon::prelude::*;
 use uuid::Uuid;
 
 #[pyclass(subclass)]
@@ -320,4 +322,32 @@ impl Satellite {
             None => None,
         }
     }
+
+    pub fn get_observatory_access_report(
+        &self,
+        observatories: Vec<Observatory>,
+        start: Epoch,
+        end: Epoch,
+        min_el: f64,
+        min_duration: TimeSpan,
+    ) -> Option<HorizonAccessReport> {
+        // Get TEME states for this satellite
+        let sat_ephem = self.get_ephemeris(start, end, min_duration)?;
+
+        // Create empty report
+        let mut report = HorizonAccessReport::new(start, end, min_el, min_duration);
+
+        // Parallelize the access report generation across observatories
+        let accesses = observatories
+            .par_iter()
+            .filter_map(|obs| {
+                let obs_ephem = obs.get_ephemeris(start, end, min_duration);
+                sat_ephem.get_horizon_accesses(&obs_ephem, min_el, min_duration)
+            })
+            .collect::<Vec<_>>();
+
+        report.set_accesses(accesses.into_iter().flatten().collect());
+        Some(report)
+    }
 }
+

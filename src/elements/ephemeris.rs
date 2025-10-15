@@ -140,7 +140,7 @@ impl Ephemeris {
                         if crossing.get_elevation_rate().unwrap() > 0.0 {
                             last_entry = crossing;
                         } else if crossing.epoch - last_entry.epoch >= min_duration {
-                            accesses.push(HorizonAccess::new(self.get_satellite_id(), &last_entry, &crossing));
+                            accesses.push(HorizonAccess::new(self.get_satellite_id(), sensor.get_satellite_id(), &last_entry, &crossing));
                         }
                         if crossing.epoch > next_epoch {
                             next_epoch = crossing.epoch;
@@ -155,6 +155,7 @@ impl Ephemeris {
         if accesses.is_empty() && always_visible && self.get_state_at_epoch(end_epoch).is_some() {
             accesses.push(HorizonAccess::new(
                 self.get_satellite_id(),
+                sensor.get_satellite_id(),
                 &HorizonState::from_teme_states(
                     sensor.get_state_at_epoch(start_epoch).unwrap(),
                     self.get_state_at_epoch(start_epoch).unwrap(),
