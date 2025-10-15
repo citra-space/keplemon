@@ -80,6 +80,29 @@ class Satellite:
         ...
 
     def get_plot_data(self, start: Epoch, end: Epoch, step: TimeSpan) -> OrbitPlotData | None: ...
+    def get_observatory_access_report(
+        self,
+        observatories: list[Observatory],
+        start: Epoch,
+        end: Epoch,
+        min_el: float,
+        min_duration: TimeSpan,
+    ) -> HorizonAccessReport | None:
+        """
+        Calculate horizon access from multiple observatories to this satellite.
+
+        Args:
+            observatories: List of observatories to check for horizon access
+            start: UTC epoch of the start of the report
+            end: UTC epoch of the end of the report
+            min_el: Minimum elevation angle in **_degrees_**
+            min_duration: Minimum duration of access
+
+        Returns:
+            Horizon access report containing accesses from all observatories to the satellite,
+            or None if the satellite ephemeris cannot be generated
+        """
+        ...
 
 class Constellation:
 
