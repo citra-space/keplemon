@@ -270,6 +270,17 @@ class Observatory:
         """
         ...
 
+    @classmethod
+    def from_cartesian_state(cls, state: CartesianState) -> Observatory:
+        """
+        Create an observatory from a Cartesian state.
+
+        Args:
+            state: Cartesian state of the observatory
+
+        """
+        ...
+
     def get_horizon_access_report(
         self,
         satellite: Satellite,

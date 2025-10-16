@@ -108,6 +108,31 @@ def topo_equinox_to_date(yr_of_equinox: int, ds50utc: float, ra: float, dec: flo
     """
     ...
 
+def theta_teme_to_lla(theta: float, lat: float, long: float, ra: float, dec: float) -> tuple[float, float]:
+    """
+    Convert TEME coordinates to latitude, longitude, and altitude.
+
+    Args:
+        theta: Greenwich angle in radians.
+        lat: Sensor latitude in degrees.
+        long: Sensor longitude in degrees.
+        ra: TEME right ascension in degrees.
+        dec: TEME declination in degrees.
+    """
+    ...
+
+def time_teme_to_lla(ds50_utc: float, lat: float, long: float, ra: float, dec: float) -> tuple[float, float]:
+    """
+    Convert TEME coordinates to latitude, longitude, and altitude.
+
+    Args:
+        ds50_utc: Epoch in DS50 UTC format.
+        lat: Sensor latitude in degrees.
+        long: Sensor longitude in degrees.
+        ra: TEME right ascension in degrees.
+        dec: TEME declination in degrees.
+    """
+
 XA_TOPO_AZ: int
 """Index for topocentric azimuth in degrees."""
 

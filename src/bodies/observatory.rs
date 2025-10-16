@@ -50,6 +50,21 @@ impl Observatory {
         }
     }
 
+    #[staticmethod]
+    pub fn from_cartesian_state(state: CartesianState) -> Self {
+        let theta_g = state.get_epoch().to_fk5_greenwich_angle();
+        let teme = state.to_frame(ReferenceFrame::TEME);
+        let lla = astro_func_interface::theta_teme_to_lla(theta_g, &teme.position.into());
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: None,
+            latitude: lla[0],
+            longitude: lla[1],
+            altitude: lla[2],
+            sensors: Vec::new(),
+        }
+    }
+
     #[getter]
     pub fn get_id(&self) -> String {
         self.id.clone()
