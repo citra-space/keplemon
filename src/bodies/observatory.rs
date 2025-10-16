@@ -22,7 +22,7 @@ pub struct Observatory {
 
 impl Observatory {
     pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Ephemeris {
-        let ephemeris = Ephemeris::new(self.id.clone(), self.get_state_at_epoch(start_epoch));
+        let ephemeris = Ephemeris::new(self.id.clone(), None, self.get_state_at_epoch(start_epoch));
         let diff = end_epoch - start_epoch;
         let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
         let dt = if step < max_step { step } else { max_step };

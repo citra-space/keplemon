@@ -894,6 +894,11 @@ pub fn py_topo_date_to_equinox(yr_of_equinox: i32, ds50utc: f64, ra: f64, dec: f
     topo_date_to_equinox(yr_of_equinox, ds50utc, ra, dec)
 }
 
+#[pyfunction(name = "topo_equinox_to_date")]
+pub fn py_topo_equinox_to_date(yr_of_equinox: i32, ds50utc: f64, ra: f64, dec: f64) -> (f64, f64) {
+    topo_equinox_to_date(yr_of_equinox, ds50utc, ra, dec)
+}
+
 pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let astro_func_interface = PyModule::new(parent_module.py(), "astro_func_interface")?;
     astro_func_interface.add_function(wrap_pyfunction!(py_teme_to_topo, &astro_func_interface)?)?;
@@ -903,6 +908,7 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add_function(wrap_pyfunction!(py_time_teme_to_lla, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_mean_motion_to_sma, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_topo_date_to_equinox, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_topo_equinox_to_date, &astro_func_interface)?)?;
     astro_func_interface.add("XA_TOPO_RA", XA_TOPO_RA)?;
     astro_func_interface.add("XA_TOPO_DEC", XA_TOPO_DEC)?;
     astro_func_interface.add("XA_TOPO_AZ", XA_TOPO_AZ)?;

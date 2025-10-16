@@ -29,10 +29,10 @@ class CloseApproach:
     epoch: Epoch
     """UTC epoch of the close approach"""
 
-    primary_id: int
+    primary_id: str
     """Satellite ID of the primary body in the close approach"""
 
-    secondary_id: int
+    secondary_id: str
     """Satellite ID of the secondary body in the close approach"""
 
     distance: float

@@ -4,6 +4,7 @@ from keplemon._keplemon.saal.astro_func_interface import (  # type: ignore
     ra_dec_to_az_el,
     mean_motion_to_sma,
     topo_date_to_equinox,
+    topo_equinox_to_date,
     XA_TOPO_RA,
     XA_TOPO_DEC,
     XA_TOPO_AZ,
@@ -38,4 +39,5 @@ __all__ = [
     "topo_date_to_equinox",
     "YROFEQNX_2000",
     "YROFEQNX_CURR",
+    "topo_equinox_to_date",
 ]

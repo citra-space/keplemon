@@ -83,13 +83,28 @@ def topo_date_to_equinox(yr_of_equinox: int, ds50utc: float, ra: float, dec: flo
     Convert topocentric right ascension and declination to equinox coordinates for a given year of equinox.
 
     Args:
-        yr_of_equinox: Year of the equinox (e.g., 2000 for J2000).
+        yr_of_equinox: Year of the equinox (using YROFEQNX_ constants).
         ds50utc: Epoch in DS50 UTC format.
         ra: Topocentric right ascension in degrees.
         dec: Topocentric declination in degrees.
 
     Returns:
         A tuple containing the equinox right ascension and declination in degrees.
+    """
+    ...
+
+def topo_equinox_to_date(yr_of_equinox: int, ds50utc: float, ra: float, dec: float) -> tuple[float, float]:
+    """
+    Convert equinox right ascension and declination to topocentric coordinates for a given year of equinox.
+
+    Args:
+        yr_of_equinox: Year of the equinox (using YROFEQNX_ constants).
+        ds50utc: Epoch in DS50 UTC format.
+        ra: Equinox right ascension in degrees.
+        dec: Equinox declination in degrees.
+
+    Returns:
+        A tuple containing the topocentric right ascension and declination in degrees.
     """
     ...
 

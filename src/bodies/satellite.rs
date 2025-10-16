@@ -246,7 +246,7 @@ impl Satellite {
     pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
         match self.get_state_at_epoch(start_epoch) {
             Some(state) => {
-                let ephemeris = Ephemeris::new(self.id.clone(), state);
+                let ephemeris = Ephemeris::new(self.id.clone(), Some(self.norad_id), state);
                 let diff = end_epoch - start_epoch;
                 let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
                 let dt = if step < max_step { step } else { max_step };

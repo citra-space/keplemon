@@ -30,7 +30,7 @@ impl Ephemeris {
 #[pymethods]
 impl Ephemeris {
     #[new]
-    pub fn new(satellite_id: String, state: CartesianState) -> Self {
+    pub fn new(satellite_id: String, norad_id: Option<i32>, state: CartesianState) -> Self {
         let frame = match state.get_frame() {
             ReferenceFrame::TEME => ext_ephem_interface::COORD_ECI,
             ReferenceFrame::EFG => ext_ephem_interface::COORD_EFG,
@@ -47,7 +47,7 @@ impl Ephemeris {
         let ephem = Self {
             key,
             satellite_id,
-            norad_id: DEFAULT_NORAD_ANALYST_ID,
+            norad_id: norad_id.unwrap_or(DEFAULT_NORAD_ANALYST_ID),
         };
         ext_ephem_interface::add_satellite_state(
             key,
@@ -90,10 +90,7 @@ impl Ephemeris {
                 let vel = CartesianVector::from(vel);
                 Some(CartesianState::new(epoch, pos, vel, ReferenceFrame::TEME))
             }
-            Err(e) => {
-                println!("Error getting state at epoch {}: {}", epoch.to_iso(), e);
-                None
-            }
+            Err(_) => None,
         }
     }
 
@@ -215,8 +212,8 @@ impl Ephemeris {
         }
         if min_distance < distance_threshold {
             Some(CloseApproach::new(
-                self.norad_id,
-                other.norad_id,
+                self.get_satellite_id(),
+                other.get_satellite_id(),
                 closest_epoch,
                 min_distance,
             ))
@@ -321,5 +318,10 @@ fn refine_close_approach(ephem_1: &Ephemeris, ephem_2: &Ephemeris, t_guess: Epoc
     let state_2 = ephem_2.get_state_at_epoch(t)?;
     let range = (state_1.position - state_2.position).get_magnitude();
 
-    Some(CloseApproach::new(ephem_1.norad_id, ephem_2.norad_id, t, range))
+    Some(CloseApproach::new(
+        ephem_1.get_satellite_id(),
+        ephem_2.get_satellite_id(),
+        t,
+        range,
+    ))
 }
