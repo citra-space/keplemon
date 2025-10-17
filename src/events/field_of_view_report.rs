@@ -1,5 +1,6 @@
 use super::FieldOfViewCandidate;
 use crate::elements::{CartesianVector, TopocentricElements};
+use crate::enums::ReferenceFrame;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 
@@ -10,6 +11,7 @@ pub struct FieldOfViewReport {
     sensor_direction: TopocentricElements,
     fov_angle: f64,
     candidates: Vec<FieldOfViewCandidate>,
+    reference_frame: ReferenceFrame,
 }
 
 impl FieldOfViewReport {
@@ -26,12 +28,18 @@ impl FieldOfViewReport {
         sensor_position: CartesianVector,
         sensor_direction: &TopocentricElements,
         fov_angle: f64,
+        reference_frame: ReferenceFrame,
     ) -> Self {
+        if reference_frame != ReferenceFrame::J2000 && reference_frame != ReferenceFrame::TEME {
+            panic!("FieldOfViewReport only supports J2000 and TEME reference frames.");
+        }
+
         Self {
             epoch,
             sensor_position,
             sensor_direction: sensor_direction.clone(),
             fov_angle,
+            reference_frame,
             candidates: Vec::new(),
         }
     }
@@ -39,6 +47,11 @@ impl FieldOfViewReport {
     #[getter]
     pub fn get_epoch(&self) -> Epoch {
         self.epoch
+    }
+
+    #[getter]
+    pub fn get_reference_frame(&self) -> ReferenceFrame {
+        self.reference_frame
     }
 
     #[getter]

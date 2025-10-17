@@ -3,15 +3,18 @@ from keplemon.bodies import Satellite, Constellation, Earth, Observatory
 from keplemon.catalogs import TLECatalog
 from keplemon.elements import TLE, TopocentricElements
 from keplemon.time import Epoch, TimeSpan
-from keplemon.enums import TimeSystem
+from keplemon.enums import TimeSystem, ReferenceFrame
 
 
 def test_observatory():
     site = Observatory(0, 0, 0)
     sats = Constellation.from_tle_catalog(TLECatalog.from_tle_file("tests/2025-04-15-celestrak.tle"))
     epoch = Epoch.from_iso("2025-04-15T12:00:00.000000Z", TimeSystem.UTC)
-    fov_report = site.get_field_of_view_report(epoch, TopocentricElements(0, 0), 10.0, sats)
+    fov_report = site.get_field_of_view_report(epoch, TopocentricElements(0, 0), 10.0, sats, ReferenceFrame.TEME)
     assert len(fov_report.candidates) == 18
+    candidate = fov_report.candidates[0]
+    topo = site.get_topocentric_to_satellite(epoch, sats[candidate.satellite_id], ReferenceFrame.TEME)
+    assert topo.right_ascension == candidate.direction.right_ascension
 
 
 def test_earth():
@@ -120,9 +123,14 @@ def test_satellite_observatory_access_report():
         assert access.start is not None
         assert access.end is not None
         # Verify elevation meets or is approximately equal to minimum (within tolerance)
-        assert access.start.elevation >= min_elevation or pytest.approx(access.start.elevation, abs=0.1) == min_elevation
+        assert (
+            access.start.elevation >= min_elevation or pytest.approx(access.start.elevation, abs=0.1) == min_elevation
+        )
         assert access.end.elevation >= min_elevation or pytest.approx(access.end.elevation, abs=0.1) == min_elevation
-        
+
         # Verify duration meets minimum
         duration = access.end.epoch - access.start.epoch
-        assert duration.in_minutes() >= min_duration.in_minutes() or pytest.approx(duration.in_minutes(), abs=0.1) == min_duration.in_minutes()
+        assert (
+            duration.in_minutes() >= min_duration.in_minutes()
+            or pytest.approx(duration.in_minutes(), abs=0.1) == min_duration.in_minutes()
+        )

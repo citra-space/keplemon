@@ -1,6 +1,7 @@
 # flake8: noqa
 from keplemon.time import Epoch, TimeSpan
 from keplemon.elements import HorizonState, CartesianVector, TopocentricElements
+from keplemon.enums import ReferenceFrame
 
 class FieldOfViewCandidate:
     satellite_id: str
@@ -24,6 +25,9 @@ class FieldOfViewReport:
 
     candidates: list[FieldOfViewCandidate]
     """List of candidate satellites within the field of view"""
+
+    reference_frame: ReferenceFrame
+    """Reference frame of the output direction elements"""
 
 class CloseApproach:
     epoch: Epoch

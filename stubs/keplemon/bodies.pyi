@@ -12,6 +12,7 @@ from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
 from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport
 from keplemon.propagation import ForceProperties
+from keplemon.enums import ReferenceFrame
 
 class Earth:
     @staticmethod
@@ -310,16 +311,31 @@ class Observatory:
         sensor_direction: TopocentricElements,
         angular_threshold: float,
         sats: Constellation,
+        reference_frame: ReferenceFrame,
     ) -> FieldOfViewReport:
         """
-        Calculate field of view report for a sensor at the observatory.
+        Calculate satellites in the field of view from a given time and direction.
 
         Args:
             epoch: UTC epoch of the report
             sensor_direction: Topocentric direction the sensor is pointing
             angular_threshold: Angular threshold in **_degrees_**
             sats: Constellation of satellites to check for being in the field of view
-        Returns:
-            Field of view report for the sensor at the observatory containing satellites within the field of view
+            reference_frame: Reference frame of the output direction elements
+        """
+        ...
+
+    def get_topocentric_to_satellite(
+        self,
+        epoch: Epoch,
+        sat: Satellite,
+        reference_frame: ReferenceFrame,
+    ) -> TopocentricElements:
+        """
+        Get the topocentric elements of a satellite as seen from the observatory.
+        Args:
+            epoch: UTC epoch of the observation
+            sat: Satellite to observe
+            reference_frame: Reference frame of the output direction elements
         """
         ...
