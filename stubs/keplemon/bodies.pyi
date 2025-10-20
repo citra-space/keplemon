@@ -323,3 +323,22 @@ class Observatory:
             Field of view report for the sensor at the observatory containing satellites within the field of view
         """
         ...
+
+    def get_topocentric_elements(
+        self,
+        satellite: Satellite,
+        epoch: Epoch,
+    ) -> TopocentricElements | None:
+        """
+        Calculate topocentric elements (right ascension, declination, range, etc.) for a satellite
+        as observed from this observatory at a specific epoch.
+
+        Args:
+            satellite: Satellite to observe
+            epoch: UTC epoch of the observation
+
+        Returns:
+            Topocentric elements containing right ascension, declination, range, and their rates,
+            or None if the satellite cannot be propagated to the given epoch
+        """
+        ...

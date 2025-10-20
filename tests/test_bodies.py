@@ -14,6 +14,33 @@ def test_observatory():
     assert len(fov_report.candidates) == 18
 
 
+def test_observatory_get_topocentric_elements():
+    # Create an observatory at Los Angeles coordinates
+    observatory = Observatory(latitude=34.0, longitude=-118.0, altitude=100.0)
+    observatory.name = "Test Observatory"
+    
+    # Create a satellite from a TLE (ISS)
+    line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999"
+    line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660"
+    tle = TLE.from_lines("ISS", line_1, line_2)
+    satellite = Satellite.from_tle(tle)
+    
+    # Get topocentric elements at a specific epoch
+    epoch = Epoch.from_iso("2025-04-15T12:23:07.437696Z", TimeSystem.UTC)
+    topo_elements = observatory.get_topocentric_elements(satellite, epoch)
+    
+    # Verify topocentric elements were calculated
+    assert topo_elements is not None
+    
+    # Verify specific values with tolerance for floating point comparison
+    assert topo_elements.right_ascension == pytest.approx(123.532, abs=0.01)
+    assert topo_elements.declination == pytest.approx(-4.689, abs=0.01)
+    assert topo_elements.range == pytest.approx(10097.42, abs=0.01)
+    assert topo_elements.range_rate == pytest.approx(-4.643, abs=0.01)
+    assert topo_elements.right_ascension_rate == pytest.approx(0.0223, abs=0.001)
+    assert topo_elements.declination_rate == pytest.approx(0.0270, abs=0.001)
+
+
 def test_earth():
     assert Earth.get_equatorial_radius() == 6378.135
 

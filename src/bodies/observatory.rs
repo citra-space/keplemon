@@ -1,4 +1,4 @@
-use super::{Constellation, Sensor};
+use super::{Constellation, Satellite, Sensor};
 use crate::configs::MIN_EPHEMERIS_POINTS;
 use crate::elements::{CartesianState, CartesianVector, Ephemeris, TopocentricElements};
 use crate::enums::ReferenceFrame;
@@ -171,6 +171,16 @@ impl Observatory {
             .collect();
         report.set_candidates(candidates);
         report
+    }
+
+    pub fn get_topocentric_elements(&self, satellite: &Satellite, epoch: Epoch) -> Option<TopocentricElements> {
+        let observer_position = self.get_state_at_epoch(epoch).position;
+        match satellite.get_state_at_epoch(epoch) {
+            Some(satellite_state) => {
+                Some(astro_func_interface::teme_to_topocentric(observer_position, satellite_state))
+            }
+            None => None,
+        }
     }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> CartesianState {
