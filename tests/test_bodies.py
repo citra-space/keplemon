@@ -15,11 +15,9 @@ def test_observatory():
 
 
 def test_observatory_get_topocentric_elements():
-    # Create an observatory at Los Angeles coordinates
     observatory = Observatory(latitude=34.0, longitude=-118.0, altitude=100.0)
     observatory.name = "Test Observatory"
     
-    # Create a satellite from a TLE (ISS)
     line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999"
     line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660"
     tle = TLE.from_lines("ISS", line_1, line_2)
