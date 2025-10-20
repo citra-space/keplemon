@@ -1,10 +1,11 @@
 use pyo3::prelude::*;
+use uuid::Uuid;
 
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sensor {
-    sensor_id: Option<i32>,
-    name: String,
+    id: String,
+    name: Option<String>,
     angular_noise: f64,
     range_noise: Option<f64>,
     range_rate_noise: Option<f64>,
@@ -14,10 +15,10 @@ pub struct Sensor {
 #[pymethods]
 impl Sensor {
     #[new]
-    pub fn new(name: String, angular_noise: f64) -> Self {
+    pub fn new(angular_noise: f64) -> Self {
         Self {
-            sensor_id: None,
-            name,
+            id: Uuid::new_v4().to_string(),
+            name: None,
             angular_noise,
             range_noise: None,
             range_rate_noise: None,
@@ -26,12 +27,12 @@ impl Sensor {
     }
 
     #[getter]
-    pub fn get_sensor_id(&self) -> Option<i32> {
-        self.sensor_id
+    pub fn get_id(&self) -> String {
+        self.id.clone()
     }
 
     #[getter]
-    pub fn get_name(&self) -> String {
+    pub fn get_name(&self) -> Option<String> {
         self.name.clone()
     }
 

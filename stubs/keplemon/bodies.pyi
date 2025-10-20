@@ -227,7 +227,9 @@ class Sensor:
         angular_noise: Angular noise in **_degrees_**
     """
 
-    name: str
+    id: str
+    """Unique identifier for the sensor."""
+    name: str | None
     angular_noise: float
     range_noise: float | None
     """Range noise in **_kilometers_**"""
@@ -237,7 +239,7 @@ class Sensor:
 
     angular_rate_noise: float | None
     """Angular rate noise in **_degrees per second_**"""
-    def __init__(self, name: str, angular_noise: float) -> None: ...
+    def __init__(self, angular_noise: float) -> None: ...
 
 class Observatory:
     """

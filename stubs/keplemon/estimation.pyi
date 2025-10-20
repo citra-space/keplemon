@@ -17,6 +17,9 @@ class Observation:
         observer_teme_pos: Position of the observer in TEME coordinates
     """
 
+    id: str
+    """Unique identifier for the observation"""
+
     sensor: Sensor
     """Sensor which produced the observation"""
 

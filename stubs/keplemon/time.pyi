@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from keplemon.enums import TimeSystem
 from typing import overload, Any
+from datetime import datetime
 
 def request_time_constants_update(output_path: str | Path) -> None:
     """
@@ -144,6 +145,22 @@ class Epoch:
 
     day_of_year: float
     """Decimal day of the year (1-365.999...)"""
+
+    @classmethod
+    def from_datetime(cls, dt: datetime) -> Epoch:
+        """
+        Args:
+            dt: Aware or naive datetime object (assumed to be UTC if naive)
+        """
+        ...
+
+    @classmethod
+    def now(cls) -> Epoch:
+        """
+        Returns:
+            Current epoch in UTC time system
+        """
+        ...
 
     @classmethod
     def from_days_since_1950(cls, days: float, time_system: TimeSystem) -> Epoch:

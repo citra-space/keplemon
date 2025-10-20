@@ -1,4 +1,5 @@
 use std::vec;
+use uuid::Uuid;
 
 use super::ObservationResidual;
 use crate::bodies::{Satellite, Sensor};
@@ -11,6 +12,7 @@ use pyo3::prelude::*;
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observation {
+    id: String,
     sensor: Sensor,
     epoch: Epoch,
     observed_teme_topocentric: TopocentricElements,
@@ -82,6 +84,7 @@ impl Observation {
         observer_teme_position: CartesianVector,
     ) -> Self {
         Self {
+            id: Uuid::new_v4().to_string(),
             sensor,
             epoch,
             observed_teme_topocentric,

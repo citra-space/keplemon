@@ -19,7 +19,7 @@ def test_raise_od_exception():
     keplemon_obs = []
 
     # This can be updated per observation to reflect actual sensor capabilities
-    dummy_sensor = Sensor(name="Fake Sensor", angular_noise=0.001)
+    dummy_sensor = Sensor(angular_noise=0.001)
 
     for json_ob in issue_data["obs"]:
 
