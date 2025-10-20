@@ -104,6 +104,11 @@ impl Observation {
     }
 
     #[getter]
+    pub fn get_id(&self) -> String {
+        self.id.clone()
+    }
+
+    #[getter]
     pub fn get_range(&self) -> Option<f64> {
         self.observed_teme_topocentric.get_range()
     }
@@ -141,6 +146,11 @@ impl Observation {
     #[setter]
     pub fn set_range(&mut self, range: Option<f64>) {
         self.observed_teme_topocentric.set_range(range);
+    }
+
+    #[setter]
+    pub fn set_id(&mut self, id: String) {
+        self.id = id;
     }
 
     #[setter]
