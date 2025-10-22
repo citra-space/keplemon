@@ -146,6 +146,13 @@ class Epoch:
     day_of_year: float
     """Decimal day of the year (1-365.999...)"""
 
+    def to_datetime(self) -> datetime:
+        """
+        Returns:
+            Aware datetime object in UTC time system
+        """
+        ...
+
     @classmethod
     def from_datetime(cls, dt: datetime) -> Epoch:
         """

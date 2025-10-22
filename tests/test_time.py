@@ -57,6 +57,15 @@ def test_epoch():
     assert minus_one_hour.days_since_1950 == from_ds50.days_since_1950
 
 
+class TestEpoch:
+
+    def test_to_datetime(self):
+        expected_iso = "2025-04-02T04:02:42.420000"
+        epoch = Epoch.from_iso(expected_iso, TimeSystem.UTC)
+        dt = epoch.to_datetime()
+        assert dt.isoformat() == expected_iso
+
+
 def test_time_span():
 
     EXPECTED_DAYS = 0.0625

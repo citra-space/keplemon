@@ -8,6 +8,7 @@ from keplemon.elements import (
     OrbitPlotData,
     TopocentricElements,
     RelativeState,
+    BoreToBodyAngles,
 )
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
@@ -88,6 +89,16 @@ class Satellite:
         Args:
             other: Secondary satellite to calculate the relative state against
             epoch: UTC epoch at which the relative state will be calculated
+        """
+        ...
+
+    def get_body_angles_at_epoch(self, other: Satellite, epoch: Epoch) -> BoreToBodyAngles | None:
+        """
+        Calculate the bore-to-body angles between this satellite and another satellite at a given epoch.
+
+        Args:
+            other: Secondary satellite to calculate the bore-to-body angles against
+            epoch: UTC epoch at which the bore-to-body angles will be calculated
         """
         ...
 

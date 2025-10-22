@@ -27,8 +27,14 @@ def _now() -> Epoch:
     return _from_datetime(datetime.now(timezone.utc))
 
 
+def _to_datetime(epoch: Epoch) -> datetime:
+    iso_str = epoch.to_iso()
+    return datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+
+
 Epoch.now = staticmethod(_now)
 Epoch.from_datetime = staticmethod(_from_datetime)
+Epoch.to_datetime = _to_datetime
 
 
 def request_time_constants_update(output_path: str) -> None:
