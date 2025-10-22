@@ -700,6 +700,21 @@ pub fn brouwer_to_kozai(eccentricity: f64, inclination: f64, mean_motion: f64) -
     unsafe { BrouwerToKozai(eccentricity, inclination, mean_motion) }
 }
 
+#[pyfunction(name = "kozai_to_brouwer")]
+fn py_kozai_to_brouwer(eccentricity: f64, inclination: f64, mean_motion: f64) -> f64 {
+    kozai_to_brouwer(eccentricity, inclination, mean_motion)
+}
+
+#[pyfunction(name = "brouwer_to_kozai")]
+fn py_brouwer_to_kozai(eccentricity: f64, inclination: f64, mean_motion: f64) -> f64 {
+    brouwer_to_kozai(eccentricity, inclination, mean_motion)
+}
+
+#[pyfunction(name = "sma_to_mean_motion")]
+fn py_sma_to_mean_motion(sma: f64) -> f64 {
+    sma_to_mean_motion(sma)
+}
+
 #[inline]
 pub fn mean_motion_to_sma(mean_motion: f64) -> f64 {
     unsafe { NToA(mean_motion) }
@@ -931,6 +946,9 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add_function(wrap_pyfunction!(py_theta_teme_to_lla, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_time_teme_to_lla, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_mean_motion_to_sma, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_kozai_to_brouwer, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_brouwer_to_kozai, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_sma_to_mean_motion, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_topo_date_to_equinox, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_topo_equinox_to_date, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(

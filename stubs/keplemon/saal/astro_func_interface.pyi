@@ -2,13 +2,41 @@
 
 def mean_motion_to_sma(mean_motion: float) -> float:
     """
-    Convert mean motion to semi-major axis.
+    Convert mean motion to semi-major axis in kilometers.
 
     Args:
         mean_motion: Mean motion in revolutions/day.
+    """
+    ...
 
-    Returns:
-        Semi-major axis in kilometers.
+def sma_to_mean_motion(sma: float) -> float:
+    """
+    Convert semi-major axis to mean motion in revolutions/day.
+
+    Args:
+        sma: Semi-major axis in kilometers.
+    """
+    ...
+
+def kozai_to_brouwer(e_kozai: float, i_kozai: float, n_kozai: float) -> float:
+    """
+    Convert Kozai orbital elements to Brouwer orbital elements.
+
+    Args:
+        e_kozai: Eccentricity (unitless).
+        i_kozai: Inclination in degrees.
+        n_kozai: Mean motion in revolutions/day.
+    """
+    ...
+
+def brouwer_to_kozai(e_brouwer: float, i_brouwer: float, n_brouwer: float) -> float:
+    """
+    Convert Brouwer orbital elements to Kozai orbital elements.
+
+    Args:
+        e_brouwer: Eccentricity (unitless).
+        i_brouwer: Inclination in degrees.
+        n_brouwer: Mean motion in revolutions/day.
     """
     ...
 

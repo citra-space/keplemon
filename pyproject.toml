@@ -1,6 +1,6 @@
 [project]
 name = "keplemon"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = ["requests", "click"]
 description = "Citra Space Corporation's Rust-accelerated astrodynamics library."
 authors = [{ name = "Brandon Sexton", email = "brandon@citra.space" }]

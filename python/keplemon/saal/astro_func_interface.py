@@ -3,6 +3,9 @@ from keplemon._keplemon.saal.astro_func_interface import (  # type: ignore
     ra_dec_to_az_el_time,
     ra_dec_to_az_el,
     mean_motion_to_sma,
+    sma_to_mean_motion,
+    kozai_to_brouwer,
+    brouwer_to_kozai,
     topo_date_to_equinox,
     topo_equinox_to_date,
     theta_teme_to_lla,
@@ -46,4 +49,7 @@ __all__ = [
     "YROFEQNX_CURR",
     "topo_equinox_to_date",
     "get_jpl_sun_and_moon_position",
+    "kozai_to_brouwer",
+    "brouwer_to_kozai",
+    "sma_to_mean_motion",
 ]
