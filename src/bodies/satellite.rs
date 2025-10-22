@@ -1,13 +1,14 @@
 use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
-    CartesianState, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData, OrbitPlotState, TLE,
+    BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData,
+    OrbitPlotState, RelativeState, TLE,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
 use crate::events::{CloseApproach, HorizonAccessReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
-use crate::saal::astro_func_interface;
+use crate::saal::{astro_func_interface, sat_state_interface};
 use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
 use pyo3::exceptions::PyValueError;
@@ -98,6 +99,64 @@ impl Satellite {
             keplerian_state: None,
             inertial_propagator: None,
         }
+    }
+
+    pub fn get_relative_state_at_epoch(&self, origin: &Satellite, epoch: Epoch) -> Option<RelativeState> {
+        let state_1 = self.get_state_at_epoch(epoch)?;
+        let state_2 = origin.get_state_at_epoch(epoch)?;
+
+        let teme_1 = [
+            state_1.position[0],
+            state_1.position[1],
+            state_1.position[2],
+            state_1.velocity[0],
+            state_1.velocity[1],
+            state_1.velocity[2],
+        ];
+        let teme_2 = [
+            state_2.position[0],
+            state_2.position[1],
+            state_2.position[2],
+            state_2.velocity[0],
+            state_2.velocity[1],
+            state_2.velocity[2],
+        ];
+        let xa_delta = sat_state_interface::get_relative_state(&teme_2, &teme_1, epoch.days_since_1950());
+        let pos = [
+            xa_delta[sat_state_interface::XA_DELTA_PRADIAL],
+            xa_delta[sat_state_interface::XA_DELTA_PINTRCK],
+            xa_delta[sat_state_interface::XA_DELTA_PCRSSTRCK],
+        ];
+        let vel = [
+            xa_delta[sat_state_interface::XA_DELTA_VRADIAL],
+            xa_delta[sat_state_interface::XA_DELTA_VINTRCK],
+            xa_delta[sat_state_interface::XA_DELTA_VCRSSTRCK],
+        ];
+        Some(RelativeState {
+            epoch,
+            position: CartesianVector::from(pos),
+            velocity: CartesianVector::from(vel),
+            origin_satellite_id: origin.id.clone(),
+            secondary_satellite_id: self.id.clone(),
+        })
+    }
+
+    pub fn get_body_angles_at_epoch(&self, other: &Satellite, epoch: Epoch) -> Option<BoreToBodyAngles> {
+        let self_state = self.get_state_at_epoch(epoch)?;
+        let other_state = other.get_state_at_epoch(epoch)?;
+        let self_to_other = other_state.position - self_state.position;
+        let self_to_earth = self_state.position * -1.0;
+        let (sun, moon) = astro_func_interface::get_jpl_sun_and_moon_position(epoch.days_since_1950);
+        let self_to_sun = CartesianVector::from(sun) - self_state.position;
+        let self_to_moon = CartesianVector::from(moon) - self_state.position;
+        let sun_angle = self_to_other.angle(&self_to_sun);
+        let moon_angle = self_to_other.angle(&self_to_moon);
+        let earth_angle = self_to_other.angle(&self_to_earth);
+        Some(BoreToBodyAngles::new(
+            earth_angle.to_degrees(),
+            sun_angle.to_degrees(),
+            moon_angle.to_degrees(),
+        ))
     }
 
     #[getter]
@@ -350,4 +409,3 @@ impl Satellite {
         Some(report)
     }
 }
-

@@ -4,6 +4,18 @@ from keplemon.time import Epoch
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame
 from keplemon.events import CloseApproach
 
+class RelativeState:
+    epoch: Epoch
+    position: CartesianVector
+    velocity: CartesianVector
+    origin_satellite_id: str
+    secondary_satellite_id: str
+
+class BoreToBodyAngles:
+    earth_angle: float
+    sun_angle: float
+    moon_angle: float
+
 class OrbitPlotData:
     satellite_id: str
     epochs: list[str]

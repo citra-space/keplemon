@@ -1,6 +1,8 @@
 // This wrapper file was generated automatically by the GenDllWrappers program.
 #![allow(non_snake_case)]
 #![allow(dead_code)]
+use pyo3::prelude::*;
+use pyo3::py_run;
 use std::os::raw::c_char;
 
 extern "C" {
@@ -408,4 +410,36 @@ pub fn get_relative_state(posvel_1: &[f64; 6], posvel_2: &[f64; 6], utc_ds50: f6
 
 pub fn get_prior_nodal_crossing(sat_key: i64, tai_ds50: f64) -> f64 {
     unsafe { GetNodalCrossingPriorToTime(sat_key, tai_ds50) }
+}
+
+#[pyfunction(name = "get_relative_state")]
+fn py_get_relative_state(state_1: [f64; 6], state_2: [f64; 6], utc_ds50: f64) -> [f64; XA_DELTA_SIZE] {
+    get_relative_state(&state_1, &state_2, utc_ds50)
+}
+
+pub fn register_sat_state_interface(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
+    let sat_state_interface = PyModule::new(parent_module.py(), "sat_state_interface")?;
+    sat_state_interface.add_function(wrap_pyfunction!(py_get_relative_state, &sat_state_interface)?)?;
+    sat_state_interface.add("XA_DELTA_SIZE", XA_DELTA_SIZE)?;
+    sat_state_interface.add("XA_DELTA_POS", XA_DELTA_POS)?;
+    sat_state_interface.add("XA_DELTA_TIME", XA_DELTA_TIME)?;
+    sat_state_interface.add("XA_DELTA_PRADIAL", XA_DELTA_PRADIAL)?;
+    sat_state_interface.add("XA_DELTA_PINTRCK", XA_DELTA_PINTRCK)?;
+    sat_state_interface.add("XA_DELTA_PCRSSTRCK", XA_DELTA_PCRSSTRCK)?;
+    sat_state_interface.add("XA_DELTA_VEL", XA_DELTA_VEL)?;
+    sat_state_interface.add("XA_DELTA_VRADIAL", XA_DELTA_VRADIAL)?;
+    sat_state_interface.add("XA_DELTA_VINTRCK", XA_DELTA_VINTRCK)?;
+    sat_state_interface.add("XA_DELTA_VCRSSTRCK", XA_DELTA_VCRSSTRCK)?;
+    sat_state_interface.add("XA_DELTA_BETA", XA_DELTA_BETA)?;
+    sat_state_interface.add("XA_DELTA_HEIGHT", XA_DELTA_HEIGHT)?;
+    sat_state_interface.add("XA_DELTA_ANGMOM", XA_DELTA_ANGMOM)?;
+    sat_state_interface.add("XA_DELTA_MHLNBS_UVW", XA_DELTA_MHLNBS_UVW)?;
+    sat_state_interface.add("XA_DELTA_MHLNBS_HTB", XA_DELTA_MHLNBS_HTB)?;
+    py_run!(
+        parent_module.py(),
+        sat_state_interface,
+        "import sys; sys.modules['keplemon._keplemon.saal.sat_state_interface'] = sat_state_interface"
+    );
+
+    parent_module.add_submodule(&sat_state_interface)
 }

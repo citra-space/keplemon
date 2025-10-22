@@ -4,6 +4,7 @@ from keplemon._keplemon import (  # type: ignore
     set_thread_count,
     set_license_file_path,
     get_license_file_path,
+    set_jpl_ephemeris_file_path,
 )
 from pathlib import Path
 
@@ -18,10 +19,15 @@ set_license_file_path(ASSETS_DIRECTORY.as_posix())
 TIME_CONSTANTS_PATH = ASSETS_DIRECTORY / "time_constants.dat"
 load_time_constants(TIME_CONSTANTS_PATH.as_posix())
 
+# Load the JPL path
+JPL_EPHEMERIS_PATH = ASSETS_DIRECTORY / "JPLcon_1950_2050.405"
+set_jpl_ephemeris_file_path(JPL_EPHEMERIS_PATH.as_posix())
+
 __all__ = [
     "get_thread_count",
     "set_thread_count",
     "TIME_CONSTANTS_PATH",
+    "JPL_EPHEMERIS_PATH",
     "set_license_file_path",
     "PACKAGE_DIRECTORY",
     "ASSETS_DIRECTORY",

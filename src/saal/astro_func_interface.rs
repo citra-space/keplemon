@@ -573,7 +573,17 @@ pub fn cartesian_to_keplerian(pos: &[f64; 3], vel: &[f64; 3]) -> [f64; XA_KEP_SI
 }
 
 #[inline]
-pub fn set_jpl_file(jpl_path: &str) {
+pub fn set_jpl_ephemeris_file_path(jpl_path: &str) {
+    let mut jpl_path = GetSetString::from_string(jpl_path);
+    let ds50_start = time_func_interface::year_doy_to_ds50(1960, 1.0);
+    let ds50_stop = time_func_interface::year_doy_to_ds50(2050, 1.0);
+    unsafe {
+        JplSetParameters(jpl_path.pointer(), ds50_start, ds50_stop);
+    }
+}
+
+#[pyfunction(name = "set_jpl_ephemeris_file_path")]
+pub fn py_set_jpl_ephemeris_file_path(jpl_path: &str) {
     let mut jpl_path = GetSetString::from_string(jpl_path);
     let ds50_start = time_func_interface::year_doy_to_ds50(1960, 1.0);
     let ds50_stop = time_func_interface::year_doy_to_ds50(2050, 1.0);
@@ -873,6 +883,20 @@ pub fn teme_to_topo(
     xa_topo
 }
 
+pub fn get_jpl_sun_and_moon_position(ds50utc: f64) -> ([f64; 3], [f64; 3]) {
+    let mut sun_pos = [0.0; 3];
+    let mut moon_pos = [0.0; 3];
+    unsafe {
+        JplCompSunMoonPos(ds50utc, &mut sun_pos, &mut moon_pos);
+    }
+    (sun_pos, moon_pos)
+}
+
+#[pyfunction(name = "get_jpl_sun_and_moon_position")]
+pub fn py_get_jpl_sun_and_moon_position(ds50utc: f64) -> ([f64; 3], [f64; 3]) {
+    get_jpl_sun_and_moon_position(ds50utc)
+}
+
 #[pyfunction(name = "teme_to_topo")]
 pub fn py_teme_to_topo(
     theta: f64,
@@ -909,6 +933,11 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add_function(wrap_pyfunction!(py_mean_motion_to_sma, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_topo_date_to_equinox, &astro_func_interface)?)?;
     astro_func_interface.add_function(wrap_pyfunction!(py_topo_equinox_to_date, &astro_func_interface)?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(
+        py_get_jpl_sun_and_moon_position,
+        &astro_func_interface
+    )?)?;
+
     astro_func_interface.add("XA_TOPO_RA", XA_TOPO_RA)?;
     astro_func_interface.add("XA_TOPO_DEC", XA_TOPO_DEC)?;
     astro_func_interface.add("XA_TOPO_AZ", XA_TOPO_AZ)?;

@@ -70,6 +70,33 @@ def test_satellite():
     assert sat_1.geodetic_position.altitude == pytest.approx(35808.08113476326, abs=0.1)
 
 
+class TestSatellite:
+
+    @pytest.fixture
+    def satellite_1(self):
+        line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999"
+        line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660"
+        tle = TLE.from_lines("ISS", line_1, line_2)
+        return Satellite.from_tle(tle)
+
+    @pytest.fixture
+    def satellite_2(self):
+        line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999"
+        line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4939007023660"
+        tle = TLE.from_lines("ISS", line_1, line_2)
+        return Satellite.from_tle(tle)
+
+    def test_get_relative_state_at_epoch(self, satellite_1, satellite_2):
+        state = satellite_1.get_relative_state_at_epoch(satellite_2, satellite_1.keplerian_state.epoch)
+        assert state
+        assert state.position.x > 0
+
+    def test_get_body_angles_at_epoch(self, satellite_1, satellite_2):
+        angles = satellite_1.get_body_angles_at_epoch(satellite_2, satellite_1.keplerian_state.epoch)
+        assert angles
+        assert 0.0 <= angles.earth_angle <= 90.0
+
+
 def test_satellite_observatory_access_report():
     line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999"
     line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660"

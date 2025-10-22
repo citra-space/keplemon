@@ -20,6 +20,7 @@ from keplemon._keplemon.saal.astro_func_interface import (  # type: ignore
     XA_TOPO_SIZE,
     YROFEQNX_2000,
     YROFEQNX_CURR,
+    get_jpl_sun_and_moon_position,
 )
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "YROFEQNX_2000",
     "YROFEQNX_CURR",
     "topo_equinox_to_date",
+    "get_jpl_sun_and_moon_position",
 ]

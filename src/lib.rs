@@ -39,6 +39,10 @@ fn _keplemon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_thread_count, m)?)?;
     m.add_function(wrap_pyfunction!(saal::sgp4_prop_interface::set_license_file_path, m)?)?;
     m.add_function(wrap_pyfunction!(saal::sgp4_prop_interface::get_license_file_path, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        saal::astro_func_interface::py_set_jpl_ephemeris_file_path,
+        m
+    )?)?;
     saal::register_saal(m)?;
     saal::obs_interface::register_obs_interface(m)?;
     saal::astro_func_interface::register_astro_func_interface(m)?;

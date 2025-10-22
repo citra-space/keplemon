@@ -121,6 +121,20 @@ def theta_teme_to_lla(theta: float, lat: float, long: float, ra: float, dec: flo
     """
     ...
 
+def get_jpl_sun_and_moon_position(ds50_utc: float) -> tuple[list[float], list[float]]:
+    """
+    Get the JPL ephemeris positions of the Sun and Moon in TEME coordinates.
+
+    Args:
+        ds50_utc: Epoch in DS50 UTC format.
+
+    Returns:
+        A tuple containing two lists:
+            - Sun position in TEME coordinates [x, y, z] in kilometers.
+            - Moon position in TEME coordinates [x, y, z] in kilometers.
+    """
+    ...
+
 def time_teme_to_lla(ds50_utc: float, lat: float, long: float, ra: float, dec: float) -> tuple[float, float]:
     """
     Convert TEME coordinates to latitude, longitude, and altitude.

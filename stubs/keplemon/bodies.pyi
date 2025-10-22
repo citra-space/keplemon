@@ -7,6 +7,7 @@ from keplemon.elements import (
     GeodeticPosition,
     OrbitPlotData,
     TopocentricElements,
+    RelativeState,
 )
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
@@ -77,6 +78,16 @@ class Satellite:
         Returns:
             Satellite as a two-line element set or None if no state is loaded
 
+        """
+        ...
+
+    def get_relative_state_at_epoch(self, other: Satellite, epoch: Epoch) -> RelativeState | None:
+        """
+        Calculate the relative state between this satellite and another satellite at a given epoch.
+
+        Args:
+            other: Secondary satellite to calculate the relative state against
+            epoch: UTC epoch at which the relative state will be calculated
         """
         ...
 

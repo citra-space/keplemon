@@ -1,3 +1,4 @@
+mod bore_to_body_angles;
 mod cartesian_state;
 mod cartesian_vector;
 mod ephemeris;
@@ -8,10 +9,12 @@ mod horizon_state;
 mod keplerian_elements;
 mod keplerian_state;
 mod orbit_plot_data;
+mod relative_state;
 mod spherical_vector;
 mod tle;
 mod topocentric_elements;
 
+pub use bore_to_body_angles::BoreToBodyAngles;
 pub use cartesian_state::CartesianState;
 pub use cartesian_vector::CartesianVector;
 pub use ephemeris::Ephemeris;
@@ -24,6 +27,7 @@ pub use keplerian_state::KeplerianState;
 pub use orbit_plot_data::{OrbitPlotData, OrbitPlotState};
 use pyo3::prelude::*;
 use pyo3::py_run;
+pub use relative_state::RelativeState;
 pub use spherical_vector::SphericalVector;
 pub use tle::TLE;
 pub use topocentric_elements::TopocentricElements;
@@ -46,6 +50,8 @@ pub fn register_elements(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     elements.add_class::<HorizonState>()?;
     elements.add_class::<OrbitPlotState>()?;
     elements.add_class::<OrbitPlotData>()?;
+    elements.add_class::<RelativeState>()?;
+    elements.add_class::<BoreToBodyAngles>()?;
     py_run!(
         parent_module.py(),
         elements,

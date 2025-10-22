@@ -12,6 +12,8 @@ from keplemon._keplemon.elements import (  # type: ignore
     GeodeticPosition,
     OrbitPlotData,
     OrbitPlotState,
+    RelativeState,
+    BoreToBodyAngles,
 )
 
 __all__ = [
@@ -28,4 +30,6 @@ __all__ = [
     "GeodeticPosition",
     "OrbitPlotData",
     "OrbitPlotState",
+    "RelativeState",
+    "BoreToBodyAngles",
 ]
