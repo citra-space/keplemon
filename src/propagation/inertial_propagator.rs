@@ -1,7 +1,7 @@
 use super::ForceProperties;
 use crate::elements::{CartesianState, CartesianVector, KeplerianState, TLE};
 use crate::enums::{ReferenceFrame, TimeSystem};
-use crate::estimation::Observation;
+use crate::estimation::ObservationType;
 use crate::saal::{sat_state_interface, sgp4_prop_interface};
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
@@ -140,7 +140,7 @@ impl InertialPropagator {
         }
     }
 
-    pub fn get_jacobian(&self, ob: &Observation, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
+    pub fn get_jacobian(&self, ob: &dyn ObservationType, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
         match &self.tle {
             Some(tle) => tle.get_jacobian(ob, use_drag, use_srp),
             None => Err("Propagation of osculating elements has not been implemented".to_string()),

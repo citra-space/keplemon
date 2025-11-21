@@ -1,7 +1,7 @@
 use super::{CartesianState, EquinoctialElements, KeplerianElements, KeplerianState};
 use crate::bodies::Satellite;
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
-use crate::estimation::Observation;
+use crate::estimation::ObservationType;
 use crate::propagation::{ForceProperties, SGP4Output};
 use crate::saal::{sgp4_prop_interface, tle_interface, GetSetString};
 use crate::time::Epoch;
@@ -238,7 +238,7 @@ impl TLE {
         }
     }
 
-    pub fn get_jacobian(&self, ob: &Observation, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
+    pub fn get_jacobian(&self, ob: &dyn ObservationType, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
         // Build the reference satellite
         let ref_sat = Satellite::from_tle(self.clone());
 

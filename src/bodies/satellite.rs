@@ -5,7 +5,7 @@ use crate::elements::{
     OrbitPlotState, RelativeState, TLE,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
-use crate::estimation::Observation;
+use crate::estimation::ObservationType;
 use crate::events::{CloseApproach, HorizonAccessReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::saal::{astro_func_interface, sat_state_interface};
@@ -28,7 +28,7 @@ pub struct Satellite {
 }
 
 impl Satellite {
-    pub fn get_jacobian(&self, ob: &Observation, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
+    pub fn get_jacobian(&self, ob: &dyn ObservationType, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
         match self.inertial_propagator {
             Some(ref propagator) => propagator.get_jacobian(ob, use_drag, use_srp),
             None => Err("Inertial propagator is not set".to_string()),

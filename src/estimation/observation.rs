@@ -1,7 +1,7 @@
 use std::vec;
 use uuid::Uuid;
 
-use super::ObservationResidual;
+use super::{ObservationResidual, ObservationType};
 use crate::bodies::{Satellite, Sensor};
 use crate::elements::{CartesianVector, TopocentricElements};
 use crate::saal::{astro_func_interface, sat_state_interface};
@@ -205,5 +205,23 @@ impl Observation {
             }
             None => None,
         }
+    }
+}
+
+impl ObservationType for Observation {
+    fn get_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>) {
+        Observation::get_measurement_and_weight_vector(self)
+    }
+
+    fn get_predicted_vector(&self, satellite: &Satellite) -> Result<Vec<f64>, String> {
+        Observation::get_predicted_vector(self, satellite)
+    }
+
+    fn get_epoch(&self) -> Epoch {
+        self.epoch
+    }
+
+    fn get_satellite_id(&self) -> Option<i32> {
+        self.observed_satellite_id
     }
 }
