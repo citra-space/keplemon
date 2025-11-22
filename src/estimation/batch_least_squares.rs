@@ -1,4 +1,4 @@
-use super::{Covariance, Observation, ObservationResidual, ObservationType};
+use super::{Covariance, Observation, ObservationResidual, ObservationType, TDOAObservation, FDOAObservation};
 use crate::bodies::Satellite;
 use crate::configs;
 use crate::enums::{CovarianceType, KeplerianType};
@@ -35,6 +35,50 @@ impl BatchLeastSquares {
             .into_iter()
             .map(|o| Box::new(o) as Box<dyn ObservationType>)
             .collect();
+        Self {
+            obs: boxed_obs,
+            a_priori,
+            use_drag: false,
+            use_srp: false,
+            delta_x: None,
+            max_iterations: DEFAULT_MAX_ITERATIONS,
+            current_estimate,
+            iteration_count: 0,
+            weighted_rms: None,
+            converged: false,
+            output_keplerian_type,
+        }
+    }
+
+    #[staticmethod]
+    pub fn from_mixed_observations(
+        angle_obs: Vec<Observation>,
+        tdoa_obs: Vec<TDOAObservation>,
+        fdoa_obs: Vec<FDOAObservation>,
+        a_priori: &Satellite,
+    ) -> Self {
+        let output_keplerian_type = a_priori.get_keplerian_state().unwrap().get_type();
+        let a_priori = a_priori.clone();
+        let current_estimate = a_priori.clone();
+
+        // Convert all observation types to boxed trait objects
+        let mut boxed_obs: Vec<Box<dyn ObservationType>> = Vec::new();
+
+        // Add angle observations
+        for obs in angle_obs {
+            boxed_obs.push(Box::new(obs) as Box<dyn ObservationType>);
+        }
+
+        // Add TDOA observations
+        for obs in tdoa_obs {
+            boxed_obs.push(Box::new(obs) as Box<dyn ObservationType>);
+        }
+
+        // Add FDOA observations
+        for obs in fdoa_obs {
+            boxed_obs.push(Box::new(obs) as Box<dyn ObservationType>);
+        }
+
         Self {
             obs: boxed_obs,
             a_priori,
