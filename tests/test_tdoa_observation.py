@@ -98,8 +98,34 @@ class TestTDOAMeasurementModel:
         # Measurement should be the time difference
         assert m_vec[0] == pytest.approx(time_diff)
 
-        # Weight should be 1/sigma^2
-        expected_weight = 1.0 / (1e-6 ** 2)
+        # Weight should be 1/(sigma_1^2 + sigma_2^2) for differential measurement
+        sigma1 = 1e-6
+        sigma2 = 1e-6
+        variance_combined = sigma1**2 + sigma2**2
+        expected_weight = 1.0 / variance_combined
+        assert w_vec[0] == pytest.approx(expected_weight)
+
+    def test_tdoa_asymmetric_noise(self):
+        """Test TDOA with different noise levels for each sensor."""
+        sensor1 = Sensor(angular_noise=0.001)
+        sensor1.tdoa_noise = 1e-6
+
+        sensor2 = Sensor(angular_noise=0.001)
+        sensor2.tdoa_noise = 2e-6  # Different noise level
+
+        epoch = Epoch.from_iso("2024-01-01T00:00:00Z", TimeSystem.UTC)
+        pos1 = CartesianVector(0, 0, 0)
+        pos2 = CartesianVector(1000, 0, 0)
+
+        tdoa = TDOAObservation(sensor1, sensor2, epoch, 1e-4, pos1, pos2)
+
+        m_vec, w_vec = tdoa.get_measurement_and_weight_vector()
+
+        # Weight should account for both sensors' noise
+        sigma1 = 1e-6
+        sigma2 = 2e-6
+        variance_combined = sigma1**2 + sigma2**2
+        expected_weight = 1.0 / variance_combined
         assert w_vec[0] == pytest.approx(expected_weight)
 
     def test_tdoa_weight_without_noise(self):
