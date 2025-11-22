@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 use std::str::FromStr;
 use uuid::Uuid;
 
-const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-4, 1e-4];
+const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-8, 1e-6, 1e-4, 1e-4];
 
 #[pyclass]
 #[derive(Debug, PartialEq)]

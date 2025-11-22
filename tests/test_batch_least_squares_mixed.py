@@ -21,20 +21,20 @@ class TestBatchLeastSquaresMixed:
     @pytest.fixture
     def iss_data(self):
         """Load satellite TLE data for testing."""
-        # Using the same test TLE as test_estimation.py
+        # Using STARLINK-31903 from citrus-scenario-rf for realistic LEO geometry
         return {
-            "line_1": "1 28868U 05036A   24275.00529343 +.00000000 +00000+0 +00000+0 0 99999",
-            "line_2": "2 28868   2.7014  84.2900 0002401  80.3085 100.2594 01.00269183000003"
+            "line_1": "1 59845U 24097L   25323.61814803  .00001101  00000-0  49538-4 0  9995",
+            "line_2": "2 59845  43.0011 168.9843 0001082 266.9893  93.0835 15.27572297 85160"
         }
 
     @pytest.fixture
     def ground_stations(self):
-        """Create four geographically separated ground stations for multi-baseline geometry."""
+        """Create four geographically separated ground stations from citrus-scenario-rf (Colorado)."""
         return {
-            "main": {"lat": -30.0, "lon": -70.0, "alt": 1.5, "name": "Station Main"},
-            "east": {"lat": -30.0, "lon": -65.0, "alt": 1.5, "name": "Station East"},
-            "west": {"lat": -30.0, "lon": -75.0, "alt": 1.5, "name": "Station West"},
-            "north": {"lat": -25.0, "lon": -70.0, "alt": 1.5, "name": "Station North"}
+            "main": {"lat": 38.901183, "lon": -104.850777, "alt": 2.6258, "name": "Colorado Springs (COS)"},
+            "east": {"lat": 38.085499, "lon": -102.620578, "alt": 1.1636, "name": "Lamar (SE)"},
+            "west": {"lat": 37.903296, "lon": -107.795429, "alt": 2.7175, "name": "Telluride (SW)"},
+            "north": {"lat": 40.728413, "lon": -106.283638, "alt": 2.5618, "name": "Walden (N)"}
         }
 
     @pytest.fixture
@@ -294,7 +294,8 @@ class TestBatchLeastSquaresMixed:
                                 ground_stations["north"]["alt"])
 
         # Generate 40 observation epochs over 20 minutes (30-second intervals)
-        base_epoch = Epoch.from_iso("2024-10-01T00:26:00Z", TimeSystem.UTC)
+        # Using epoch near TLE epoch (Nov 19, 2025 for STARLINK-31903)
+        base_epoch = Epoch.from_iso("2025-11-19T18:00:00Z", TimeSystem.UTC)
         observation_epochs = []
         for i in range(40):
             obs_epoch = base_epoch + TimeSpan.from_seconds(30 * i)  # 30-second intervals
@@ -318,8 +319,8 @@ class TestBatchLeastSquaresMixed:
         tdoa_observations = []
         fdoa_observations = []
 
-        # Transmit frequency for FDOA (L1 GPS frequency)
-        transmit_freq = 1.57542e9  # Hz
+        # Transmit frequency for FDOA (S-band, matching citrus-scenario-rf)
+        transmit_freq = 2.2e9  # Hz
         c = 299792.458  # Speed of light in km/s
 
         for idx, (epoch, true_state) in enumerate(true_states):
@@ -408,52 +409,51 @@ class TestBatchLeastSquaresMixed:
                 )
                 tdoa_observations.append(obs_tdoa_en)
 
-            # === FDOA OBSERVATIONS (2 baselines, every other epoch) ===
-            if idx % 2 == 0:
-                # Helper function to compute Doppler
-                def compute_doppler(sat_pos, sat_vel, obs_pos, obs_vel):
-                    vec = CartesianVector(
-                        sat_pos.x - obs_pos.x,
-                        sat_pos.y - obs_pos.y,
-                        sat_pos.z - obs_pos.z
-                    )
-                    dist = math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
-                    rel_vel = CartesianVector(
-                        sat_vel.x - obs_vel.x,
-                        sat_vel.y - obs_vel.y,
-                        sat_vel.z - obs_vel.z
-                    )
-                    if dist > 1e-6:
-                        return (rel_vel.x * vec.x + rel_vel.y * vec.y + rel_vel.z * vec.z) / dist
-                    return 0.0
-
-                # Baseline 1: East-West
-                east_vel = east_state.velocity
-                west_vel = west_state.velocity
-                doppler_east = compute_doppler(sat_pos, sat_vel, east_pos, east_vel)
-                doppler_west = compute_doppler(sat_pos, sat_vel, west_pos, west_vel)
-                freq_diff_ew = (transmit_freq / c) * (doppler_west - doppler_east)
-                freq_diff_ew += random.gauss(0, 0.1)  # 0.1 Hz noise
-                obs_fdoa_ew = FDOAObservation(
-                    sensors["fdoa_ew_1"], sensors["fdoa_ew_2"], epoch, freq_diff_ew,
-                    east_state, west_state,
-                    transmit_frequency=transmit_freq
+            # === FDOA OBSERVATIONS (2 baselines, every epoch) ===
+            # Helper function to compute Doppler
+            def compute_doppler(sat_pos, sat_vel, obs_pos, obs_vel):
+                vec = CartesianVector(
+                    sat_pos.x - obs_pos.x,
+                    sat_pos.y - obs_pos.y,
+                    sat_pos.z - obs_pos.z
                 )
-                fdoa_observations.append(obs_fdoa_ew)
-
-                # Baseline 2: North-Main
-                main_vel = main_state.velocity
-                north_vel = north_state.velocity
-                doppler_north = compute_doppler(sat_pos, sat_vel, north_pos, north_vel)
-                doppler_main = compute_doppler(sat_pos, sat_vel, main_pos, main_vel)
-                freq_diff_nm = (transmit_freq / c) * (doppler_main - doppler_north)
-                freq_diff_nm += random.gauss(0, 0.1)
-                obs_fdoa_nm = FDOAObservation(
-                    sensors["fdoa_nm_1"], sensors["fdoa_nm_2"], epoch, freq_diff_nm,
-                    north_state, main_state,
-                    transmit_frequency=transmit_freq
+                dist = math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
+                rel_vel = CartesianVector(
+                    sat_vel.x - obs_vel.x,
+                    sat_vel.y - obs_vel.y,
+                    sat_vel.z - obs_vel.z
                 )
-                fdoa_observations.append(obs_fdoa_nm)
+                if dist > 1e-6:
+                    return (rel_vel.x * vec.x + rel_vel.y * vec.y + rel_vel.z * vec.z) / dist
+                return 0.0
+
+            # Baseline 1: East-West
+            east_vel = east_state.velocity
+            west_vel = west_state.velocity
+            doppler_east = compute_doppler(sat_pos, sat_vel, east_pos, east_vel)
+            doppler_west = compute_doppler(sat_pos, sat_vel, west_pos, west_vel)
+            freq_diff_ew = (transmit_freq / c) * (doppler_west - doppler_east)
+            freq_diff_ew += random.gauss(0, 0.1)  # 0.1 Hz noise
+            obs_fdoa_ew = FDOAObservation(
+                sensors["fdoa_ew_1"], sensors["fdoa_ew_2"], epoch, freq_diff_ew,
+                east_state, west_state,
+                transmit_frequency=transmit_freq
+            )
+            fdoa_observations.append(obs_fdoa_ew)
+
+            # Baseline 2: North-Main
+            main_vel = main_state.velocity
+            north_vel = north_state.velocity
+            doppler_north = compute_doppler(sat_pos, sat_vel, north_pos, north_vel)
+            doppler_main = compute_doppler(sat_pos, sat_vel, main_pos, main_vel)
+            freq_diff_nm = (transmit_freq / c) * (doppler_main - doppler_north)
+            freq_diff_nm += random.gauss(0, 0.1)
+            obs_fdoa_nm = FDOAObservation(
+                sensors["fdoa_nm_1"], sensors["fdoa_nm_2"], epoch, freq_diff_nm,
+                north_state, main_state,
+                transmit_frequency=transmit_freq
+            )
+            fdoa_observations.append(obs_fdoa_nm)
 
         # Only test if we generated meaningful observations
         if not angle_observations or not tdoa_observations or not fdoa_observations:
@@ -589,7 +589,8 @@ class TestBatchLeastSquaresMixed:
                                 ground_stations["north"]["alt"])
 
         # Generate 40 observation epochs over 20 minutes (30-second intervals)
-        base_epoch = Epoch.from_iso("2024-10-01T00:26:00Z", TimeSystem.UTC)
+        # Using epoch near TLE epoch (Nov 19, 2025 for STARLINK-31903)
+        base_epoch = Epoch.from_iso("2025-11-19T18:00:00Z", TimeSystem.UTC)
         observation_epochs = []
         for i in range(40):
             obs_epoch = base_epoch + TimeSpan.from_seconds(30 * i)
@@ -612,7 +613,7 @@ class TestBatchLeastSquaresMixed:
         tdoa_observations = []
         fdoa_observations = []
 
-        transmit_freq = 1.57542e9  # Hz
+        transmit_freq = 2.2e9  # Hz (S-band, matching citrus-scenario-rf)
         c = 299792.458  # Speed of light in km/s
 
         for idx, (epoch, true_state) in enumerate(true_states):
@@ -663,51 +664,50 @@ class TestBatchLeastSquaresMixed:
                 )
                 tdoa_observations.append(obs_tdoa_en)
 
-            # === FDOA OBSERVATIONS (2 baselines, every other epoch) ===
-            if idx % 2 == 0:
-                def compute_doppler(sat_pos, sat_vel, obs_pos, obs_vel):
-                    vec = CartesianVector(
-                        sat_pos.x - obs_pos.x,
-                        sat_pos.y - obs_pos.y,
-                        sat_pos.z - obs_pos.z
-                    )
-                    dist = math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
-                    rel_vel = CartesianVector(
-                        sat_vel.x - obs_vel.x,
-                        sat_vel.y - obs_vel.y,
-                        sat_vel.z - obs_vel.z
-                    )
-                    if dist > 1e-6:
-                        return (rel_vel.x * vec.x + rel_vel.y * vec.y + rel_vel.z * vec.z) / dist
-                    return 0.0
-
-                # Baseline 1: East-West
-                east_vel = east_state.velocity
-                west_vel = west_state.velocity
-                doppler_east = compute_doppler(sat_pos, sat_vel, east_pos, east_vel)
-                doppler_west = compute_doppler(sat_pos, sat_vel, west_pos, west_vel)
-                freq_diff_ew = (transmit_freq / c) * (doppler_west - doppler_east)
-                freq_diff_ew += random.gauss(0, 0.1)
-                obs_fdoa_ew = FDOAObservation(
-                    sensors["fdoa_ew_1"], sensors["fdoa_ew_2"], epoch, freq_diff_ew,
-                    east_state, west_state,
-                    transmit_frequency=transmit_freq
+            # === FDOA OBSERVATIONS (2 baselines, every epoch) ===
+            def compute_doppler(sat_pos, sat_vel, obs_pos, obs_vel):
+                vec = CartesianVector(
+                    sat_pos.x - obs_pos.x,
+                    sat_pos.y - obs_pos.y,
+                    sat_pos.z - obs_pos.z
                 )
-                fdoa_observations.append(obs_fdoa_ew)
-
-                # Baseline 2: North-Main
-                main_vel = main_state.velocity
-                north_vel = north_state.velocity
-                doppler_north = compute_doppler(sat_pos, sat_vel, north_pos, north_vel)
-                doppler_main = compute_doppler(sat_pos, sat_vel, main_pos, main_vel)
-                freq_diff_nm = (transmit_freq / c) * (doppler_main - doppler_north)
-                freq_diff_nm += random.gauss(0, 0.1)
-                obs_fdoa_nm = FDOAObservation(
-                    sensors["fdoa_nm_1"], sensors["fdoa_nm_2"], epoch, freq_diff_nm,
-                    north_state, main_state,
-                    transmit_frequency=transmit_freq
+                dist = math.sqrt(vec.x**2 + vec.y**2 + vec.z**2)
+                rel_vel = CartesianVector(
+                    sat_vel.x - obs_vel.x,
+                    sat_vel.y - obs_vel.y,
+                    sat_vel.z - obs_vel.z
                 )
-                fdoa_observations.append(obs_fdoa_nm)
+                if dist > 1e-6:
+                    return (rel_vel.x * vec.x + rel_vel.y * vec.y + rel_vel.z * vec.z) / dist
+                return 0.0
+
+            # Baseline 1: East-West
+            east_vel = east_state.velocity
+            west_vel = west_state.velocity
+            doppler_east = compute_doppler(sat_pos, sat_vel, east_pos, east_vel)
+            doppler_west = compute_doppler(sat_pos, sat_vel, west_pos, west_vel)
+            freq_diff_ew = (transmit_freq / c) * (doppler_west - doppler_east)
+            freq_diff_ew += random.gauss(0, 0.1)
+            obs_fdoa_ew = FDOAObservation(
+                sensors["fdoa_ew_1"], sensors["fdoa_ew_2"], epoch, freq_diff_ew,
+                east_state, west_state,
+                transmit_frequency=transmit_freq
+            )
+            fdoa_observations.append(obs_fdoa_ew)
+
+            # Baseline 2: North-Main
+            main_vel = main_state.velocity
+            north_vel = north_state.velocity
+            doppler_north = compute_doppler(sat_pos, sat_vel, north_pos, north_vel)
+            doppler_main = compute_doppler(sat_pos, sat_vel, main_pos, main_vel)
+            freq_diff_nm = (transmit_freq / c) * (doppler_main - doppler_north)
+            freq_diff_nm += random.gauss(0, 0.1)
+            obs_fdoa_nm = FDOAObservation(
+                sensors["fdoa_nm_1"], sensors["fdoa_nm_2"], epoch, freq_diff_nm,
+                north_state, main_state,
+                transmit_frequency=transmit_freq
+            )
+            fdoa_observations.append(obs_fdoa_nm)
 
         # Verify we have observations
         if not tdoa_observations or not fdoa_observations:
@@ -787,7 +787,8 @@ class TestBatchLeastSquaresMixed:
                                ground_stations["main"]["alt"])
 
         # Generate 40 observation epochs over 20 minutes (30-second intervals)
-        base_epoch = Epoch.from_iso("2024-10-01T00:26:00Z", TimeSystem.UTC)
+        # Using epoch near TLE epoch (Nov 19, 2025 for STARLINK-31903)
+        base_epoch = Epoch.from_iso("2025-11-19T18:00:00Z", TimeSystem.UTC)
         observation_epochs = []
         for i in range(40):
             obs_epoch = base_epoch + TimeSpan.from_seconds(30 * i)
