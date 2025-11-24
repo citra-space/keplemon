@@ -261,6 +261,13 @@ class Sensor:
 
     angular_rate_noise: float | None
     """Angular rate noise in **_degrees per second_**"""
+
+    tdoa_noise: float | None
+    """TDOA (Time Difference of Arrival) noise in **_seconds_**"""
+
+    fdoa_noise: float | None
+    """FDOA (Frequency Difference of Arrival) noise in **_Hz_**"""
+
     def __init__(self, angular_noise: float) -> None: ...
 
 class Observatory:
