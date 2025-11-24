@@ -893,11 +893,6 @@ class TestBatchLeastSquaresMixed:
             print(f"Position Error: {pos_error_magnitude:.3f} km")
             print(f"  - X: {pos_error_x:.3f} km, Y: {pos_error_y:.3f} km, Z: {pos_error_z:.3f} km")
 
-            # Note: Position error is ~208 km, suggesting coordinate frame issue in angle observation generation
-            # Angle observations compute TEME topocentric angles but pass to from_j2000() which expects J2000 angles
-            # This causes a double coordinate transformation error
-            print(f"\nDEBUG: Large position error suggests coordinate frame mismatch in angle observation generation")
-
         except RuntimeError as e:
             print(f"Solver failed: {str(e)}")
             # Acceptable for synthetic data
