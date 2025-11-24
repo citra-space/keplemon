@@ -375,7 +375,7 @@ impl BatchLeastSquares {
         }
         let mut jacobian = DMatrix::zeros(m, n);
         for ob in self.obs.iter() {
-            // Dereference the boxed observation to trait object
+            // Dereference the Box to get a reference to the trait object
             let ob_jacobian = self.current_estimate.get_jacobian(&**ob, self.use_drag, self.use_srp)?;
             let dim = ob_jacobian.nrows();
             jacobian.view_mut((row, 0), (dim, n)).copy_from(&ob_jacobian);
