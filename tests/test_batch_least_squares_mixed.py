@@ -838,7 +838,7 @@ class TestBatchLeastSquaresMixed:
             noise_ra = random.gauss(0, 0.0001)
             noise_dec = random.gauss(0, 0.0001)
 
-            # FIX: Use TopocentricElements() directly for TEME angles
+            # NOTE: Use TopocentricElements() directly for TEME angles
             # NOT from_j2000() which expects J2000 angles
             topo = TopocentricElements(
                 base_ra + noise_ra,
