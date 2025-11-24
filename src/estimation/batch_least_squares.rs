@@ -173,9 +173,45 @@ impl BatchLeastSquares {
 
     #[getter]
     pub fn get_rms(&self) -> Option<f64> {
-        // Note: RMS calculation is only supported for traditional Observation types
-        // For mixed observation types including TDOA/FDOA, use weighted_rms instead
-        None
+        // Compute RMS from residuals across all observation types
+        let residuals = self.get_residuals_internal();
+        if residuals.is_empty() {
+            return None;
+        }
+
+        let mut sum_sq = 0.0;
+        let mut count = 0;
+
+        for (_, residual) in &residuals {
+            // Compute magnitude of residual depending on available components
+            // For TDOA: use range field
+            // For FDOA: use radial_velocity field
+            // For angle observations: use RIC position magnitude
+            let range = residual.get_range();
+            let radial = residual.get_radial();
+            let in_track = residual.get_in_track();
+            let cross_track = residual.get_cross_track();
+            let radial_velocity = residual.get_radial_velocity();
+
+            // Compute magnitude: sqrt(all non-zero components squared)
+            // For angle obs: sqrt(radial^2 + in_track^2 + cross_track^2)
+            // For TDOA: sqrt(range^2) = |range|
+            // For FDOA: sqrt(radial_velocity^2) = |radial_velocity|
+            let magnitude_sq = range * range
+                + radial * radial
+                + in_track * in_track
+                + cross_track * cross_track
+                + radial_velocity * radial_velocity;
+
+            sum_sq += magnitude_sq;
+            count += 1;
+        }
+
+        if count == 0 {
+            return None;
+        }
+
+        Some((sum_sq / count as f64).sqrt())
     }
 
     #[setter]
@@ -196,9 +232,8 @@ impl BatchLeastSquares {
 
     #[getter]
     pub fn get_residuals(&self) -> Vec<(Epoch, ObservationResidual)> {
-        // Note: get_residuals is only supported for traditional Observation types
-        // TDOA/FDOA observations don't have residuals in the same sense
-        Vec::new()
+        // Compute residuals for all observation types
+        self.get_residuals_internal()
     }
 
     #[setter]
@@ -373,5 +408,16 @@ impl BatchLeastSquares {
             Some(_) => Ok(()),
             None => Err("Unable to compute delta_x".to_string()),
         }
+    }
+
+    fn get_residuals_internal(&self) -> Vec<(Epoch, ObservationResidual)> {
+        // Compute residuals for all observation types (angle, TDOA, FDOA)
+        let mut residuals = Vec::new();
+        for ob in self.obs.iter() {
+            if let Some(residual) = ob.get_residual(&self.current_estimate) {
+                residuals.push((ob.get_epoch(), residual));
+            }
+        }
+        residuals
     }
 }

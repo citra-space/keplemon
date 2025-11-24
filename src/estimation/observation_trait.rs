@@ -1,5 +1,6 @@
 use crate::bodies::Satellite;
 use crate::time::Epoch;
+use super::ObservationResidual;
 
 /// Trait for different types of observations used in orbit determination
 pub trait ObservationType: Send + Sync {
@@ -20,4 +21,8 @@ pub trait ObservationType: Send + Sync {
     fn dimension(&self) -> usize {
         self.get_measurement_and_weight_vector().0.len()
     }
+
+    /// Get the observation residual (difference between observed and predicted values)
+    /// Returns None if the residual cannot be computed (e.g., satellite state unavailable)
+    fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual>;
 }

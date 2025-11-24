@@ -224,4 +224,9 @@ impl ObservationType for Observation {
     fn get_satellite_id(&self) -> Option<i32> {
         self.observed_satellite_id
     }
+
+    fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {
+        // Delegate to the existing inherent method
+        Observation::get_residual(self, satellite)
+    }
 }

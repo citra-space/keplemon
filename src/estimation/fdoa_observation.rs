@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use super::ObservationType;
+use super::{ObservationType, ObservationResidual};
 use crate::bodies::{Satellite, Sensor};
 use crate::elements::{CartesianState, CartesianVector};
 use crate::time::Epoch;
@@ -213,5 +213,23 @@ impl ObservationType for FDOAObservation {
 
     fn get_satellite_id(&self) -> Option<i32> {
         self.observed_satellite_id
+    }
+
+    fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {
+        // Compute predicted FDOA
+        match self.compute_predicted_vector(satellite) {
+            Ok(predicted_vec) => {
+                let predicted_fdoa = predicted_vec[0];
+                // Calculate residual: observed - predicted (in Hz)
+                let frequency_residual = self.frequency_difference - predicted_fdoa;
+                // Convert frequency difference to range rate difference (km/s)
+                // FDOA = (f0/c) * doppler, so: doppler = FDOA * c / f0
+                // range_rate = doppler, so: range_rate_residual = frequency_residual * c / f0
+                let range_rate_residual = frequency_residual * SPEED_OF_LIGHT / self.transmit_frequency;
+                // Return residual with only radial_velocity component populated
+                Some(ObservationResidual::with_radial_velocity_only(range_rate_residual))
+            }
+            Err(_) => None,
+        }
     }
 }

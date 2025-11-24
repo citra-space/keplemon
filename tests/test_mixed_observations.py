@@ -15,7 +15,7 @@ from keplemon.elements import CartesianVector, CartesianState, TopocentricElemen
 class TestMixedObservationBatches:
     """Test BatchLeastSquares with mixed observation types."""
 
-    def test_batch_with_tdoa_and_angle_observations(self):
+    def test_measurement_creation_tdoa_and_angle_observations(self):
         """Test creating a batch with both angle and TDOA observations."""
         # Create sensors
         sensor_angle = Sensor(angular_noise=0.001)

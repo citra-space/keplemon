@@ -37,6 +37,44 @@ impl From<[f64; sat_state_interface::XA_DELTA_SIZE]> for ObservationResidual {
     }
 }
 
+impl ObservationResidual {
+    /// Create a residual with only the range component (used for TDOA observations)
+    pub fn with_range_only(range: f64) -> Self {
+        Self {
+            range,
+            time: 0.0,
+            radial: 0.0,
+            in_track: 0.0,
+            cross_track: 0.0,
+            velocity: 0.0,
+            radial_velocity: 0.0,
+            in_track_velocity: 0.0,
+            cross_track_velocity: 0.0,
+            beta: 0.0,
+            height: 0.0,
+            angular_momentum: 0.0,
+        }
+    }
+
+    /// Create a residual with only the radial velocity component (used for FDOA observations)
+    pub fn with_radial_velocity_only(radial_velocity: f64) -> Self {
+        Self {
+            range: 0.0,
+            time: 0.0,
+            radial: 0.0,
+            in_track: 0.0,
+            cross_track: 0.0,
+            velocity: 0.0,
+            radial_velocity,
+            in_track_velocity: 0.0,
+            cross_track_velocity: 0.0,
+            beta: 0.0,
+            height: 0.0,
+            angular_momentum: 0.0,
+        }
+    }
+}
+
 #[pymethods]
 impl ObservationResidual {
     #[getter]

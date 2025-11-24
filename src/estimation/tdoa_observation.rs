@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use super::ObservationType;
+use super::{ObservationType, ObservationResidual};
 use crate::bodies::{Satellite, Sensor};
 use crate::elements::CartesianVector;
 use crate::time::Epoch;
@@ -173,5 +173,21 @@ impl ObservationType for TDOAObservation {
 
     fn get_satellite_id(&self) -> Option<i32> {
         self.observed_satellite_id
+    }
+
+    fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {
+        // Compute predicted TDOA
+        match self.compute_predicted_vector(satellite) {
+            Ok(predicted_vec) => {
+                let predicted_tdoa = predicted_vec[0];
+                // Calculate residual: observed - predicted (in seconds)
+                let time_residual = self.time_difference - predicted_tdoa;
+                // Convert time difference to range difference (km)
+                let range_residual = time_residual * SPEED_OF_LIGHT;
+                // Return residual with only range component populated
+                Some(ObservationResidual::with_range_only(range_residual))
+            }
+            Err(_) => None,
+        }
     }
 }
