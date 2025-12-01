@@ -96,15 +96,24 @@ impl BatchLeastSquares {
     }
 
     pub fn solve(&mut self) -> PyResult<()> {
+        println!("solve() called. use_drag={}, use_srp={}", self.use_drag, self.use_srp);
         self.iteration_count = 0;
         self.converged = false;
         self.delta_x = None;
         self.weighted_rms = None;
         let last_epoch = self.obs.iter().map(|o| o.get_epoch()).max().unwrap();
+        println!("About to clone_at_epoch to {:?}", last_epoch);
         self.current_estimate = match self.current_estimate.clone_at_epoch(last_epoch) {
-            Ok(satellite) => satellite,
-            Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
+            Ok(satellite) => {
+                println!("clone_at_epoch succeeded");
+                satellite
+            },
+            Err(e) => {
+                println!("clone_at_epoch failed: {}", e);
+                return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
+            },
         };
+        println!("Starting iterations...");
         for _ in 0..self.max_iterations {
             match self.iterate() {
                 Ok(_) => {
@@ -216,7 +225,6 @@ impl BatchLeastSquares {
 
         // Seed drag if not already set
         if self.get_estimate_drag() && force_properties.get_drag_coefficient() == 0.0 {
-            println!("Seeding drag force properties");
             force_properties.set_drag_coefficient(configs::DEFAULT_DRAG_TERM);
             force_properties.set_drag_area(1.0);
             force_properties.set_mass(1.0);
@@ -272,7 +280,7 @@ impl BatchLeastSquares {
 }
 
 impl BatchLeastSquares {
-    fn get_measurements_and_weights(&self) -> (DVector<f64>, DMatrix<f64>) {
+    fn get_measurements_and_weights(&self) -> (DVector<f64>, DVector<f64>) {
         let mut measurement_vec = Vec::new();
         let mut weight_diag = Vec::new();
         self.obs.iter().for_each(|ob| {
@@ -281,8 +289,8 @@ impl BatchLeastSquares {
             weight_diag.extend(w_vec);
         });
         let measurement_vector = DVector::from_vec(measurement_vec);
-        let weight_matrix = DMatrix::from_diagonal(&DVector::from_vec(weight_diag));
-        (measurement_vector, weight_matrix)
+        let weight_vector = DVector::from_vec(weight_diag);
+        (measurement_vector, weight_vector)
     }
 
     fn get_predicted_measurements(&self) -> Result<DVector<f64>, String> {
@@ -319,15 +327,60 @@ impl BatchLeastSquares {
     fn get_delta_x(&mut self) -> Result<(), String> {
         let (y, w) = self.get_measurements_and_weights();
         let y_hat = self.get_predicted_measurements()?;
-        let r = &y - &y_hat;
+        let mut r = (&y - &y_hat).clone_owned();
+        
+        // Handle Right Ascension wraparound (RA wraps at 360°)
+        // Measurement vector is [RA1, DEC1, RA2, DEC2, ...], so every even index is RA
+        for i in (0..r.len()).step_by(2) {
+            // Wrap residual to [-180°, 180°] for shortest angular distance
+            if r[i] > 180.0 {
+                r[i] -= 360.0;
+            } else if r[i] < -180.0 {
+                r[i] += 360.0;
+            }
+        }
+        
         let h = self.get_jacobians()?;
-        let h_transpose_w = &h.transpose() * &w;
-        let n = &h_transpose_w * &h;
-        let b = &h_transpose_w * &r;
+        
+        // Memory-efficient diagonal weight matrix operations
+        // Instead of creating W as a full matrix, we apply weights element-wise
+        // H^T * W * H = sum_i(w_i * h_i * h_i^T) where h_i is the i-th row of H
+        // H^T * W * r = sum_i(w_i * h_i * r_i)
+        let n_cols = h.ncols();
+        let mut n = DMatrix::zeros(n_cols, n_cols);
+        let mut b = DVector::zeros(n_cols);
+        let mut wrss = 0.0;
+        
+        // Compute normal equations and weighted residual sum of squares
+        for (h_row, (&weight, &residual)) in h.row_iter().zip(w.iter().zip(r.iter())) {
+            let wr = weight * residual;
+            
+            // Accumulate b = H^T * W * r
+            for (j, &h_ij) in h_row.iter().enumerate() {
+                b[j] += h_ij * wr;
+            }
+            
+            // Accumulate n = H^T * W * H (symmetric, so only compute upper triangle)
+            for j in 0..n_cols {
+                let wh_j = weight * h_row[j];
+                for k in j..n_cols {
+                    n[(j, k)] += wh_j * h_row[k];
+                }
+            }
+            
+            // Accumulate weighted residual sum of squares
+            wrss += weight * residual * residual;
+        }
+        
+        // Fill lower triangle of symmetric matrix
+        for j in 0..n_cols {
+            for k in 0..j {
+                n[(j, k)] = n[(k, j)];
+            }
+        }
 
-        // Compute weighted RMS for convergence testing and noise balancing
+        // Compute weighted RMS for convergence testing
         let m = r.len() as f64;
-        let wrss = (r.transpose() * &w * &r)[(0, 0)];
         let current_weighted_rms = (wrss / m).sqrt();
         if self.weighted_rms.is_some() && (current_weighted_rms - self.weighted_rms.unwrap()).abs() < 1e-3 {
             self.converged = true;
