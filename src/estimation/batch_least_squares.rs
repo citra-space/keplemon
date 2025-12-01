@@ -96,24 +96,15 @@ impl BatchLeastSquares {
     }
 
     pub fn solve(&mut self) -> PyResult<()> {
-        println!("solve() called. use_drag={}, use_srp={}", self.use_drag, self.use_srp);
         self.iteration_count = 0;
         self.converged = false;
         self.delta_x = None;
         self.weighted_rms = None;
         let last_epoch = self.obs.iter().map(|o| o.get_epoch()).max().unwrap();
-        println!("About to clone_at_epoch to {:?}", last_epoch);
         self.current_estimate = match self.current_estimate.clone_at_epoch(last_epoch) {
-            Ok(satellite) => {
-                println!("clone_at_epoch succeeded");
-                satellite
-            },
-            Err(e) => {
-                println!("clone_at_epoch failed: {}", e);
-                return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
-            },
+            Ok(satellite) => satellite,
+            Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
         };
-        println!("Starting iterations...");
         for _ in 0..self.max_iterations {
             match self.iterate() {
                 Ok(_) => {

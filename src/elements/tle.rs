@@ -211,7 +211,6 @@ impl TLE {
             new_elements[i] += delta_x[i];
         }
         let mut forces = self.get_force_properties();
-        
         if use_drag {
             forces.set_drag_coefficient(forces.get_drag_coefficient() + delta_x[6]);
         }

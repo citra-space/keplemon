@@ -60,7 +60,7 @@ impl Satellite {
         match self.inertial_propagator {
             Some(ref propagator) => {
                 new_satellite.inertial_propagator = Some(propagator.new_with_delta_x(delta_x, use_drag, use_srp)?);
-                // Get keplerian state and force properties from the NEW propagator, not the old one!
+                // Get keplerian state and force properties from the new propagator
                 new_satellite.keplerian_state = Some(new_satellite.inertial_propagator.as_ref().unwrap().get_keplerian_state().unwrap());
                 new_satellite.force_properties = new_satellite.inertial_propagator.as_ref().unwrap().get_force_properties().unwrap();
             }
