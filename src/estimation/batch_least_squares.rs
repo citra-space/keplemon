@@ -24,66 +24,6 @@ pub struct BatchLeastSquares {
     output_keplerian_type: KeplerianType,
 }
 
-// helper functions (not exposed to Python)
-impl BatchLeastSquares {
-    /// Wrap Right Ascension residuals to [-180°, 180°] for shortest angular distance
-    /// Measurement vector is [RA1, DEC1, RA2, DEC2, ...], so every even index is RA
-    fn wrap_ra_residuals(residuals: &mut DVector<f64>) {
-        for i in (0..residuals.len()).step_by(2) {
-            if residuals[i] > 180.0 {
-                residuals[i] -= 360.0;
-            } else if residuals[i] < -180.0 {
-                residuals[i] += 360.0;
-            }
-        }
-    }
-
-    /// Compute normal equations (H^T * W * H and H^T * W * r) using memory-efficient
-    /// element-wise operations for diagonal weight matrix W
-    /// Returns: (normal_matrix, rhs_vector, weighted_rss)
-    fn compute_normal_equations(
-        h: &DMatrix<f64>,
-        w: &DVector<f64>,
-        r: &DVector<f64>,
-    ) -> (DMatrix<f64>, DVector<f64>, f64) {
-        let n_cols = h.ncols();
-        let mut n = DMatrix::zeros(n_cols, n_cols);
-        let mut b = DVector::zeros(n_cols);
-        let mut wrss = 0.0;
-
-        // H^T * W * H = sum_i(w_i * h_i * h_i^T) where h_i is the i-th row of H
-        // H^T * W * r = sum_i(w_i * h_i * r_i)
-        for (h_row, (&weight, &residual)) in h.row_iter().zip(w.iter().zip(r.iter())) {
-            let wr = weight * residual;
-
-            // Accumulate b = H^T * W * r
-            for (j, &h_ij) in h_row.iter().enumerate() {
-                b[j] += h_ij * wr;
-            }
-
-            // Accumulate n = H^T * W * H (symmetric, so only compute upper triangle)
-            for j in 0..n_cols {
-                let wh_j = weight * h_row[j];
-                for k in j..n_cols {
-                    n[(j, k)] += wh_j * h_row[k];
-                }
-            }
-
-            // Accumulate weighted residual sum of squares
-            wrss += weight * residual * residual;
-        }
-
-        // Fill lower triangle of symmetric matrix
-        for j in 0..n_cols {
-            for k in 0..j {
-                n[(j, k)] = n[(k, j)];
-            }
-        }
-
-        (n, b, wrss)
-    }
-}
-
 #[pymethods]
 impl BatchLeastSquares {
     #[new]
@@ -380,10 +320,10 @@ impl BatchLeastSquares {
         let y_hat = self.get_predicted_measurements()?;
         let mut r = (&y - &y_hat).clone_owned();
         
-        Self::wrap_ra_residuals(&mut r);
-        
+        wrap_ra_residuals(&mut r);
+
         let h = self.get_jacobians()?;
-        let (n, b, wrss) = Self::compute_normal_equations(&h, &w, &r);
+        let (n, b, wrss) = compute_normal_equations(&h, &w, &r);
 
         // Compute weighted RMS for convergence testing
         let m: f64 = r.len() as f64;
@@ -400,4 +340,62 @@ impl BatchLeastSquares {
             None => Err("Unable to compute delta_x".to_string()),
         }
     }
+}
+
+
+/// Wrap Right Ascension residuals to [-180°, 180°] for shortest angular distance
+/// Measurement vector is [RA1, DEC1, RA2, DEC2, ...], so every even index is RA
+fn wrap_ra_residuals(residuals: &mut DVector<f64>) {
+    for i in (0..residuals.len()).step_by(2) {
+        if residuals[i] > 180.0 {
+            residuals[i] -= 360.0;
+        } else if residuals[i] < -180.0 {
+            residuals[i] += 360.0;
+        }
+    }
+}
+
+/// Compute normal equations (H^T * W * H and H^T * W * r) using memory-efficient
+/// element-wise operations for diagonal weight matrix W
+/// Returns: (normal_matrix, rhs_vector, weighted_rss)
+fn compute_normal_equations(
+    h: &DMatrix<f64>,
+    w: &DVector<f64>,
+    r: &DVector<f64>,
+) -> (DMatrix<f64>, DVector<f64>, f64) {
+    let n_cols = h.ncols();
+    let mut n = DMatrix::zeros(n_cols, n_cols);
+    let mut b = DVector::zeros(n_cols);
+    let mut wrss = 0.0;
+
+    // H^T * W * H = sum_i(w_i * h_i * h_i^T) where h_i is the i-th row of H
+    // H^T * W * r = sum_i(w_i * h_i * r_i)
+    for (h_row, (&weight, &residual)) in h.row_iter().zip(w.iter().zip(r.iter())) {
+        let wr = weight * residual;
+
+        // Accumulate b = H^T * W * r
+        for (j, &h_ij) in h_row.iter().enumerate() {
+            b[j] += h_ij * wr;
+        }
+
+        // Accumulate n = H^T * W * H (symmetric, so only compute upper triangle)
+        for j in 0..n_cols {
+            let wh_j = weight * h_row[j];
+            for k in j..n_cols {
+                n[(j, k)] += wh_j * h_row[k];
+            }
+        }
+
+        // Accumulate weighted residual sum of squares
+        wrss += weight * residual * residual;
+    }
+
+    // Fill lower triangle of symmetric matrix
+    for j in 0..n_cols {
+        for k in 0..j {
+            n[(j, k)] = n[(k, j)];
+        }
+    }
+
+    (n, b, wrss)
 }
