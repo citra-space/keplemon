@@ -941,30 +941,34 @@ pub static XA_SELOB_SIZE: i32 = 128;
 
 // ========================= End of auto generated code ==========================
 
-#[pyfunction]
-pub fn b3_to_csv(b3_string: &str) -> PyResult<String> {
+pub fn b3_to_csv(b3_string: &str) -> Result<String, String> {
     let mut input_str = GetSetString::from_string(b3_string);
     let mut output_str = GetSetString::new();
     let result = unsafe { ObsB3ToCsv(input_str.pointer(), output_str.pointer()) };
     match result {
         0 => Ok(output_str.value()),
-        _ => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            main_interface::get_last_error_message(),
-        )),
+        _ => Err(main_interface::get_last_error_message()),
     }
 }
 
-#[pyfunction]
-pub fn load_from_b3(b3_string: &str) -> PyResult<i64> {
+#[pyfunction(name = "b3_to_csv")]
+pub fn py_b3_to_csv(b3_string: &str) -> PyResult<String> {
+    b3_to_csv(b3_string).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+pub fn load_from_b3(b3_string: &str) -> Result<i64, String> {
     let mut input_str = GetSetString::from_string(b3_string);
     let result = unsafe { ObsAddFrB3Card(input_str.pointer()) };
     if result > 0 {
         Ok(result)
     } else {
-        Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            main_interface::get_last_error_message(),
-        ))
+        Err(main_interface::get_last_error_message())
     }
+}
+
+#[pyfunction(name = "load_from_b3")]
+pub fn py_load_from_b3(b3_string: &str) -> PyResult<i64> {
+    load_from_b3(b3_string).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
 }
 
 #[pyfunction]
@@ -972,37 +976,44 @@ pub fn remove_ob_key(obs_key: i64) {
     unsafe { ObsRemove(obs_key) };
 }
 
-#[pyfunction]
-pub fn get_ob_field(ob_key: i64, field_index: i32) -> PyResult<f64> {
+pub fn get_ob_field(ob_key: i64, field_index: i32) -> Result<f64, String> {
     let mut output = GetSetString::new();
     let result = unsafe { ObsGetField(ob_key, field_index, output.pointer()) };
     match result {
-        0 => Ok(output.value().parse::<f64>().unwrap_or(0.0)),
-        _ => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            main_interface::get_last_error_message(),
-        )),
+        0 => output
+            .value()
+            .parse::<f64>()
+            .map_err(|_| "Failed to parse field value".into()),
+        _ => Err(main_interface::get_last_error_message()),
     }
 }
 
-#[pyfunction]
-pub fn get_ob_array(ob_key: i64) -> PyResult<[f64; XA_OBS_SIZE as usize]> {
+#[pyfunction(name = "get_ob_field")]
+pub fn py_get_ob_field(ob_key: i64, field_index: i32) -> PyResult<f64> {
+    get_ob_field(ob_key, field_index).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+pub fn get_ob_array(ob_key: i64) -> Result<[f64; XA_OBS_SIZE as usize], String> {
     let mut output_array = [0.0; XA_OBS_SIZE as usize];
     let result = unsafe { ObsDataToArray(ob_key, &mut output_array) };
     match result {
         0 => Ok(output_array),
-        _ => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            main_interface::get_last_error_message(),
-        )),
+        _ => Err(main_interface::get_last_error_message()),
     }
+}
+
+#[pyfunction(name = "get_ob_array")]
+pub fn py_get_ob_array(ob_key: i64) -> PyResult<[f64; XA_OBS_SIZE as usize]> {
+    get_ob_array(ob_key).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
 }
 
 pub fn register_obs_interface(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let obs_interface = PyModule::new(parent_module.py(), "obs_interface")?;
-    obs_interface.add_function(wrap_pyfunction!(b3_to_csv, &obs_interface)?)?;
-    obs_interface.add_function(wrap_pyfunction!(load_from_b3, &obs_interface)?)?;
+    obs_interface.add_function(wrap_pyfunction!(py_b3_to_csv, &obs_interface)?)?;
+    obs_interface.add_function(wrap_pyfunction!(py_load_from_b3, &obs_interface)?)?;
     obs_interface.add_function(wrap_pyfunction!(remove_ob_key, &obs_interface)?)?;
-    obs_interface.add_function(wrap_pyfunction!(get_ob_field, &obs_interface)?)?;
-    obs_interface.add_function(wrap_pyfunction!(get_ob_array, &obs_interface)?)?;
+    obs_interface.add_function(wrap_pyfunction!(py_get_ob_field, &obs_interface)?)?;
+    obs_interface.add_function(wrap_pyfunction!(py_get_ob_array, &obs_interface)?)?;
     py_run!(
         parent_module.py(),
         obs_interface,

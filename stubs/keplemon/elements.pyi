@@ -389,8 +389,8 @@ class Ephemeris:
 class TopocentricElements:
     """
     Args:
-        ra: TEME right ascension in **_degrees_**
-        dec: TEME declination in **_degrees_**
+        right_ascension: TEME right ascension in **_degrees_**
+        declination: TEME declination in **_degrees_**
     """
 
     range: float | None
@@ -407,7 +407,7 @@ class TopocentricElements:
     declination_rate: float | None
     """Declination rate in **_degrees per second**"""
 
-    def __init__(self, ra: float, dec: float) -> None: ...
+    def __init__(self, right_ascension: float, declination: float) -> None: ...
     @classmethod
     def from_j2000(cls, epoch: Epoch, ra: float, dec: float) -> TopocentricElements:
         """

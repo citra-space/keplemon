@@ -13,8 +13,8 @@ class Observation:
     Args:
         sensor: Sensor that made the observation
         epoch: Time of the observation
-        observed_teme_topo: Topocentric elements of the satellite at the time of observation
-        observer_teme_pos: Position of the observer in TEME coordinates
+        observed_teme_topocentric: Topocentric elements of the satellite at the time of observation
+        observer_teme_position: Position of the observer in TEME coordinates
     """
 
     id: str
@@ -51,8 +51,8 @@ class Observation:
         self,
         sensor: Sensor,
         epoch: Epoch,
-        observed_teme_topo: TopocentricElements,
-        observer_teme_pos: CartesianVector,
+        observed_teme_topocentric: TopocentricElements,
+        observer_teme_position: CartesianVector,
     ) -> None: ...
     def get_residual(self, sat: Satellite) -> ObservationResidual | None:
         """
