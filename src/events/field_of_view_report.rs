@@ -37,7 +37,7 @@ impl FieldOfViewReport {
         Self {
             epoch,
             sensor_position,
-            sensor_direction: sensor_direction.clone(),
+            sensor_direction: *sensor_direction,
             fov_angle,
             reference_frame,
             candidates: Vec::new(),
@@ -61,7 +61,7 @@ impl FieldOfViewReport {
 
     #[getter]
     pub fn get_sensor_direction(&self) -> TopocentricElements {
-        self.sensor_direction.clone()
+        self.sensor_direction
     }
 
     #[getter]

@@ -24,6 +24,14 @@ from keplemon._keplemon.saal.astro_func_interface import (  # type: ignore
     YROFEQNX_2000,
     YROFEQNX_CURR,
     get_jpl_sun_and_moon_position,
+    XA_RAE_RANGE,
+    XA_RAE_AZ,
+    XA_RAE_EL,
+    XA_RAE_RANGEDOT,
+    XA_RAE_AZDOT,
+    XA_RAE_ELDOT,
+    XA_RAE_SIZE,
+    horizon_to_teme,
 )
 
 __all__ = [
@@ -52,4 +60,12 @@ __all__ = [
     "kozai_to_brouwer",
     "brouwer_to_kozai",
     "sma_to_mean_motion",
+    "XA_RAE_RANGE",
+    "XA_RAE_AZ",
+    "XA_RAE_EL",
+    "XA_RAE_RANGEDOT",
+    "XA_RAE_AZDOT",
+    "XA_RAE_ELDOT",
+    "XA_RAE_SIZE",
+    "horizon_to_teme",
 ]

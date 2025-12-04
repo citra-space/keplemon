@@ -16,7 +16,7 @@ use rayon::current_num_threads;
 
 #[ctor]
 fn init() {
-    saal::main_interface::set_key_mode(enums::SAALKeyMode::DirectMemoryAccess);
+    saal::MainInterface::set_key_mode(enums::SAALKeyMode::DirectMemoryAccess);
 }
 
 #[pyfunction]
@@ -35,6 +35,7 @@ fn set_thread_count(count: usize) {
 // The top-level module that includes functions and nested submodules.
 #[pymodule]
 fn _keplemon(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pyo3_log::init();
     m.add_function(wrap_pyfunction!(get_thread_count, m)?)?;
     m.add_function(wrap_pyfunction!(set_thread_count, m)?)?;
     m.add_function(wrap_pyfunction!(saal::sgp4_prop_interface::set_license_file_path, m)?)?;
@@ -44,7 +45,6 @@ fn _keplemon(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
     saal::register_saal(m)?;
-    saal::obs_interface::register_obs_interface(m)?;
     saal::astro_func_interface::register_astro_func_interface(m)?;
     saal::time_func_interface::register_time_func_interface(m)?;
     enums::register_enums(m)?;

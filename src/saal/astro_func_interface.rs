@@ -5,11 +5,9 @@ use pyo3::prelude::*;
 use pyo3::py_run;
 use std::os::raw::c_char;
 
+use super::main_interface::MainInterface;
 use super::time_func_interface;
 use super::GetSetString;
-use crate::elements::CartesianState;
-use crate::elements::CartesianVector;
-use crate::elements::TopocentricElements;
 
 extern "C" {
     //  Notes: This function has been deprecated since v9.0.
@@ -523,18 +521,18 @@ pub static XA_TOPO_SIZE: usize = 10;
 
 // Indexes for RAE components
 // Range (km)
-pub static XA_RAE_RANGE: i32 = 0;
+pub static XA_RAE_RANGE: usize = 0;
 // Azimuth (deg)
-pub static XA_RAE_AZ: i32 = 1;
+pub static XA_RAE_AZ: usize = 1;
 // Elevation (deg)
-pub static XA_RAE_EL: i32 = 2;
+pub static XA_RAE_EL: usize = 2;
 // Range dot (km/s)
-pub static XA_RAE_RANGEDOT: i32 = 3;
+pub static XA_RAE_RANGEDOT: usize = 3;
 // Azimuth dot (deg/s)
-pub static XA_RAE_AZDOT: i32 = 4;
+pub static XA_RAE_AZDOT: usize = 4;
 // Elevation dot (deg/s)
-pub static XA_RAE_ELDOT: i32 = 5;
-pub static XA_RAE_SIZE: i32 = 6;
+pub static XA_RAE_ELDOT: usize = 5;
+pub static XA_RAE_SIZE: usize = 6;
 
 // Year of Equinox indicator
 // Date of observation
@@ -765,29 +763,6 @@ pub fn topo_epoch_to_date(ds50_in: f64, ra: f64, dec: f64, ds50_out: f64) -> (f6
     (ra_out, dec_out)
 }
 
-pub fn teme_to_topocentric(sensor_teme: CartesianVector, observed_teme: CartesianState) -> TopocentricElements {
-    let theta_g = observed_teme.epoch.to_fk5_greenwich_angle();
-    let lla = theta_teme_to_lla(theta_g, &observed_teme.position.into());
-    let theta = theta_g + lla[1].to_radians();
-    let mut xa_topo = [0.0; XA_TOPO_SIZE];
-    unsafe {
-        ECIToTopoComps(
-            theta,
-            lla[0],
-            &sensor_teme.into(),
-            &observed_teme.position.into(),
-            &observed_teme.velocity.into(),
-            &mut xa_topo,
-        );
-    }
-    let mut topo_elements = TopocentricElements::new(xa_topo[XA_TOPO_RA], xa_topo[XA_TOPO_DEC]);
-    topo_elements.set_declination_rate(Some(xa_topo[XA_TOPO_DECDOT]));
-    topo_elements.set_right_ascension_rate(Some(xa_topo[XA_TOPO_RADOT]));
-    topo_elements.set_range(Some(xa_topo[XA_TOPO_RANGE]));
-    topo_elements.set_range_rate(Some(xa_topo[XA_TOPO_RANGEDOT]));
-    topo_elements
-}
-
 pub fn osculating_to_mean(xa_osc: &[f64; XA_KEP_SIZE]) -> [f64; XA_KEP_SIZE] {
     let mut xa_mean = [0.0; XA_KEP_SIZE];
     unsafe {
@@ -858,6 +833,38 @@ pub fn py_ra_dec_to_az_el_time(ds50_utc: f64, lat: f64, long: f64, ra: f64, dec:
     ra_dec_to_az_el_time(ds50_utc, lat, long, ra, dec)
 }
 
+pub fn horizon_to_teme(
+    theta: f64,
+    lat: f64,
+    sen_pos: &[f64; 3],
+    xa_rae: &[f64; XA_RAE_SIZE],
+) -> Result<[f64; 6], String> {
+    let mut teme_pos = [0.0; 3];
+    let mut teme_vel = [0.0; 3];
+
+    unsafe {
+        RAEToECI(theta, lat, xa_rae, sen_pos, &mut teme_pos, &mut teme_vel);
+    }
+
+    if teme_pos.iter().all(|&x| x == 0.0) && teme_vel.iter().all(|&x| x == 0.0) {
+        Err(MainInterface::get_last_error_message())
+    } else {
+        Ok([
+            teme_pos[0],
+            teme_pos[1],
+            teme_pos[2],
+            teme_vel[0],
+            teme_vel[1],
+            teme_vel[2],
+        ])
+    }
+}
+
+#[pyfunction(name = "horizon_to_teme")]
+pub fn py_horizon_to_teme(theta: f64, lat: f64, sen_pos: [f64; 3], xa_rae: [f64; XA_RAE_SIZE]) -> PyResult<[f64; 6]> {
+    horizon_to_teme(theta, lat, &sen_pos, &xa_rae).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
 pub fn theta_teme_to_lla(theta: f64, teme_pos: &[f64; 3]) -> [f64; 3] {
     let mut pos_lla = [0.0; 3];
     unsafe {
@@ -884,18 +891,43 @@ pub fn py_time_teme_to_lla(ds50utc: f64, teme_pos: [f64; 3]) -> [f64; 3] {
     time_teme_to_lla(ds50utc, &teme_pos)
 }
 
-pub fn teme_to_topo(
+pub fn efg_to_lla(efg_pos: &[f64; 3]) -> Result<[f64; 3], String> {
+    let mut pos_lla = [0.0; 3];
+    if efg_pos.iter().all(|&x| x == 0.0) {
+        return Err("Input EFG position is zero vector.".to_string());
+    }
+    unsafe {
+        EFGPosToLLH(efg_pos, &mut pos_lla);
+    }
+    if pos_lla.iter().all(|&x| x == 0.0) {
+        Err(MainInterface::get_last_error_message())
+    } else {
+        Ok(pos_lla)
+    }
+}
+
+#[pyfunction(name = "efg_to_lla")]
+pub fn py_efg_to_lla(efg_pos: [f64; 3]) -> PyResult<[f64; 3]> {
+    efg_to_lla(&efg_pos).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+pub fn teme_to_topocentric(
     theta: f64,
     lat: f64,
     sen_pos: &[f64; 3],
     sat_pos: &[f64; 3],
     sat_vel: &[f64; 3],
-) -> [f64; XA_TOPO_SIZE] {
+) -> Result<[f64; XA_TOPO_SIZE], String> {
     let mut xa_topo = [0.0; XA_TOPO_SIZE];
     unsafe {
         ECIToTopoComps(theta, lat, sen_pos, sat_pos, sat_vel, &mut xa_topo);
     }
-    xa_topo
+
+    if xa_topo.iter().all(|&x| x == 0.0) {
+        Err(MainInterface::get_last_error_message())
+    } else {
+        Ok(xa_topo)
+    }
 }
 
 pub fn get_jpl_sun_and_moon_position(ds50utc: f64) -> ([f64; 3], [f64; 3]) {
@@ -919,8 +951,9 @@ pub fn py_teme_to_topo(
     sen_pos: [f64; 3],
     sat_pos: [f64; 3],
     sat_vel: [f64; 3],
-) -> [f64; XA_TOPO_SIZE] {
-    teme_to_topo(theta, lat, &sen_pos, &sat_pos, &sat_vel)
+) -> PyResult<[f64; XA_TOPO_SIZE]> {
+    teme_to_topocentric(theta, lat, &sen_pos, &sat_pos, &sat_vel)
+        .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
 }
 
 #[pyfunction(name = "mean_motion_to_sma")]
@@ -955,6 +988,7 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
         py_get_jpl_sun_and_moon_position,
         &astro_func_interface
     )?)?;
+    astro_func_interface.add_function(wrap_pyfunction!(py_horizon_to_teme, &astro_func_interface)?)?;
 
     astro_func_interface.add("XA_TOPO_RA", XA_TOPO_RA)?;
     astro_func_interface.add("XA_TOPO_DEC", XA_TOPO_DEC)?;
@@ -969,6 +1003,13 @@ pub fn register_astro_func_interface(parent_module: &Bound<'_, PyModule>) -> PyR
     astro_func_interface.add("XA_TOPO_SIZE", XA_TOPO_SIZE)?;
     astro_func_interface.add("YROFEQNX_2000", YROFEQNX_2000)?;
     astro_func_interface.add("YROFEQNX_CURR", YROFEQNX_CURR)?;
+    astro_func_interface.add("XA_RAE_RANGE", XA_RAE_RANGE)?;
+    astro_func_interface.add("XA_RAE_AZ", XA_RAE_AZ)?;
+    astro_func_interface.add("XA_RAE_EL", XA_RAE_EL)?;
+    astro_func_interface.add("XA_RAE_RANGEDOT", XA_RAE_RANGEDOT)?;
+    astro_func_interface.add("XA_RAE_AZDOT", XA_RAE_AZDOT)?;
+    astro_func_interface.add("XA_RAE_ELDOT", XA_RAE_ELDOT)?;
+    astro_func_interface.add("XA_RAE_SIZE", XA_RAE_SIZE)?;
     py_run!(
         parent_module.py(),
         astro_func_interface,

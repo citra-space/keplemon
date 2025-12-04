@@ -306,6 +306,18 @@ class Observatory:
         """
         ...
 
+    def get_theta(self, epoch: Epoch) -> float:
+        """
+        Calculate the Greenwich angle plus the observatory longitude at a given epoch.
+
+        Args:
+            epoch: UTC epoch for the calculation
+
+        Returns:
+            Greenwich angle plus the observatory longitude in **_radians_**
+        """
+        ...
+
     def get_horizon_access_report(
         self,
         satellite: Satellite,

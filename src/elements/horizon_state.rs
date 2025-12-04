@@ -1,4 +1,5 @@
-use super::{CartesianState, HorizonElements};
+use super::{CartesianState, HorizonElements, TopocentricState};
+use crate::bodies::Observatory;
 use crate::saal::astro_func_interface;
 use crate::time::Epoch;
 use pyo3::prelude::*;
@@ -12,24 +13,54 @@ pub struct HorizonState {
 
 impl Copy for HorizonState {}
 
+impl HorizonState {
+    pub fn new(epoch: Epoch, elements: HorizonElements) -> Self {
+        Self { epoch, elements }
+    }
+
+    pub fn from_topocentric_state(state: &TopocentricState, observer: &Observatory) -> Result<Self, String> {
+        let az_el = astro_func_interface::ra_dec_to_az_el_time(
+            state.get_epoch().days_since_1950,
+            observer.get_latitude(),
+            observer.get_longitude(),
+            state.get_right_ascension(),
+            state.get_declination(),
+        );
+        let mut elements = HorizonElements::new(az_el[0], az_el[1]);
+        elements.set_range(state.get_range());
+
+        Ok(Self {
+            epoch: state.get_epoch(),
+            elements,
+        })
+    }
+}
+
 #[pymethods]
 impl HorizonState {
     #[new]
-    pub fn new(epoch: Epoch, elements: HorizonElements) -> Self {
-        Self { epoch, elements }
+    pub fn py_new(epoch: Epoch, elements: HorizonElements) -> Self {
+        Self::new(epoch, elements)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_topocentric_state")]
+    pub fn py_from_topocentric_state(state: &TopocentricState, observer: &Observatory) -> PyResult<Self> {
+        Self::from_topocentric_state(state, observer).map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     #[staticmethod]
     pub fn from_teme_states(sensor_teme: CartesianState, target_teme: CartesianState) -> Self {
         let theta_g = sensor_teme.get_epoch().to_fk5_greenwich_angle();
         let lla = astro_func_interface::theta_teme_to_lla(theta_g, &sensor_teme.position.into());
-        let topo = astro_func_interface::teme_to_topo(
+        let topo = astro_func_interface::teme_to_topocentric(
             theta_g + lla[1].to_radians(),
             lla[0],
             &sensor_teme.position.into(),
             &target_teme.position.into(),
             &target_teme.velocity.into(),
-        );
+        )
+        .unwrap();
         let elements = HorizonElements {
             azimuth: topo[astro_func_interface::XA_TOPO_AZ],
             elevation: topo[astro_func_interface::XA_TOPO_EL],

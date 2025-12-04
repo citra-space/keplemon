@@ -12,7 +12,7 @@ impl FieldOfViewCandidate {
     pub fn new(satellite_id: String, direction: &TopocentricElements) -> Self {
         Self {
             satellite_id,
-            direction: direction.clone(),
+            direction: *direction,
         }
     }
 }
@@ -26,6 +26,6 @@ impl FieldOfViewCandidate {
 
     #[getter]
     pub fn get_direction(&self) -> TopocentricElements {
-        self.direction.clone()
+        self.direction
     }
 }

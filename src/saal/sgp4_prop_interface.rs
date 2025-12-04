@@ -1,7 +1,8 @@
 // This wrapper file was generated automatically by the GenDllWrappers program.
 #![allow(non_snake_case)]
 #![allow(dead_code)]
-use super::{main_interface, GetSetString};
+use super::main_interface::MainInterface;
+use super::GetSetString;
 use crate::exceptions::SAALError;
 use pyo3::prelude::*;
 use pyo3::py_run;
@@ -330,7 +331,7 @@ pub fn load_key(sat_key: i64) -> Result<(), String> {
     let result = unsafe { Sgp4InitSat(sat_key) };
     match result {
         0 => Ok(()),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -339,7 +340,7 @@ pub fn remove_key(sat_key: i64) -> Result<(), String> {
     let result = unsafe { Sgp4RemoveSat(sat_key) };
     match result {
         0 => Ok(()),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -348,7 +349,7 @@ pub fn clear_keys() -> Result<(), String> {
     let result = unsafe { Sgp4RemoveAllSats() };
     match result {
         0 => Ok(()),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -362,7 +363,7 @@ pub fn get_state_at_ds50(sat_key: i64, ds50_utc: f64) -> Result<MSEPosVelLLH, St
     let result = unsafe { Sgp4PropDs50UTC(sat_key, ds50_utc, &mut mse, &mut pos, &mut vel, &mut llh) };
     match result {
         0 => Ok((mse, pos, vel, llh)),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -373,7 +374,7 @@ pub fn get_posvel_at_ds50(sat_key: i64, ds50_utc: f64) -> Result<([f64; 3], [f64
     let result = unsafe { Sgp4PropDs50UtcPosVel(sat_key, ds50_utc, &mut pos, &mut vel) };
     match result {
         0 => Ok((pos, vel)),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -383,7 +384,7 @@ pub fn get_llh_at_ds50(sat_key: i64, ds50_utc: f64) -> Result<[f64; 3], String> 
     let result = unsafe { Sgp4PropDs50UtcLLH(sat_key, ds50_utc, &mut llh) };
     match result {
         0 => Ok(llh),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -393,7 +394,7 @@ pub fn get_pos_at_ds50(sat_key: i64, ds50_utc: f64) -> Result<[f64; 3], String> 
     let result = unsafe { Sgp4PropDs50UtcPos(sat_key, ds50_utc, &mut pos) };
     match result {
         0 => Ok(pos),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -402,7 +403,7 @@ pub fn get_all_at_ds50(sat_key: i64, ds50_utc: f64) -> Result<[f64; XA_SGP4OUT_S
     let result = unsafe { Sgp4PropAll(sat_key, SGP4_TIMETYPE_DS50UTC, ds50_utc, &mut all) };
     match result {
         0 => Ok(all),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -412,7 +413,7 @@ pub fn get_equinoctial_at_ds50(sat_key: i64, ds50_utc: f64) -> Result<[f64; 6], 
     let result = unsafe { XpGetNativeElts(sat_key, ds50_utc, &mut xa_eqnx, &mut xa_eqnx_dot) };
     match result {
         0 => Ok(xa_eqnx),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -438,7 +439,7 @@ pub fn reepoch_tle(sat_key: i64, re_epoch_ds50_utc: f64) -> Result<(String, Stri
             line1_out.value().trim().to_string(),
             line2_out.value().trim().to_string(),
         )),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 

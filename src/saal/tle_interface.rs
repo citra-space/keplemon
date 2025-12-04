@@ -1,7 +1,8 @@
 // This wrapper file was generated automatically by the GenDllWrappers program.
 #![allow(non_snake_case)]
 #![allow(dead_code)]
-use super::main_interface;
+
+use super::main_interface::MainInterface;
 use super::GetSetString;
 use std::os::raw::c_char;
 use std::result::Result;
@@ -644,7 +645,7 @@ pub fn lines_to_arrays(line_1: &str, line_2: &str) -> Result<([f64; XA_TLE_SIZE]
     };
     match result {
         0 => Ok((xa_tle, xs_tle.value())),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -658,7 +659,7 @@ pub fn clear_memory() -> Result<(), String> {
     let result = unsafe { TleRemoveAllSats() };
     match result {
         0 => Ok(()),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -671,10 +672,9 @@ pub fn get_number_in_memory() -> i32 {
 pub fn load_from_arrays(xa_tle: [f64; XA_TLE_SIZE], xs_tle: &str) -> Result<i64, String> {
     let mut c_xs_tle = GetSetString::from_string(xs_tle);
     let key = unsafe { TleAddSatFrArray(&xa_tle, c_xs_tle.pointer()) };
-    if key > main_interface::DUPKEY as i64 {
-        Ok(key)
-    } else {
-        Err(main_interface::get_last_error_message())
+    match key {
+        0 => Err(MainInterface::get_last_error_message()),
+        _ => Ok(key),
     }
 }
 
@@ -685,7 +685,7 @@ pub fn arrays_to_lines(xa_tle: [f64; XA_TLE_SIZE], xs_tle: &str) -> Result<(Stri
     let mut c_xs_tle = GetSetString::from_string(xs_tle);
     unsafe { TleGPArrayToLines(&xa_tle, c_xs_tle.pointer(), c_line_1.pointer(), c_line_2.pointer()) };
     if c_line_1.value().is_empty() || c_line_2.value().is_empty() {
-        Err(main_interface::get_last_error_message())
+        Err(MainInterface::get_last_error_message())
     } else {
         Ok((c_line_1.value().trim().to_string(), c_line_2.value().trim().to_string()))
     }

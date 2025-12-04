@@ -163,16 +163,6 @@ pub static DUPKEY: i32 = 0;
 
 //*******************************************************************************
 
-// Options used in GetLoaded()
-// ascending order
-pub static IDX_ORDER_ASC: i32 = 0;
-// descending order
-pub static IDX_ORDER_DES: i32 = 1;
-// order as read
-pub static IDX_ORDER_READ: i32 = 2;
-// tree traversal order
-pub static IDX_ORDER_QUICK: i32 = 9;
-
 //*******************************************************************************
 
 // Different key mode options for all elset-satKey/obs-obsKey/sensor-senKey
@@ -212,34 +202,65 @@ pub static TIME_IS_UTC: i32 = 3;
 
 pub const MAX_ALPHA_5_SAT_ID: i32 = 339999;
 
-#[inline]
-pub fn get_last_error_message() -> String {
-    let mut msg = GetSetString::new();
-    unsafe { GetLastErrMsg(msg.pointer()) };
-    msg.value()
-}
+#[pyclass]
+pub struct MainInterface;
 
-#[pyfunction]
-pub fn get_key_mode() -> SAALKeyMode {
-    let key_mode = unsafe { GetAllKeyMode() };
-    match key_mode as isize {
-        ALL_KEYMODE_DMA => SAALKeyMode::DirectMemoryAccess,
-        ALL_KEYMODE_NODUP => SAALKeyMode::NoDuplicates,
-        _ => panic!("Unknown key mode"),
+impl MainInterface {
+    pub fn get_last_error_message() -> String {
+        let mut msg = GetSetString::new();
+        unsafe { GetLastErrMsg(msg.pointer()) };
+        msg.value()
+    }
+
+    pub fn get_key_mode() -> Result<SAALKeyMode, String> {
+        let key_mode = unsafe { GetAllKeyMode() };
+        match key_mode as isize {
+            ALL_KEYMODE_DMA => Ok(SAALKeyMode::DirectMemoryAccess),
+            ALL_KEYMODE_NODUP => Ok(SAALKeyMode::NoDuplicates),
+            _ => Err("Unknown key mode".to_string()),
+        }
+    }
+
+    pub fn set_key_mode(key_mode: SAALKeyMode) -> Result<(), String> {
+        let key_mode = match key_mode {
+            SAALKeyMode::DirectMemoryAccess => ALL_KEYMODE_DMA,
+            SAALKeyMode::NoDuplicates => ALL_KEYMODE_NODUP,
+        };
+        let result = unsafe { SetAllKeyMode(key_mode as i32) };
+        match result {
+            0 => Ok(()),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
     }
 }
 
-#[pyfunction]
-pub fn set_key_mode(key_mode: SAALKeyMode) -> PyResult<()> {
-    let key_mode = match key_mode {
-        SAALKeyMode::DirectMemoryAccess => ALL_KEYMODE_DMA,
-        SAALKeyMode::NoDuplicates => ALL_KEYMODE_NODUP,
-    };
-    let result = unsafe { SetAllKeyMode(key_mode as i32) };
-    if result != 0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            get_last_error_message(),
-        ));
+#[pymethods]
+impl MainInterface {
+    // Options used in GetLoaded()
+    // ascending order
+    pub const IDX_ORDER_ASC: usize = 0;
+    // descending order
+    pub const IDX_ORDER_DES: usize = 1;
+    // order as read
+    pub const IDX_ORDER_READ: usize = 2;
+    // tree traversal order
+    pub const IDX_ORDER_QUICK: usize = 9;
+
+    #[staticmethod]
+    #[pyo3(name = "get_last_error_message")]
+    pub fn py_get_last_error_message() -> PyResult<String> {
+        Ok(MainInterface::get_last_error_message())
     }
-    Ok(())
+
+    #[staticmethod]
+    #[pyo3(name = "get_key_mode")]
+    pub fn py_get_key_mode() -> PyResult<SAALKeyMode> {
+        MainInterface::get_key_mode().map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "set_key_mode")]
+    pub fn py_set_key_mode(key_mode: SAALKeyMode) -> PyResult<()> {
+        MainInterface::set_key_mode(key_mode).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+    }
 }

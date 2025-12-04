@@ -1,6 +1,63 @@
-from keplemon.elements import TLE, KeplerianState, KeplerianElements
+import pytest
+
+from keplemon.elements import (
+    TLE,
+    KeplerianState,
+    KeplerianElements,
+    HorizonElements,
+    HorizonState,
+    TopocentricState,
+    TopocentricElements,
+)
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame, TimeSystem
 from keplemon.time import Epoch
+from keplemon.bodies import Observatory
+
+
+@pytest.fixture()
+def observatory():
+    return Observatory(latitude=38.926021, longitude=-104.826633, altitude=1.94)
+
+
+@pytest.fixture()
+def angles_only_topocentric_state():
+    epoch = Epoch.from_iso("2025-11-17T00:28:37.486761Z", TimeSystem.UTC)
+    elements = TopocentricElements.from_j2000(epoch, 330.625950, -6.337688)
+    return TopocentricState(epoch=epoch, elements=elements)
+
+
+@pytest.fixture()
+def angles_only_horizon_state(angles_only_topocentric_state: TopocentricState):
+    epoch = angles_only_topocentric_state.epoch
+    elements = HorizonElements(163.02889043353866, 43.44139004143117)
+    return HorizonState(epoch=epoch, elements=elements)
+
+
+class TestHorizonState:
+
+    def test_from_topocentric_state(
+        self,
+        observatory: Observatory,
+        angles_only_topocentric_state: TopocentricState,
+        angles_only_horizon_state: HorizonState,
+    ):
+
+        horizon = HorizonState.from_topocentric_state(angles_only_topocentric_state, observatory)
+        assert horizon.elevation == pytest.approx(angles_only_horizon_state.elevation, abs=1e-6)
+        assert horizon.azimuth == pytest.approx(angles_only_horizon_state.azimuth, abs=1e-6)
+
+
+class TestTopocentricState:
+
+    def test_from_horizon_state(
+        self,
+        observatory: Observatory,
+        angles_only_horizon_state: HorizonState,
+        angles_only_topocentric_state: TopocentricState,
+    ):
+        topocentric = TopocentricState.from_horizon_state(angles_only_horizon_state, observatory)
+        assert topocentric.right_ascension == pytest.approx(angles_only_topocentric_state.right_ascension, abs=1e-6)
+        assert topocentric.declination == pytest.approx(angles_only_topocentric_state.declination, abs=1e-6)
 
 
 def test_tle():

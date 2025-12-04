@@ -1,7 +1,8 @@
 // This wrapper file was generated automatically by the GenDllWrappers program.
 #![allow(non_snake_case)]
 #![allow(dead_code)]
-use super::{main_interface, GetSetString};
+use super::main_interface::MainInterface;
+use super::GetSetString;
 use crate::exceptions::SAALError;
 use pyo3::prelude::*;
 use pyo3::py_run;
@@ -294,7 +295,7 @@ pub fn load_time_constants(path: &str) -> Result<(), String> {
     if err_code == 0 {
         Ok(())
     } else {
-        Err(main_interface::get_last_error_message())
+        Err(MainInterface::get_last_error_message())
     }
 }
 

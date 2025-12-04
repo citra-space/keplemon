@@ -3,6 +3,7 @@ from __future__ import annotations
 from keplemon.time import Epoch
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame
 from keplemon.events import CloseApproach
+from keplemon.bodies import Observatory
 
 class RelativeState:
     epoch: Epoch
@@ -105,6 +106,8 @@ class HorizonState:
     """Elevation rate in **_degrees per second_**"""
 
     def __init__(self, epoch: Epoch, elements: HorizonElements) -> None: ...
+    @classmethod
+    def from_topocentric_state(cls, state: TopocentricState, observer: Observatory) -> HorizonState: ...
 
 class KeplerianElements:
     """
@@ -415,5 +418,46 @@ class TopocentricElements:
             epoch: UTC epoch of the angles
             ra: J2000 right ascension in **_degrees_**
             dec: J2000 declination in **_degrees_**
+        """
+        ...
+
+class TopocentricState:
+    """
+    Args:
+        epoch: UTC epoch of the state
+        elements: TopocentricElements of the state
+    """
+
+    epoch: Epoch
+    """UTC epoch of the state"""
+
+    elements: TopocentricElements
+    """Topocentric elements of the state"""
+
+    range: float | None
+    """Range in **_kilometers_**"""
+
+    right_ascension: float
+    """TEME right ascension in **_degrees_**"""
+
+    declination: float
+    """TEME declination in **_degrees_**"""
+
+    range_rate: float | None
+    """Range rate in **_kilometers per second_**"""
+
+    right_ascension_rate: float | None
+    """Right ascension rate in **_degrees per second**"""
+
+    declination_rate: float | None
+    """Declination rate in **_degrees per second**"""
+
+    def __init__(self, epoch: Epoch, elements: TopocentricElements) -> None: ...
+    @classmethod
+    def from_horizon_state(cls, horizon_state: HorizonState, observer: Observatory) -> TopocentricState:
+        """
+        Args:
+            horizon_state: HorizonState of the target
+            observer: Position of the observer
         """
         ...

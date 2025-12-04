@@ -1,7 +1,7 @@
 // This wrapper file was generated automatically by the GenDllWrappers program.
 #![allow(non_snake_case)]
 #![allow(dead_code)]
-use super::main_interface;
+use super::main_interface::MainInterface;
 use std::os::raw::c_char;
 
 extern "C" {
@@ -293,7 +293,7 @@ pub fn add_satellite_state(
     };
     match status {
         0 => Ok(()),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -311,7 +311,7 @@ pub fn get_posvel_at_ds50(key: i64, ds50_utc: f64) -> Result<([f64; 3], [f64; 3]
     let status = unsafe { ExtEphDs50UTC(key, ds50_utc, &mut mse, &mut pos, &mut vel, &mut rev_num) };
     match status {
         0 => Ok((pos, vel)),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -323,7 +323,7 @@ pub fn get_posvel_at_index(key: i64, index: i32) -> Result<([f64; 3], [f64; 3]),
     let status = unsafe { ExtEphGetEphemeris(key, index, &mut ds50_utc, &mut pos, &mut vel, &mut rev_num) };
     match status {
         0 => Ok((pos, vel)),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -332,7 +332,7 @@ pub fn get_number_of_states(key: i64) -> Result<i32, String> {
     let status = unsafe { ExtEphGetNumPts(key, &mut num_of_pts) };
     match status {
         0 => Ok(num_of_pts),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }
 
@@ -342,6 +342,6 @@ pub fn get_ds50_utc_range(key: i64) -> Result<(f64, f64), String> {
     let status = unsafe { ExtEphStartEndTime(key, &mut start_ds50_utc, &mut end_ds50_utc) };
     match status {
         0 => Ok((start_ds50_utc, end_ds50_utc)),
-        _ => Err(main_interface::get_last_error_message()),
+        _ => Err(MainInterface::get_last_error_message()),
     }
 }

@@ -13,6 +13,7 @@ mod relative_state;
 mod spherical_vector;
 mod tle;
 mod topocentric_elements;
+mod topocentric_state;
 
 pub use bore_to_body_angles::BoreToBodyAngles;
 pub use cartesian_state::CartesianState;
@@ -31,6 +32,7 @@ pub use relative_state::RelativeState;
 pub use spherical_vector::SphericalVector;
 pub use tle::TLE;
 pub use topocentric_elements::TopocentricElements;
+pub use topocentric_state::TopocentricState;
 
 pub const B_STAR_TO_B_TERM: f64 = 12.741621;
 
@@ -52,6 +54,7 @@ pub fn register_elements(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     elements.add_class::<OrbitPlotData>()?;
     elements.add_class::<RelativeState>()?;
     elements.add_class::<BoreToBodyAngles>()?;
+    elements.add_class::<TopocentricState>()?;
     py_run!(
         parent_module.py(),
         elements,

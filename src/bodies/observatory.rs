@@ -135,13 +135,14 @@ impl Observatory {
         if let Some(sat_state) = sat.get_state_at_epoch(epoch) {
             let theta_g = epoch.to_fk5_greenwich_angle();
             let lla = astro_func_interface::theta_teme_to_lla(theta_g, &observer_position.into());
-            let topo = astro_func_interface::teme_to_topo(
+            let topo = astro_func_interface::teme_to_topocentric(
                 theta_g + lla[1].to_radians(),
                 lla[0],
                 &observer_position.into(),
                 &sat_state.position.into(),
                 &sat_state.velocity.into(),
-            );
+            )
+            .unwrap();
             let mut elements = TopocentricElements::new(
                 topo[astro_func_interface::XA_TOPO_RA],
                 topo[astro_func_interface::XA_TOPO_DEC],
@@ -196,13 +197,14 @@ impl Observatory {
                     let relative_position = sat_state.position - observer_position;
                     let angle = teme_direction.angle(&relative_position).to_degrees();
                     if angle <= angular_threshold {
-                        let topo = astro_func_interface::teme_to_topo(
+                        let topo = astro_func_interface::teme_to_topocentric(
                             theta_g + lla[1].to_radians(),
                             lla[0],
                             &observer_position.into(),
                             &sat_state.position.into(),
                             &sat_state.velocity.into(),
-                        );
+                        )
+                        .unwrap();
                         let mut elements = TopocentricElements::new(
                             topo[astro_func_interface::XA_TOPO_RA],
                             topo[astro_func_interface::XA_TOPO_DEC],
@@ -246,5 +248,10 @@ impl Observatory {
             CartesianVector::from([0.0, 0.0, 0.0]),
             ReferenceFrame::TEME,
         )
+    }
+
+    pub fn get_theta(&self, epoch: Epoch) -> f64 {
+        let theta_g = epoch.to_fk5_greenwich_angle();
+        theta_g + self.longitude.to_radians()
     }
 }

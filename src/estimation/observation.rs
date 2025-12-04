@@ -49,19 +49,36 @@ impl Observation {
     pub fn get_predicted_vector(&self, satellite: &Satellite) -> Result<Vec<f64>, String> {
         match satellite.get_state_at_epoch(self.get_epoch()) {
             Some(satellite_state) => {
-                let topo = astro_func_interface::teme_to_topocentric(self.observer_teme_position, satellite_state);
-                let mut predicted = vec![topo.get_right_ascension(), topo.get_declination()];
+                let theta_g = self.epoch.to_fk5_greenwich_angle();
+                let lla = astro_func_interface::theta_teme_to_lla(theta_g, &self.observer_teme_position.into());
+                let theta = theta_g + lla[1].to_radians();
+                let xa_topo = astro_func_interface::teme_to_topocentric(
+                    theta,
+                    lla[0],
+                    &self.observer_teme_position.into(),
+                    &satellite_state.position.into(),
+                    &satellite_state.velocity.into(),
+                )?;
+                let mut topo_elements = TopocentricElements::new(
+                    xa_topo[astro_func_interface::XA_TOPO_RA],
+                    xa_topo[astro_func_interface::XA_TOPO_DEC],
+                );
+                topo_elements.set_declination_rate(Some(xa_topo[astro_func_interface::XA_TOPO_DECDOT]));
+                topo_elements.set_right_ascension_rate(Some(xa_topo[astro_func_interface::XA_TOPO_RADOT]));
+                topo_elements.set_range(Some(xa_topo[astro_func_interface::XA_TOPO_RANGE]));
+                topo_elements.set_range_rate(Some(xa_topo[astro_func_interface::XA_TOPO_RANGEDOT]));
+                let mut predicted = vec![topo_elements.get_right_ascension(), topo_elements.get_declination()];
                 if self.get_range().is_some() {
-                    predicted.push(topo.get_range().unwrap());
+                    predicted.push(topo_elements.get_range().unwrap());
                 }
                 if self.get_range_rate().is_some() {
-                    predicted.push(topo.get_range_rate().unwrap());
+                    predicted.push(topo_elements.get_range_rate().unwrap());
                 }
                 if self.get_right_ascension_rate().is_some() {
-                    predicted.push(topo.get_right_ascension_rate().unwrap());
+                    predicted.push(topo_elements.get_right_ascension_rate().unwrap());
                 }
                 if self.get_declination_rate().is_some() {
-                    predicted.push(topo.get_declination_rate().unwrap());
+                    predicted.push(topo_elements.get_declination_rate().unwrap());
                 }
                 Ok(predicted)
             }

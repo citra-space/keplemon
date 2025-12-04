@@ -1,3 +1,4 @@
+use crate::saal::astro_func_interface;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -24,6 +25,30 @@ impl HorizonElements {
             azimuth_rate: None,
             elevation_rate: None,
         }
+    }
+
+    #[getter]
+    pub fn get_xa_rae(&self) -> [f64; astro_func_interface::XA_RAE_SIZE] {
+        let mut xa_rae = [0.0; astro_func_interface::XA_RAE_SIZE];
+        xa_rae[astro_func_interface::XA_RAE_AZ] = self.azimuth;
+        xa_rae[astro_func_interface::XA_RAE_EL] = self.elevation;
+        match self.range {
+            Some(r) => xa_rae[astro_func_interface::XA_RAE_RANGE] = r,
+            None => xa_rae[astro_func_interface::XA_RAE_RANGE] = 1.0,
+        }
+        match self.range_rate {
+            Some(rr) => xa_rae[astro_func_interface::XA_RAE_RANGEDOT] = rr,
+            None => xa_rae[astro_func_interface::XA_RAE_RANGEDOT] = 0.0,
+        }
+        match self.azimuth_rate {
+            Some(az) => xa_rae[astro_func_interface::XA_RAE_AZDOT] = az,
+            None => xa_rae[astro_func_interface::XA_RAE_AZDOT] = 0.0,
+        }
+        match self.elevation_rate {
+            Some(el) => xa_rae[astro_func_interface::XA_RAE_ELDOT] = el,
+            None => xa_rae[astro_func_interface::XA_RAE_ELDOT] = 0.0,
+        }
+        xa_rae
     }
 
     #[getter]

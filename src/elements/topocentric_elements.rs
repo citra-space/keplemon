@@ -16,6 +16,8 @@ pub struct TopocentricElements {
     observed_direction: CartesianVector,
 }
 
+impl Copy for TopocentricElements {}
+
 #[pymethods]
 impl TopocentricElements {
     #[new]

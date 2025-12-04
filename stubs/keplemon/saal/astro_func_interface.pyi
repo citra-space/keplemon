@@ -106,6 +106,21 @@ def teme_to_topo(
     """
     ...
 
+def horizon_to_teme(theta: float, lat: float, sen_pos: list[float], xa_rae: list[float]) -> list[float]:
+    """
+    Convert horizon coordinates to TEME coordinates.
+
+    Args:
+        theta: Greenwich angle plus the sensor longitude in radians.
+        lat: Sensor latitude in degrees.
+        sen_pos: Sensor TEME position in kilometers.
+        xa_rae: RAE coordinates as a list of floats.
+
+    Returns:
+        TEME coordinates as a list of floats.
+    """
+    ...
+
 def topo_date_to_equinox(yr_of_equinox: int, ds50utc: float, ra: float, dec: float) -> tuple[float, float]:
     """
     Convert topocentric right ascension and declination to equinox coordinates for a given year of equinox.
@@ -213,3 +228,24 @@ YROFEQNX_2000: int
 
 YROFEQNX_CURR: int
 """Year of current equinox constant"""
+
+XA_RAE_RANGE: int
+"""Index for RAE range in kilometers."""
+
+XA_RAE_AZ: int
+"""Index for RAE azimuth in degrees."""
+
+XA_RAE_EL: int
+"""Index for RAE elevation in degrees."""
+
+XA_RAE_RANGEDOT: int
+"""Index for RAE range rate in kilometers/second."""
+
+XA_RAE_AZDOT: int
+"""Index for RAE azimuth rate in degrees/second."""
+
+XA_RAE_ELDOT: int
+"""Index for RAE elevation rate in degrees/second."""
+
+XA_RAE_SIZE: int
+"""Size of XA_RAE_ array"""
