@@ -72,4 +72,5 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=extephem");
     println!("cargo:rustc-link-lib=dylib=satstate");
     println!("cargo:rustc-link-lib=dylib=obs");
+    println!("cargo:rustc-link-lib=dylib=sensor");
 }
