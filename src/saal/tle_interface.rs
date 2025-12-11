@@ -672,9 +672,10 @@ pub fn get_number_in_memory() -> i32 {
 pub fn load_from_arrays(xa_tle: [f64; XA_TLE_SIZE], xs_tle: &str) -> Result<i64, String> {
     let mut c_xs_tle = GetSetString::from_string(xs_tle);
     let key = unsafe { TleAddSatFrArray(&xa_tle, c_xs_tle.pointer()) };
-    match key {
-        0 => Err(MainInterface::get_last_error_message()),
-        _ => Ok(key),
+    if key > 0 {
+        Ok(key)
+    } else {
+        Err(MainInterface::get_last_error_message())
     }
 }
 
