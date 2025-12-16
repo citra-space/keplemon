@@ -491,6 +491,11 @@ impl TLE {
     }
 
     #[getter]
+    pub fn get_semi_major_axis(&self) -> f64 {
+        self.keplerian_state.get_semi_major_axis()
+    }
+
+    #[getter]
     pub fn get_eccentricity(&self) -> f64 {
         self.keplerian_state.get_eccentricity()
     }

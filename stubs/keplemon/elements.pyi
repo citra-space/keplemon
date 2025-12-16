@@ -196,6 +196,13 @@ class TLE:
     cartesian_state: CartesianState
     """TEME cartesian state of the TLE at epoch"""
 
+    semi_major_axis: float
+    """Average distance from the central body in **_kilometers_**
+    
+    !!! note
+        This is always calculated using Brouwer mean motion and will differ slightly from Kozai-computed SMA.
+    """
+
     @classmethod
     def from_lines(cls, line_1: str, line_2: str, line_3: str | None = None) -> TLE:
         """
