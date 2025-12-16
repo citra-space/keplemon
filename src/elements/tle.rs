@@ -3,7 +3,7 @@ use crate::bodies::Satellite;
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
 use crate::propagation::{ForceProperties, SGP4Output};
-use crate::saal::{sgp4_prop_interface, tle_interface, GetSetString};
+use crate::saal::{sgp4_prop_interface, GetSetString, TLEInterface};
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use pyo3::prelude::*;
@@ -342,31 +342,31 @@ impl TLE {
         Ok(jac)
     }
 
-    pub fn get_xa_tle(&self) -> [f64; tle_interface::XA_TLE_SIZE] {
-        let mut xa_tle = [0.0; tle_interface::XA_TLE_SIZE];
-        xa_tle[tle_interface::XA_TLE_SATNUM] = self.norad_id as f64;
-        xa_tle[tle_interface::XA_TLE_EPOCH] = self.get_epoch().days_since_1950;
-        xa_tle[tle_interface::XA_TLE_INCLI] = self.get_inclination();
-        xa_tle[tle_interface::XA_TLE_NODE] = self.get_raan();
-        xa_tle[tle_interface::XA_TLE_ECCEN] = self.get_eccentricity();
-        xa_tle[tle_interface::XA_TLE_OMEGA] = self.get_argument_of_perigee();
-        xa_tle[tle_interface::XA_TLE_MNANOM] = self.get_mean_anomaly();
-        xa_tle[tle_interface::XA_TLE_MNMOTN] = self.get_mean_motion();
-        xa_tle[tle_interface::XA_TLE_EPHTYPE] = self.get_type() as i32 as f64;
+    pub fn get_xa_tle(&self) -> [f64; TLEInterface::XA_TLE_SIZE] {
+        let mut xa_tle = [0.0; TLEInterface::XA_TLE_SIZE];
+        xa_tle[TLEInterface::XA_TLE_SATNUM] = self.norad_id as f64;
+        xa_tle[TLEInterface::XA_TLE_EPOCH] = self.get_epoch().days_since_1950;
+        xa_tle[TLEInterface::XA_TLE_INCLI] = self.get_inclination();
+        xa_tle[TLEInterface::XA_TLE_NODE] = self.get_raan();
+        xa_tle[TLEInterface::XA_TLE_ECCEN] = self.get_eccentricity();
+        xa_tle[TLEInterface::XA_TLE_OMEGA] = self.get_argument_of_perigee();
+        xa_tle[TLEInterface::XA_TLE_MNANOM] = self.get_mean_anomaly();
+        xa_tle[TLEInterface::XA_TLE_MNMOTN] = self.get_mean_motion();
+        xa_tle[TLEInterface::XA_TLE_EPHTYPE] = self.get_type() as i32 as f64;
 
         match self.get_type() {
             KeplerianType::Osculating => {
-                xa_tle[tle_interface::XA_TLE_SP_BTERM] = self.get_b_term();
-                xa_tle[tle_interface::XA_TLE_SP_AGOM] = self.get_agom();
+                xa_tle[TLEInterface::XA_TLE_SP_BTERM] = self.get_b_term();
+                xa_tle[TLEInterface::XA_TLE_SP_AGOM] = self.get_agom();
             }
             KeplerianType::MeanBrouwerXP => {
-                xa_tle[tle_interface::XA_TLE_BTERM] = self.get_b_term();
-                xa_tle[tle_interface::XA_TLE_AGOMGP] = self.get_agom();
+                xa_tle[TLEInterface::XA_TLE_BTERM] = self.get_b_term();
+                xa_tle[TLEInterface::XA_TLE_AGOMGP] = self.get_agom();
             }
             _ => {
-                xa_tle[tle_interface::XA_TLE_BSTAR] = self.get_b_star();
-                xa_tle[tle_interface::XA_TLE_NDOT] = self.get_mean_motion_dot();
-                xa_tle[tle_interface::XA_TLE_NDOTDOT] = self.get_mean_motion_dot_dot();
+                xa_tle[TLEInterface::XA_TLE_BSTAR] = self.get_b_star();
+                xa_tle[TLEInterface::XA_TLE_NDOT] = self.get_mean_motion_dot();
+                xa_tle[TLEInterface::XA_TLE_NDOTDOT] = self.get_mean_motion_dot_dot();
             }
         }
         xa_tle
@@ -382,14 +382,14 @@ impl TLE {
     }
 
     pub fn remove_from_memory(&mut self) {
-        tle_interface::remove_from_memory(self.key);
+        TLEInterface::remove_key(self.key);
         self.key = 0;
     }
 
     pub fn load_to_memory(&mut self) -> Result<(), String> {
         let xa_tle = self.get_xa_tle();
         let xs_tle = self.get_xs_tle();
-        match tle_interface::load_from_arrays(xa_tle, &xs_tle) {
+        match TLEInterface::load_from_arrays(xa_tle, &xs_tle) {
             Ok(key) => {
                 self.key = key;
                 Ok(())
@@ -398,15 +398,30 @@ impl TLE {
         }
     }
 
+    fn normalize_line_1_exponent_signs(line_1: &mut String) {
+        let mut bytes = line_1.as_bytes().to_vec();
+        let mut updated = false;
+        // Columns 51 and 60 (0-based 50/59) hold the exponent sign; blank implies '+'
+        for pos in [50usize, 59usize] {
+            if pos < bytes.len() && bytes[pos] == b' ' {
+                bytes[pos] = b'+';
+                updated = true;
+            }
+        }
+        if updated {
+            *line_1 = String::from_utf8(bytes).unwrap();
+        }
+    }
+
     pub fn from_two_lines(line_1: &str, line_2: &str) -> Result<TLE, String> {
-        let (xa_tle, xs_tle) = tle_interface::lines_to_arrays(line_1, line_2).unwrap();
-        let cls_char = &xs_tle[tle_interface::XS_TLE_SECCLASS_0_1..tle_interface::XS_TLE_SECCLASS_0_1 + 1];
-        let designator = &xs_tle[tle_interface::XS_TLE_SATNAME_1_12..tle_interface::XS_TLE_SATNAME_1_12 + 12];
+        let (xa_tle, xs_tle) = TLEInterface::lines_to_arrays(line_1, line_2).unwrap();
+        let cls_char = &xs_tle[TLEInterface::XS_TLE_SECCLASS_0_1..TLEInterface::XS_TLE_SECCLASS_0_1 + 1];
+        let designator = &xs_tle[TLEInterface::XS_TLE_SATNAME_1_12..TLEInterface::XS_TLE_SATNAME_1_12 + 12];
         let keplerian_state = KeplerianState::from_xa_tle(&xa_tle);
         let force_properties = ForceProperties::from_xa_tle(&xa_tle);
         match Self::new(
             Uuid::new_v4().to_string(),
-            xa_tle[tle_interface::XA_TLE_SATNUM] as i32,
+            xa_tle[TLEInterface::XA_TLE_SATNUM] as i32,
             None,
             Classification::from_str(cls_char).unwrap(),
             designator.trim().to_string(),
@@ -456,7 +471,13 @@ impl TLE {
     pub fn get_lines(&self) -> (String, String) {
         let xa_tle = self.get_xa_tle();
         let xs_tle = self.get_xs_tle();
-        tle_interface::arrays_to_lines(xa_tle, &xs_tle).unwrap()
+        let mut lines = TLEInterface::arrays_to_lines(xa_tle, &xs_tle).unwrap();
+        TLE::normalize_line_1_exponent_signs(&mut lines.0);
+        let check_sums = TLEInterface::get_check_sums(&lines.0, &lines.1).unwrap();
+        lines.0.push_str(&check_sums.0.to_string());
+        lines.1.push_str(&check_sums.1.to_string());
+
+        lines
     }
 
     #[getter]
@@ -565,10 +586,10 @@ mod tests {
     use approx::assert_abs_diff_eq;
     use uuid::Uuid;
 
-    const SGP_LINE_1: &str = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
-    const SGP_LINE_2: &str = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
-    const XP_LINE_1: &str = "1 25544U 98067A   20200.51605324 +.00000000  10000-1  20000-1 4 0999";
-    const XP_LINE_2: &str = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+    const SGP_LINE_1: &str = "1 25544U 98067A   20200.51605324 +.00000884  00000+0  22898-4 0 09992";
+    const SGP_LINE_2: &str = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.49300070236605";
+    const XP_LINE_1: &str = "1 25544U 98067A   20200.51605324 +.00000000  10000-1  20000-1 4 09999";
+    const XP_LINE_2: &str = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.49300070236605";
 
     fn xp_tle_from_lines() -> TLE {
         TLE::from_lines(XP_LINE_1, XP_LINE_2, None).unwrap()
@@ -706,5 +727,15 @@ mod tests {
         tle.load_to_memory().unwrap();
         assert_ne!(tle.get_key(), 0);
         tle.remove_from_memory();
+    }
+
+    #[test]
+    fn test_blank_exponent_signs_default_to_plus() {
+        let mut line_1 = "1 99999U          25344.58537976 -.00000382  00000 0  00000 0 0 00000".to_string();
+        TLE::normalize_line_1_exponent_signs(&mut line_1);
+        assert_eq!(
+            line_1,
+            "1 99999U          25344.58537976 -.00000382  00000+0  00000+0 0 00000"
+        );
     }
 }

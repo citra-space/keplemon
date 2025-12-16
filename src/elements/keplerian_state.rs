@@ -1,7 +1,7 @@
 use super::KeplerianElements;
 use super::{CartesianState, CartesianVector};
 use crate::enums::{KeplerianType, ReferenceFrame, TimeSystem};
-use crate::saal::{astro_func_interface, tle_interface};
+use crate::saal::{astro_func_interface, TLEInterface};
 use crate::time::Epoch;
 use pyo3::prelude::*;
 
@@ -19,19 +19,19 @@ impl KeplerianState {
         self.elements
     }
 
-    pub fn from_xa_tle(xa_tle: &[f64; tle_interface::XA_TLE_SIZE]) -> Self {
-        let epoch = Epoch::from_days_since_1950(xa_tle[tle_interface::XA_TLE_EPOCH], TimeSystem::UTC);
-        let keplerian_type = KeplerianType::try_from(xa_tle[tle_interface::XA_TLE_EPHTYPE]).unwrap();
-        let eccentricity = xa_tle[tle_interface::XA_TLE_ECCEN];
-        let inclination = xa_tle[tle_interface::XA_TLE_INCLI];
-        let raan = xa_tle[tle_interface::XA_TLE_NODE];
-        let argument_of_perigee = xa_tle[tle_interface::XA_TLE_OMEGA];
-        let mean_anomaly = xa_tle[tle_interface::XA_TLE_MNANOM];
+    pub fn from_xa_tle(xa_tle: &[f64; TLEInterface::XA_TLE_SIZE]) -> Self {
+        let epoch = Epoch::from_days_since_1950(xa_tle[TLEInterface::XA_TLE_EPOCH], TimeSystem::UTC);
+        let keplerian_type = KeplerianType::try_from(xa_tle[TLEInterface::XA_TLE_EPHTYPE]).unwrap();
+        let eccentricity = xa_tle[TLEInterface::XA_TLE_ECCEN];
+        let inclination = xa_tle[TLEInterface::XA_TLE_INCLI];
+        let raan = xa_tle[TLEInterface::XA_TLE_NODE];
+        let argument_of_perigee = xa_tle[TLEInterface::XA_TLE_OMEGA];
+        let mean_anomaly = xa_tle[TLEInterface::XA_TLE_MNANOM];
         let mean_motion = match keplerian_type {
             KeplerianType::MeanKozaiGP => {
-                astro_func_interface::kozai_to_brouwer(eccentricity, inclination, xa_tle[tle_interface::XA_TLE_MNMOTN])
+                astro_func_interface::kozai_to_brouwer(eccentricity, inclination, xa_tle[TLEInterface::XA_TLE_MNMOTN])
             }
-            _ => xa_tle[tle_interface::XA_TLE_MNMOTN],
+            _ => xa_tle[TLEInterface::XA_TLE_MNMOTN],
         };
         let semi_major_axis = astro_func_interface::mean_motion_to_sma(mean_motion);
         let elements = KeplerianElements::new(

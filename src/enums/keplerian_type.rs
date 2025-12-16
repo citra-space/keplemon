@@ -1,14 +1,14 @@
-use crate::saal::tle_interface::{TLETYPE_SGP, TLETYPE_SGP4, TLETYPE_SP, TLETYPE_XP};
+use crate::saal::TLEInterface;
 use pyo3::prelude::*;
 use std::convert::TryFrom;
 
 #[pyclass]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum KeplerianType {
-    MeanKozaiGP = TLETYPE_SGP,
-    MeanBrouwerGP = TLETYPE_SGP4,
-    MeanBrouwerXP = TLETYPE_XP,
-    Osculating = TLETYPE_SP,
+    MeanKozaiGP = TLEInterface::TLETYPE_SGP,
+    MeanBrouwerGP = TLEInterface::TLETYPE_SGP4,
+    MeanBrouwerXP = TLEInterface::TLETYPE_XP,
+    Osculating = TLEInterface::TLETYPE_SP,
 }
 
 impl TryFrom<i32> for KeplerianType {
@@ -51,10 +51,10 @@ impl KeplerianType {
     #[getter]
     pub fn value(&self) -> i32 {
         match self {
-            KeplerianType::MeanKozaiGP => TLETYPE_SGP as i32,
-            KeplerianType::MeanBrouwerGP => TLETYPE_SGP4 as i32,
-            KeplerianType::MeanBrouwerXP => TLETYPE_XP as i32,
-            KeplerianType::Osculating => TLETYPE_XP as i32,
+            KeplerianType::MeanKozaiGP => TLEInterface::TLETYPE_SGP as i32,
+            KeplerianType::MeanBrouwerGP => TLEInterface::TLETYPE_SGP4 as i32,
+            KeplerianType::MeanBrouwerXP => TLEInterface::TLETYPE_XP as i32,
+            KeplerianType::Osculating => TLEInterface::TLETYPE_XP as i32,
         }
     }
 

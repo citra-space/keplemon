@@ -1,6 +1,171 @@
 # flake8: noqa
 from keplemon.enums import SAALKeyMode
 
+class TLEInterface:
+    # TLE types (TLE ephemeris types) - They are different than ELTTYPE
+    # TLE SGP elset (Kozai mean motion)
+    TLETYPE_SGP: int
+    # TLE SGP4 elset (Brouwer mean motion)
+    TLETYPE_SGP4: int
+    # TLE SGP4-XP elset (Brouwer mean motion)
+    TLETYPE_XP: int
+    # TLE SP elset (osculating elements)
+    TLETYPE_SP: int
+
+    # Indexes of TLE data fields
+    # Satellite number
+    XF_TLE_SATNUM: int
+    # Security classification U: unclass, C: confidential, S: Secret
+    XF_TLE_CLASS: int
+    # Satellite name A8
+    XF_TLE_SATNAME: int
+    # Satellite's epoch time "YYYYJJJ.jjjjjjjj"
+    XF_TLE_EPOCH: int
+    # GP B* drag term (1/er)  (not the same as XF_TLE_BTERM)
+    XF_TLE_BSTAR: int
+    # Satellite ephemeris type: 0=SGP, 2=SGP4, 4=SGP4-XP, 6=SP
+    XF_TLE_EPHTYPE: int
+    # Element set number
+    XF_TLE_ELSETNUM: int
+    # Orbit inclination (deg)
+    XF_TLE_INCLI: int
+    # Right ascension of asending node (deg)
+    XF_TLE_NODE: int
+    # Eccentricity
+    XF_TLE_ECCEN: int
+    # Argument of perigee (deg)
+    XF_TLE_OMEGA: int
+    # Mean anomaly (deg)
+    XF_TLE_MNANOM: int
+    # Mean motion (rev/day) (ephType=0: Kozai, ephType=2: Brouwer)
+    XF_TLE_MNMOTN: int
+    # Revolution number at epoch
+    XF_TLE_REVNUM: int
+
+    # GP Mean motion derivative (rev/day /2)
+    XF_TLE_NDOT: int
+    # GP Mean motion second derivative (rev/day**2 /6)
+    XF_TLE_NDOTDOT: int
+    # Solar radiation pressure GP (m2/kg)
+    XF_TLE_AGOMGP: int
+
+    # SP Radiation Pressure Coefficient
+    XF_TLE_SP_AGOM: int
+    # SP ballistic coefficient (m2/kg)
+    XF_TLE_SP_BTERM: int
+    # SP outgassing parameter (km/s2)
+    XF_TLE_SP_OGPARM: int
+
+    # Original satellite number
+    XF_TLE_ORGSATNUM: int
+    # GP ballistic coefficient (m2/kg) (not the same as XF_TLE_BSTAR)
+    XF_TLE_BTERM: int
+    # Time of last observation relative to epoch +/- fractional days
+    XF_TLE_OBSTIME: int
+    # Last calculated error growth rate (km/day)
+    XF_TLE_EGR: int
+    # Last calculated energy dissipation rate (w/kg)
+    XF_TLE_EDR: int
+    # Median Vismag
+    XF_TLE_VISMAG: int
+    # Median RCS - diameter in centimeters (cm)
+    XF_TLE_RCS: int
+    # Object Type (Payload, Rocket Body, Platform, Debris, Unknown)
+    XF_TLE_OBJTYPE: int
+    # Satellite name A12 (upto 12 character long)
+    XF_TLE_SATNAME_12: int
+
+    # Indexes of TLE numerical data in an array
+    # Line 1
+    # Satellite number
+    XA_TLE_SATNUM: int
+    # Satellite's epoch time in DS50UTC
+    XA_TLE_EPOCH: int
+    # GP Mean motion derivative (rev/day /2)
+    XA_TLE_NDOT: int
+    # GP Mean motion second derivative (rev/day**2 /6)
+    XA_TLE_NDOTDOT: int
+    # GP B* drag term (1/er)
+    XA_TLE_BSTAR: int
+    # Satellite ephemeris type: 0=SGP, 2=SGP4, 4=SGP4-XP, 6=SP
+    XA_TLE_EPHTYPE: int
+
+    # Line 2
+    # Orbit inclination (deg)
+    XA_TLE_INCLI: int
+    # Right ascension of asending node (deg)
+    XA_TLE_NODE: int
+    # Eccentricity
+    XA_TLE_ECCEN: int
+    # Argument of perigee (deg)
+    XA_TLE_OMEGA: int
+    # Mean anomaly (deg)
+    XA_TLE_MNANOM: int
+    # Mean motion (rev/day) (ephType=0, 4: Kozai, ephType=2: Brouwer)
+    XA_TLE_MNMOTN: int
+    # Revolution number at epoch
+    XA_TLE_REVNUM: int
+    # Element set number
+    XA_TLE_ELSETNUM: int
+
+    # CSV (or TLE-XP, ephemType=4) specific fields
+    # Original satellite number
+    XA_TLE_ORGSATNUM: int
+    # SP/SGP4-XP ballistic coefficient (m2/kg)
+    XA_TLE_BTERM: int
+    # Time of last observation relative to epoch +/- fractional days
+    XA_TLE_OBSTIME: int
+    # Last calculated error growth rate (km/day)
+    XA_TLE_EGR: int
+    # Last calculated energy dissipation rate (w/kg)
+    XA_TLE_EDR: int
+    # Median Vismag
+    XA_TLE_VISMAG: int
+    # Median RCS - diameter in centimeters (cm)
+    XA_TLE_RCS: int
+
+    # CSV (or TLE-XP, ephemType=4)
+    # Solar Radiation Pressure Coefficient GP (m2/kg)
+    XA_TLE_AGOMGP: int
+
+    # SP specific fields
+    # SP ballistic coefficient (m2/kg)
+    XA_TLE_SP_BTERM: int
+    # SP outgassing parameter (km/s2)
+    XA_TLE_SP_OGPARM: int
+    # SP Radiation Pressure Coefficient
+    XA_TLE_SP_AGOM: int
+
+    XA_TLE_SIZE: int
+
+    # Indexes of TLE text data in an array of chars
+    # Security classification of line 1 and line 2
+    XS_TLE_SECCLASS_1: int
+    # Satellite name
+    XS_TLE_SATNAME_12: int
+    # Object Type (Payload, Rocket Body, Platform, Debris, Unknown) - csv only
+    XS_TLE_OBJTYPE_11: int
+
+    XS_TLE_SIZE: int
+
+    # TLE's text data fields - new convention (start index, string length)
+    # Security classification of line 1 and line 2
+    XS_TLE_SECCLASS_0_1: int
+    # Satellite name
+    XS_TLE_SATNAME_1_12: int
+    # Object Type (Payload, Rocket Body, Platform, Debris, Unknown) - csv only
+    XS_TLE_OBJTYPE_13_1: int
+
+    XS_TLE_LENGTH: int
+
+    # Indexes of different TLE file's formats
+    # Original TLE format
+    XF_TLEFORM_ORG: int
+    # CSV format
+    XF_TLEFORM_CSV: int
+    @staticmethod
+    def get_check_sums(line_1: str, line_2: str) -> tuple[int, int]: ...
+
 class MainInterface:
     @staticmethod
     def get_key_mode() -> SAALKeyMode: ...

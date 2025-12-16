@@ -4,6 +4,8 @@
 
 use super::main_interface::MainInterface;
 use super::GetSetString;
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
 use std::os::raw::c_char;
 use std::result::Result;
 
@@ -465,229 +467,365 @@ extern "C" {
     );
 }
 
-// TLE types (TLE ephemeris types) - They are different than ELTTYPE
-// TLE SGP elset (Kozai mean motion)
-pub const TLETYPE_SGP: isize = 0;
-// TLE SGP4 elset (Brouwer mean motion)
-pub const TLETYPE_SGP4: isize = 2;
-// TLE SGP4-XP elset (Brouwer mean motion)
-pub const TLETYPE_XP: isize = 4;
-// TLE SP elset (osculating elements)
-pub const TLETYPE_SP: isize = 6;
-
-// Indexes of TLE data fields
-// Satellite number
-pub static XF_TLE_SATNUM: usize = 1;
-// Security classification U: unclass, C: confidential, S: Secret
-pub static XF_TLE_CLASS: usize = 2;
-// Satellite name A8
-pub static XF_TLE_SATNAME: usize = 3;
-// Satellite's epoch time "YYYYJJJ.jjjjjjjj"
-pub static XF_TLE_EPOCH: usize = 4;
-// GP B* drag term (1/er)  (not the same as XF_TLE_BTERM)
-pub static XF_TLE_BSTAR: usize = 5;
-// Satellite ephemeris type: 0=SGP, 2=SGP4, 4=SGP4-XP, 6=SP
-pub static XF_TLE_EPHTYPE: usize = 6;
-// Element set number
-pub static XF_TLE_ELSETNUM: usize = 7;
-// Orbit inclination (deg)
-pub static XF_TLE_INCLI: usize = 8;
-// Right ascension of asending node (deg)
-pub static XF_TLE_NODE: usize = 9;
-// Eccentricity
-pub static XF_TLE_ECCEN: usize = 10;
-// Argument of perigee (deg)
-pub static XF_TLE_OMEGA: usize = 11;
-// Mean anomaly (deg)
-pub static XF_TLE_MNANOM: usize = 12;
-// Mean motion (rev/day) (ephType=0: Kozai, ephType=2: Brouwer)
-pub static XF_TLE_MNMOTN: usize = 13;
-// Revolution number at epoch
-pub static XF_TLE_REVNUM: usize = 14;
-
-// GP Mean motion derivative (rev/day /2)
-pub static XF_TLE_NDOT: usize = 15;
-// GP Mean motion second derivative (rev/day**2 /6)
-pub static XF_TLE_NDOTDOT: usize = 16;
-// Solar radiation pressure GP (m2/kg)
-pub static XF_TLE_AGOMGP: usize = 16;
-
-// SP Radiation Pressure Coefficient
-pub static XF_TLE_SP_AGOM: usize = 5;
-// SP ballistic coefficient (m2/kg)
-pub static XF_TLE_SP_BTERM: usize = 15;
-// SP outgassing parameter (km/s2)
-pub static XF_TLE_SP_OGPARM: usize = 16;
-
-// Original satellite number
-pub static XF_TLE_ORGSATNUM: usize = 17;
-// GP ballistic coefficient (m2/kg) (not the same as XF_TLE_BSTAR)
-pub static XF_TLE_BTERM: usize = 18;
-// Time of last observation relative to epoch +/- fractional days
-pub static XF_TLE_OBSTIME: usize = 19;
-// Last calculated error growth rate (km/day)
-pub static XF_TLE_EGR: usize = 20;
-// Last calculated energy dissipation rate (w/kg)
-pub static XF_TLE_EDR: usize = 21;
-// Median Vismag
-pub static XF_TLE_VISMAG: usize = 22;
-// Median RCS - diameter in centimeters (cm)
-pub static XF_TLE_RCS: usize = 23;
-// Object Type (Payload, Rocket Body, Platform, Debris, Unknown)
-pub static XF_TLE_OBJTYPE: usize = 24;
-// Satellite name A12 (upto 12 character long)
-pub static XF_TLE_SATNAME_12: usize = 25;
-
-// Indexes of TLE numerical data in an array
-// Line 1
-// Satellite number
-pub static XA_TLE_SATNUM: usize = 0;
-// Satellite's epoch time in DS50UTC
-pub static XA_TLE_EPOCH: usize = 1;
-// GP Mean motion derivative (rev/day /2)
-pub static XA_TLE_NDOT: usize = 2;
-// GP Mean motion second derivative (rev/day**2 /6)
-pub static XA_TLE_NDOTDOT: usize = 3;
-// GP B* drag term (1/er)
-pub static XA_TLE_BSTAR: usize = 4;
-// Satellite ephemeris type: 0=SGP, 2=SGP4, 4=SGP4-XP, 6=SP
-pub static XA_TLE_EPHTYPE: usize = 5;
-
-// Line 2
-// Orbit inclination (deg)
-pub static XA_TLE_INCLI: usize = 20;
-// Right ascension of asending node (deg)
-pub static XA_TLE_NODE: usize = 21;
-// Eccentricity
-pub static XA_TLE_ECCEN: usize = 22;
-// Argument of perigee (deg)
-pub static XA_TLE_OMEGA: usize = 23;
-// Mean anomaly (deg)
-pub static XA_TLE_MNANOM: usize = 24;
-// Mean motion (rev/day) (ephType=0, 4: Kozai, ephType=2: Brouwer)
-pub static XA_TLE_MNMOTN: usize = 25;
-// Revolution number at epoch
-pub static XA_TLE_REVNUM: usize = 26;
-// Element set number
-pub static XA_TLE_ELSETNUM: usize = 30;
-
-// CSV (or TLE-XP, ephemType=4) specific fields
-// Original satellite number
-pub static XA_TLE_ORGSATNUM: usize = 31;
-// SP/SGP4-XP ballistic coefficient (m2/kg)
-pub static XA_TLE_BTERM: usize = 32;
-// Time of last observation relative to epoch +/- fractional days
-pub static XA_TLE_OBSTIME: usize = 33;
-// Last calculated error growth rate (km/day)
-pub static XA_TLE_EGR: usize = 34;
-// Last calculated energy dissipation rate (w/kg)
-pub static XA_TLE_EDR: usize = 35;
-// Median Vismag
-pub static XA_TLE_VISMAG: usize = 36;
-// Median RCS - diameter in centimeters (cm)
-pub static XA_TLE_RCS: usize = 37;
-
-// CSV (or TLE-XP, ephemType=4)
-// Solar Radiation Pressure Coefficient GP (m2/kg)
-pub static XA_TLE_AGOMGP: usize = 38;
-
-// SP specific fields
-// SP ballistic coefficient (m2/kg)
-pub static XA_TLE_SP_BTERM: usize = 2;
-// SP outgassing parameter (km/s2)
-pub static XA_TLE_SP_OGPARM: usize = 3;
-// SP Radiation Pressure Coefficient
-pub static XA_TLE_SP_AGOM: usize = 4;
-
-pub static XA_TLE_SIZE: usize = 64;
-
-// Indexes of TLE text data in an array of chars
-// Security classification of line 1 and line 2
-pub static XS_TLE_SECCLASS_1: usize = 0;
-// Satellite name
-pub static XS_TLE_SATNAME_12: usize = 1;
-// Object Type (Payload, Rocket Body, Platform, Debris, Unknown) - csv only
-pub static XS_TLE_OBJTYPE_11: usize = 13;
-
-pub static XS_TLE_SIZE: usize = 512;
-
-// TLE's text data fields - new convention (start index, string length)
-// Security classification of line 1 and line 2
-pub static XS_TLE_SECCLASS_0_1: usize = 0;
-// Satellite name
-pub static XS_TLE_SATNAME_1_12: usize = 1;
-// Object Type (Payload, Rocket Body, Platform, Debris, Unknown) - csv only
-pub static XS_TLE_OBJTYPE_13_1: usize = 13;
-
-pub static XS_TLE_LENGTH: usize = 512;
-
-// Indexes of different TLE file's formats
-// Original TLE format
-pub static XF_TLEFORM_ORG: usize = 0;
-// CSV format
-pub static XF_TLEFORM_CSV: usize = 1;
-
 // ========================= End of auto generated code ==========================
 
-#[inline]
-pub fn lines_to_arrays(line_1: &str, line_2: &str) -> Result<([f64; XA_TLE_SIZE], String), String> {
-    let mut xa_tle = [0.0; XA_TLE_SIZE];
-    let mut xs_tle = GetSetString::new();
-    let mut c_line_1 = GetSetString::from_string(line_1);
-    let mut c_line_2 = GetSetString::from_string(line_2);
-    let result = unsafe {
-        TleLinesToArray(
-            c_line_1.pointer(),
-            c_line_2.pointer(),
-            xa_tle.as_mut_ptr() as *mut [f64; XA_TLE_SIZE],
-            xs_tle.pointer(),
-        )
-    };
-    match result {
-        0 => Ok((xa_tle, xs_tle.value())),
-        _ => Err(MainInterface::get_last_error_message()),
+#[pyclass]
+pub struct TLEInterface {}
+
+impl TLEInterface {
+    pub fn lines_to_arrays(line_1: &str, line_2: &str) -> Result<([f64; TLEInterface::XA_TLE_SIZE], String), String> {
+        let mut xa_tle = [0.0; TLEInterface::XA_TLE_SIZE];
+        let mut xs_tle = GetSetString::new();
+        let mut c_line_1 = GetSetString::from_string(line_1);
+        let mut c_line_2 = GetSetString::from_string(line_2);
+        let result = unsafe {
+            TleLinesToArray(
+                c_line_1.pointer(),
+                c_line_2.pointer(),
+                xa_tle.as_mut_ptr() as *mut [f64; TLEInterface::XA_TLE_SIZE],
+                xs_tle.pointer(),
+            )
+        };
+        match result {
+            0 => Ok((xa_tle, xs_tle.value())),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+
+    pub fn remove_key(sat_key: i64) {
+        unsafe { TleRemoveSat(sat_key) };
+    }
+
+    pub fn remove_all() -> Result<(), String> {
+        let result = unsafe { TleRemoveAllSats() };
+        match result {
+            0 => Ok(()),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+
+    pub fn count_loaded() -> i32 {
+        unsafe { TleGetCount() }
+    }
+
+    pub fn load_from_arrays(xa_tle: [f64; TLEInterface::XA_TLE_SIZE], xs_tle: &str) -> Result<i64, String> {
+        let mut c_xs_tle = GetSetString::from_string(xs_tle);
+        let key = unsafe { TleAddSatFrArray(&xa_tle, c_xs_tle.pointer()) };
+        if key > 0 {
+            Ok(key)
+        } else {
+            Err(MainInterface::get_last_error_message())
+        }
+    }
+
+    pub fn arrays_to_lines(xa_tle: [f64; TLEInterface::XA_TLE_SIZE], xs_tle: &str) -> Result<(String, String), String> {
+        let mut c_line_1 = GetSetString::new();
+        let mut c_line_2 = GetSetString::new();
+        let mut c_xs_tle = GetSetString::from_string(xs_tle);
+        unsafe { TleGPArrayToLines(&xa_tle, c_xs_tle.pointer(), c_line_1.pointer(), c_line_2.pointer()) };
+
+        if c_line_1.value().is_empty() || c_line_2.value().is_empty() {
+            Err(MainInterface::get_last_error_message())
+        } else {
+            Ok((c_line_1.value().trim().to_string(), c_line_2.value().trim().to_string()))
+        }
+    }
+
+    pub fn get_check_sums(line_1: &str, line_2: &str) -> Result<(i32, i32), String> {
+        let mut chk_sum_1: i32 = 0;
+        let mut chk_sum_2: i32 = 0;
+        let mut err_code: i32 = 0;
+        let mut c_line_1 = GetSetString::from_string(line_1);
+        let mut c_line_2 = GetSetString::from_string(line_2);
+        unsafe {
+            GetCheckSums(
+                c_line_1.pointer(),
+                c_line_2.pointer(),
+                &mut chk_sum_1,
+                &mut chk_sum_2,
+                &mut err_code,
+            )
+        };
+        if err_code == 0 {
+            Ok((chk_sum_1, chk_sum_2))
+        } else {
+            Err(MainInterface::get_last_error_message())
+        }
     }
 }
 
-#[inline]
-pub fn remove_from_memory(sat_key: i64) {
-    unsafe { TleRemoveSat(sat_key) };
-}
+#[pymethods]
+impl TLEInterface {
+    // TLE types (TLE ephemeris types) - They are different than ELTTYPE
+    // TLE SGP elset (Kozai mean motion)
+    #[classattr]
+    pub const TLETYPE_SGP: isize = 0;
+    // TLE SGP4 elset (Brouwer mean motion)
+    #[classattr]
+    pub const TLETYPE_SGP4: isize = 2;
+    // TLE SGP4-XP elset (Brouwer mean motion)
+    #[classattr]
+    pub const TLETYPE_XP: isize = 4;
+    // TLE SP elset (osculating elements)
+    #[classattr]
+    pub const TLETYPE_SP: isize = 6;
 
-#[inline]
-pub fn clear_memory() -> Result<(), String> {
-    let result = unsafe { TleRemoveAllSats() };
-    match result {
-        0 => Ok(()),
-        _ => Err(MainInterface::get_last_error_message()),
+    // Indexes of TLE data fields
+    // Satellite number
+    #[classattr]
+    pub const XF_TLE_SATNUM: usize = 1;
+    // Security classification U: unclass, C: confidential, S: Secret
+    #[classattr]
+    pub const XF_TLE_CLASS: usize = 2;
+    // Satellite name A8
+    #[classattr]
+    pub const XF_TLE_SATNAME: usize = 3;
+    // Satellite's epoch time "YYYYJJJ.jjjjjjjj"
+    #[classattr]
+    pub const XF_TLE_EPOCH: usize = 4;
+    // GP B* drag term (1/er)  (not the same as XF_TLE_BTERM)
+    #[classattr]
+    pub const XF_TLE_BSTAR: usize = 5;
+    // Satellite ephemeris type: 0=SGP, 2=SGP4, 4=SGP4-XP, 6=SP
+    #[classattr]
+    pub const XF_TLE_EPHTYPE: usize = 6;
+    // Element set number
+    #[classattr]
+    pub const XF_TLE_ELSETNUM: usize = 7;
+    // Orbit inclination (deg)
+    #[classattr]
+    pub const XF_TLE_INCLI: usize = 8;
+    // Right ascension of asending node (deg)
+    #[classattr]
+    pub const XF_TLE_NODE: usize = 9;
+    // Eccentricity
+    #[classattr]
+    pub const XF_TLE_ECCEN: usize = 10;
+    // Argument of perigee (deg)
+    #[classattr]
+    pub const XF_TLE_OMEGA: usize = 11;
+    // Mean anomaly (deg)
+    #[classattr]
+    pub const XF_TLE_MNANOM: usize = 12;
+    // Mean motion (rev/day) (ephType=0: Kozai, ephType=2: Brouwer)
+    #[classattr]
+    pub const XF_TLE_MNMOTN: usize = 13;
+    // Revolution number at epoch
+    #[classattr]
+    pub const XF_TLE_REVNUM: usize = 14;
+
+    // GP Mean motion derivative (rev/day /2)
+    #[classattr]
+    pub const XF_TLE_NDOT: usize = 15;
+    // GP Mean motion second derivative (rev/day**2 /6)
+    #[classattr]
+    pub const XF_TLE_NDOTDOT: usize = 16;
+    // Solar radiation pressure GP (m2/kg)
+    #[classattr]
+    pub const XF_TLE_AGOMGP: usize = 16;
+
+    // SP Radiation Pressure Coefficient
+    #[classattr]
+    pub const XF_TLE_SP_AGOM: usize = 5;
+    // SP ballistic coefficient (m2/kg)
+    #[classattr]
+    pub const XF_TLE_SP_BTERM: usize = 15;
+    // SP outgassing parameter (km/s2)
+    #[classattr]
+    pub const XF_TLE_SP_OGPARM: usize = 16;
+
+    // Original satellite number
+    #[classattr]
+    pub const XF_TLE_ORGSATNUM: usize = 17;
+    // GP ballistic coefficient (m2/kg) (not the same as XF_TLE_BSTAR)
+    #[classattr]
+    pub const XF_TLE_BTERM: usize = 18;
+    // Time of last observation relative to epoch +/- fractional days
+    #[classattr]
+    pub const XF_TLE_OBSTIME: usize = 19;
+    // Last calculated error growth rate (km/day)
+    #[classattr]
+    pub const XF_TLE_EGR: usize = 20;
+    // Last calculated energy dissipation rate (w/kg)
+    #[classattr]
+    pub const XF_TLE_EDR: usize = 21;
+    // Median Vismag
+    #[classattr]
+    pub const XF_TLE_VISMAG: usize = 22;
+    // Median RCS - diameter in centimeters (cm)
+    #[classattr]
+    pub const XF_TLE_RCS: usize = 23;
+    // Object Type (Payload, Rocket Body, Platform, Debris, Unknown)
+    #[classattr]
+    pub const XF_TLE_OBJTYPE: usize = 24;
+    // Satellite name A12 (upto 12 character long)
+    #[classattr]
+    pub const XF_TLE_SATNAME_12: usize = 25;
+
+    // Indexes of TLE numerical data in an array
+    // Line 1
+    // Satellite number
+    #[classattr]
+    pub const XA_TLE_SATNUM: usize = 0;
+    // Satellite's epoch time in DS50UTC
+    #[classattr]
+    pub const XA_TLE_EPOCH: usize = 1;
+    // GP Mean motion derivative (rev/day /2)
+    #[classattr]
+    pub const XA_TLE_NDOT: usize = 2;
+    // GP Mean motion second derivative (rev/day**2 /6)
+    #[classattr]
+    pub const XA_TLE_NDOTDOT: usize = 3;
+    // GP B* drag term (1/er)
+    #[classattr]
+    pub const XA_TLE_BSTAR: usize = 4;
+    // Satellite ephemeris type: 0=SGP, 2=SGP4, 4=SGP4-XP, 6=SP
+    #[classattr]
+    pub const XA_TLE_EPHTYPE: usize = 5;
+
+    // Line 2
+    // Orbit inclination (deg)
+    #[classattr]
+    pub const XA_TLE_INCLI: usize = 20;
+    // Right ascension of asending node (deg)
+    #[classattr]
+    pub const XA_TLE_NODE: usize = 21;
+    // Eccentricity
+    #[classattr]
+    pub const XA_TLE_ECCEN: usize = 22;
+    // Argument of perigee (deg)
+    #[classattr]
+    pub const XA_TLE_OMEGA: usize = 23;
+    // Mean anomaly (deg)
+    #[classattr]
+    pub const XA_TLE_MNANOM: usize = 24;
+    // Mean motion (rev/day) (ephType=0, 4: Kozai, ephType=2: Brouwer)
+    #[classattr]
+    pub const XA_TLE_MNMOTN: usize = 25;
+    // Revolution number at epoch
+    #[classattr]
+    pub const XA_TLE_REVNUM: usize = 26;
+    // Element set number
+    #[classattr]
+    pub const XA_TLE_ELSETNUM: usize = 30;
+
+    // CSV (or TLE-XP, ephemType=4) specific fields
+    // Original satellite number
+    #[classattr]
+    pub const XA_TLE_ORGSATNUM: usize = 31;
+    // SP/SGP4-XP ballistic coefficient (m2/kg)
+    #[classattr]
+    pub const XA_TLE_BTERM: usize = 32;
+    // Time of last observation relative to epoch +/- fractional days
+    #[classattr]
+    pub const XA_TLE_OBSTIME: usize = 33;
+    // Last calculated error growth rate (km/day)
+    #[classattr]
+    pub const XA_TLE_EGR: usize = 34;
+    // Last calculated energy dissipation rate (w/kg)
+    #[classattr]
+    pub const XA_TLE_EDR: usize = 35;
+    // Median Vismag
+    #[classattr]
+    pub const XA_TLE_VISMAG: usize = 36;
+    // Median RCS - diameter in centimeters (cm)
+    #[classattr]
+    pub const XA_TLE_RCS: usize = 37;
+
+    // CSV (or TLE-XP, ephemType=4)
+    // Solar Radiation Pressure Coefficient GP (m2/kg)
+    #[classattr]
+    pub const XA_TLE_AGOMGP: usize = 38;
+
+    // SP specific fields
+    // SP ballistic coefficient (m2/kg)
+    #[classattr]
+    pub const XA_TLE_SP_BTERM: usize = 2;
+    // SP outgassing parameter (km/s2)
+    #[classattr]
+    pub const XA_TLE_SP_OGPARM: usize = 3;
+    // SP Radiation Pressure Coefficient
+    #[classattr]
+    pub const XA_TLE_SP_AGOM: usize = 4;
+
+    #[classattr]
+    pub const XA_TLE_SIZE: usize = 64;
+
+    // Indexes of TLE text data in an array of chars
+    // Security classification of line 1 and line 2
+    #[classattr]
+    pub const XS_TLE_SECCLASS_1: usize = 0;
+    // Satellite name
+    #[classattr]
+    pub const XS_TLE_SATNAME_12: usize = 1;
+    // Object Type (Payload, Rocket Body, Platform, Debris, Unknown) - csv only
+    #[classattr]
+    pub const XS_TLE_OBJTYPE_11: usize = 13;
+
+    #[classattr]
+    pub const XS_TLE_SIZE: usize = 512;
+
+    // TLE's text data fields - new convention (start index, string length)
+    // Security classification of line 1 and line 2
+    #[classattr]
+    pub const XS_TLE_SECCLASS_0_1: usize = 0;
+    // Satellite name
+    #[classattr]
+    pub const XS_TLE_SATNAME_1_12: usize = 1;
+    // Object Type (Payload, Rocket Body, Platform, Debris, Unknown) - csv only
+    #[classattr]
+    pub const XS_TLE_OBJTYPE_13_1: usize = 13;
+
+    #[classattr]
+    pub const XS_TLE_LENGTH: usize = 512;
+
+    // Indexes of different TLE file's formats
+    // Original TLE format
+    #[classattr]
+    pub const XF_TLEFORM_ORG: usize = 0;
+    // CSV format
+    #[classattr]
+    pub const XF_TLEFORM_CSV: usize = 1;
+
+    #[staticmethod]
+    #[pyo3(name = "lines_to_arrays")]
+    pub fn py_lines_to_arrays(line_1: &str, line_2: &str) -> PyResult<([f64; TLEInterface::XA_TLE_SIZE], String)> {
+        TLEInterface::lines_to_arrays(line_1, line_2).map_err(PyRuntimeError::new_err)
     }
-}
 
-#[inline]
-pub fn get_number_in_memory() -> i32 {
-    unsafe { TleGetCount() }
-}
-
-#[inline]
-pub fn load_from_arrays(xa_tle: [f64; XA_TLE_SIZE], xs_tle: &str) -> Result<i64, String> {
-    let mut c_xs_tle = GetSetString::from_string(xs_tle);
-    let key = unsafe { TleAddSatFrArray(&xa_tle, c_xs_tle.pointer()) };
-    if key > 0 {
-        Ok(key)
-    } else {
-        Err(MainInterface::get_last_error_message())
+    #[staticmethod]
+    #[pyo3(name = "remove_key")]
+    pub fn py_remove_key(sat_key: i64) {
+        TLEInterface::remove_key(sat_key);
     }
-}
 
-#[inline]
-pub fn arrays_to_lines(xa_tle: [f64; XA_TLE_SIZE], xs_tle: &str) -> Result<(String, String), String> {
-    let mut c_line_1 = GetSetString::new();
-    let mut c_line_2 = GetSetString::new();
-    let mut c_xs_tle = GetSetString::from_string(xs_tle);
-    unsafe { TleGPArrayToLines(&xa_tle, c_xs_tle.pointer(), c_line_1.pointer(), c_line_2.pointer()) };
-    if c_line_1.value().is_empty() || c_line_2.value().is_empty() {
-        Err(MainInterface::get_last_error_message())
-    } else {
-        Ok((c_line_1.value().trim().to_string(), c_line_2.value().trim().to_string()))
+    #[staticmethod]
+    #[pyo3(name = "remove_all")]
+    pub fn py_remove_all() -> PyResult<()> {
+        TLEInterface::remove_all().map_err(PyRuntimeError::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "count_loaded")]
+    pub fn py_count_loaded() -> i32 {
+        TLEInterface::count_loaded()
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "load_from_arrays")]
+    pub fn py_load_from_arrays(xa_tle: [f64; TLEInterface::XA_TLE_SIZE], xs_tle: &str) -> PyResult<i64> {
+        TLEInterface::load_from_arrays(xa_tle, xs_tle).map_err(PyRuntimeError::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "arrays_to_lines")]
+    pub fn py_arrays_to_lines(xa_tle: [f64; TLEInterface::XA_TLE_SIZE], xs_tle: &str) -> PyResult<(String, String)> {
+        TLEInterface::arrays_to_lines(xa_tle, xs_tle).map_err(PyRuntimeError::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "get_check_sums")]
+    pub fn py_get_check_sums(line_1: &str, line_2: &str) -> PyResult<(i32, i32)> {
+        TLEInterface::get_check_sums(line_1, line_2).map_err(PyRuntimeError::new_err)
     }
 }

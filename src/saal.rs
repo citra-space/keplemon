@@ -12,6 +12,7 @@ pub mod tle_interface;
 mod get_set_string;
 pub use get_set_string::GetSetString;
 pub use main_interface::MainInterface;
+pub use tle_interface::TLEInterface;
 
 use pyo3::prelude::*;
 use pyo3::py_run;
@@ -23,6 +24,7 @@ pub fn register_saal(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     saal.add_class::<sensor_interface::SAALSensor>()?;
     saal.add_class::<obs_interface::ObsInterface>()?;
     saal.add_class::<obs_interface::SAALObservation>()?;
+    saal.add_class::<TLEInterface>()?;
     py_run!(
         parent_module.py(),
         saal,

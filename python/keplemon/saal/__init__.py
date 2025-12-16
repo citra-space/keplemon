@@ -4,6 +4,7 @@ from keplemon._keplemon.saal import (  # type: ignore
     ObsInterface,
     SAALObservation,
     MainInterface,
+    TLEInterface,
 )
 
-__all__ = ["SensorInterface", "SAALSensor", "ObsInterface", "SAALObservation", "MainInterface"]
+__all__ = ["SensorInterface", "SAALSensor", "ObsInterface", "SAALObservation", "MainInterface", "TLEInterface"]

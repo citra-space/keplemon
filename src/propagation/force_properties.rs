@@ -1,7 +1,7 @@
 use crate::configs;
 use crate::elements::B_STAR_TO_B_TERM;
 use crate::enums::KeplerianType;
-use crate::saal::tle_interface;
+use crate::saal::TLEInterface;
 use pyo3::prelude::*;
 
 #[pyclass]
@@ -31,22 +31,22 @@ impl Default for ForceProperties {
 }
 
 impl ForceProperties {
-    pub fn from_xa_tle(xa_tle: &[f64; tle_interface::XA_TLE_SIZE]) -> Self {
+    pub fn from_xa_tle(xa_tle: &[f64; TLEInterface::XA_TLE_SIZE]) -> Self {
         let mass = 1.0;
         let srp_area = 1.0;
         let drag_area = 1.0;
-        let keplerian_type = KeplerianType::try_from(xa_tle[tle_interface::XA_TLE_EPHTYPE]).unwrap();
-        let mean_motion_dot = xa_tle[tle_interface::XA_TLE_NDOT];
-        let mean_motion_dot_dot = xa_tle[tle_interface::XA_TLE_NDOTDOT];
+        let keplerian_type = KeplerianType::try_from(xa_tle[TLEInterface::XA_TLE_EPHTYPE]).unwrap();
+        let mean_motion_dot = xa_tle[TLEInterface::XA_TLE_NDOT];
+        let mean_motion_dot_dot = xa_tle[TLEInterface::XA_TLE_NDOTDOT];
         let srp_coefficient = match keplerian_type {
-            KeplerianType::Osculating => xa_tle[tle_interface::XA_TLE_SP_AGOM],
-            KeplerianType::MeanBrouwerXP => xa_tle[tle_interface::XA_TLE_AGOMGP],
+            KeplerianType::Osculating => xa_tle[TLEInterface::XA_TLE_SP_AGOM],
+            KeplerianType::MeanBrouwerXP => xa_tle[TLEInterface::XA_TLE_AGOMGP],
             _ => 0.0,
         };
         let drag_coefficient = match keplerian_type {
-            KeplerianType::MeanBrouwerXP => xa_tle[tle_interface::XA_TLE_BTERM],
-            KeplerianType::Osculating => xa_tle[tle_interface::XA_TLE_SP_BTERM],
-            _ => xa_tle[tle_interface::XA_TLE_BSTAR] * B_STAR_TO_B_TERM,
+            KeplerianType::MeanBrouwerXP => xa_tle[TLEInterface::XA_TLE_BTERM],
+            KeplerianType::Osculating => xa_tle[TLEInterface::XA_TLE_SP_BTERM],
+            _ => xa_tle[TLEInterface::XA_TLE_BSTAR] * B_STAR_TO_B_TERM,
         };
 
         Self {
