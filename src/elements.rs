@@ -18,7 +18,7 @@ mod topocentric_state;
 pub use bore_to_body_angles::BoreToBodyAngles;
 pub use cartesian_state::CartesianState;
 pub use cartesian_vector::CartesianVector;
-pub use ephemeris::Ephemeris;
+pub use ephemeris::{construct_ephemeris_id, Ephemeris};
 pub use equinoctial_elements::EquinoctialElements;
 pub use geodetic_position::GeodeticPosition;
 pub use horizon_elements::HorizonElements;

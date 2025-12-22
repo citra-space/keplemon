@@ -1,8 +1,8 @@
 use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
-    BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData,
-    OrbitPlotState, RelativeState, TLE,
+    construct_ephemeris_id, BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition,
+    KeplerianState, OrbitPlotData, OrbitPlotState, RelativeState, TLE,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
@@ -25,6 +25,8 @@ pub struct Satellite {
     force_properties: ForceProperties,
     keplerian_state: Option<KeplerianState>,
     inertial_propagator: Option<InertialPropagator>,
+    ephemeris_cache: Option<Ephemeris>,
+    pub ephemeris_id: Option<String>,
 }
 
 impl Satellite {
@@ -61,8 +63,20 @@ impl Satellite {
             Some(ref propagator) => {
                 new_satellite.inertial_propagator = Some(propagator.new_with_delta_x(delta_x, use_drag, use_srp)?);
                 // Get keplerian state and force properties from the new propagator
-                new_satellite.keplerian_state = Some(new_satellite.inertial_propagator.as_ref().unwrap().get_keplerian_state().unwrap());
-                new_satellite.force_properties = new_satellite.inertial_propagator.as_ref().unwrap().get_force_properties().unwrap();
+                new_satellite.keplerian_state = Some(
+                    new_satellite
+                        .inertial_propagator
+                        .as_ref()
+                        .unwrap()
+                        .get_keplerian_state()
+                        .unwrap(),
+                );
+                new_satellite.force_properties = new_satellite
+                    .inertial_propagator
+                    .as_ref()
+                    .unwrap()
+                    .get_force_properties()
+                    .unwrap();
             }
             None => return Err("Inertial propagator is not set".to_string()),
         };
@@ -78,6 +92,36 @@ impl Satellite {
                 Ok(())
             }
             None => Err("Inertial propagator is not set".to_string()),
+        }
+    }
+
+    pub fn get_ephemeris(&mut self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
+        // exit early if we have a cached ephemeris that matches the request
+        if self.ephemeris_id == Some(construct_ephemeris_id(start_epoch, end_epoch, step)) {
+            return self.ephemeris_cache.clone();
+        }
+
+        match self.get_state_at_epoch(start_epoch) {
+            Some(state) => {
+                let ephemeris = Ephemeris::new(self.id.clone(), Some(self.norad_id), state).unwrap();
+                let diff = end_epoch - start_epoch;
+                let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
+                let dt = if step < max_step { step } else { max_step };
+                let mut next_epoch: Epoch = start_epoch + dt;
+                while next_epoch <= end_epoch {
+                    match self.get_state_at_epoch(next_epoch) {
+                        Some(state) => {
+                            ephemeris.add_state(state).unwrap();
+                            next_epoch += dt;
+                        }
+                        None => return None,
+                    }
+                }
+                self.ephemeris_cache = Some(ephemeris.clone());
+                self.ephemeris_id = Some(construct_ephemeris_id(start_epoch, end_epoch, step));
+                Some(ephemeris)
+            }
+            None => None,
         }
     }
 }
@@ -99,6 +143,8 @@ impl Satellite {
             force_properties: ForceProperties::default(),
             keplerian_state: None,
             inertial_propagator: None,
+            ephemeris_cache: None,
+            ephemeris_id: None,
         }
     }
 
@@ -199,6 +245,8 @@ impl Satellite {
             force_properties: tle.get_force_properties(),
             keplerian_state: Some(tle.get_keplerian_state()),
             inertial_propagator: Some(InertialPropagator::from_tle(tle)),
+            ephemeris_cache: None,
+            ephemeris_id: None,
         }
     }
 
@@ -303,29 +351,9 @@ impl Satellite {
         self.force_properties
     }
 
-    pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
-        match self.get_state_at_epoch(start_epoch) {
-            Some(state) => {
-                let ephemeris = Ephemeris::new(self.id.clone(), Some(self.norad_id), state);
-                let diff = end_epoch - start_epoch;
-                let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
-                let dt = if step < max_step { step } else { max_step };
-                let mut next_epoch: Epoch = start_epoch + dt;
-                while next_epoch <= end_epoch {
-                    match self.get_state_at_epoch(next_epoch) {
-                        Some(state) => {
-                            ephemeris.add_state(state);
-                            next_epoch += dt;
-                        }
-                        None => {
-                            return None;
-                        }
-                    }
-                }
-                Some(ephemeris)
-            }
-            None => None,
-        }
+    #[pyo3(name = "get_ephemeris")]
+    pub fn py_get_ephemeris(&mut self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
+        self.get_ephemeris(start_epoch, end_epoch, step)
     }
 
     pub fn get_plot_data(&self, start: Epoch, end: Epoch, step: TimeSpan) -> Option<OrbitPlotData> {
@@ -357,8 +385,8 @@ impl Satellite {
     }
 
     pub fn get_close_approach(
-        &self,
-        other: &Satellite,
+        &mut self,
+        other: &mut Satellite,
         start_epoch: Epoch,
         end_epoch: Epoch,
         distance_threshold: f64,
@@ -384,7 +412,7 @@ impl Satellite {
     }
 
     pub fn get_observatory_access_report(
-        &self,
+        &mut self,
         observatories: Vec<Observatory>,
         start: Epoch,
         end: Epoch,

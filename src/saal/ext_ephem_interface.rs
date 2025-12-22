@@ -2,7 +2,13 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 use super::main_interface::MainInterface;
+use once_cell::sync::Lazy;
+use pyo3::exceptions::PyException;
+use pyo3::prelude::*;
 use std::os::raw::c_char;
+use std::sync::Mutex;
+
+static EXTEPH_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 extern "C" {
     //  Notes: This function has been deprecated since v9.0.
@@ -343,5 +349,183 @@ pub fn get_ds50_utc_range(key: i64) -> Result<(f64, f64), String> {
     match status {
         0 => Ok((start_ds50_utc, end_ds50_utc)),
         _ => Err(MainInterface::get_last_error_message()),
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone, PartialEq)]
+pub struct EphemInterface {}
+
+impl EphemInterface {
+    pub fn add_satellite(sat_num: i32, epoch_ds50_utc: f64, ae: f64, ke: f64, coord_sys: i32) -> Result<i64, String> {
+        let _lock = EXTEPH_LOCK.lock().unwrap();
+        let key = unsafe { ExtEphAddSat(sat_num, epoch_ds50_utc, ae, ke, coord_sys) };
+        if key >= 0 {
+            Ok(key)
+        } else {
+            Err(MainInterface::get_last_error_message())
+        }
+    }
+    pub fn add_state(
+        sat_key: i64,
+        ds50_utc: f64,
+        pos: &[f64; 3],
+        vel: &[f64; 3],
+        cov: Option<&[f64; 21]>,
+    ) -> Result<(), String> {
+        let status = match cov {
+            Some(cov) => unsafe { ExtEphAddSatEphemCovMtx(sat_key, ds50_utc, pos, vel, 0, cov) },
+            None => unsafe { ExtEphAddSatEphem(sat_key, ds50_utc, pos, vel, 0) },
+        };
+        match status {
+            0 => Ok(()),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+    pub fn get_posvel_at_ds50(key: i64, ds50_utc: f64) -> Result<([f64; 3], [f64; 3]), String> {
+        let mut pos = [0.0; 3];
+        let mut vel = [0.0; 3];
+        let mut rev_num = 0;
+        let mut mse = 0.0;
+        let status = unsafe { ExtEphDs50UTC(key, ds50_utc, &mut mse, &mut pos, &mut vel, &mut rev_num) };
+        match status {
+            0 => Ok((pos, vel)),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+    pub fn get_state_at_index(key: i64, index: i32) -> Result<(f64, [f64; 3], [f64; 3], [[f64; 6]; 6]), String> {
+        let mut pos = [0.0; 3];
+        let mut vel = [0.0; 3];
+        let mut cov = [[0.0; 6]; 6];
+        let mut rev_num = 0;
+        let mut ds50_utc = 0.0;
+        let status = unsafe { ExtEphGetCovMtx(key, index, &mut ds50_utc, &mut pos, &mut vel, &mut rev_num, &mut cov) };
+        match status {
+            0 => Ok((ds50_utc, pos, vel, cov)),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+
+    pub fn get_number_of_states(key: i64) -> Result<i32, String> {
+        let mut num_of_pts = 0;
+        let status = unsafe { ExtEphGetNumPts(key, &mut num_of_pts) };
+        match status {
+            0 => Ok(num_of_pts),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+
+    pub fn get_ds50_utc_range(key: i64) -> Result<(f64, f64), String> {
+        let mut start_ds50_utc = 0.0;
+        let mut end_ds50_utc = 0.0;
+        let status = unsafe { ExtEphStartEndTime(key, &mut start_ds50_utc, &mut end_ds50_utc) };
+        match status {
+            0 => Ok((start_ds50_utc, end_ds50_utc)),
+            _ => Err(MainInterface::get_last_error_message()),
+        }
+    }
+
+    pub fn clone(key: i64) -> Result<i64, String> {
+        let mut sat_num = 0;
+        let mut sat_name = [0 as c_char; 100];
+        let mut rec_name = [0 as c_char; 100];
+        let mut epoch_ds50_utc = 0.0;
+        let mut ae = 0.0;
+        let mut ke = 0.0;
+        let mut pos = [0.0; 3];
+        let mut vel = [0.0; 3];
+        let mut coord_sys = 0;
+        let mut num_of_pts = 0;
+        let mut file_loc = [0 as c_char; 260];
+
+        let status = unsafe {
+            ExtEphGetAllFields(
+                key,
+                &mut sat_num,
+                sat_name.as_mut_ptr(),
+                rec_name.as_mut_ptr(),
+                &mut epoch_ds50_utc,
+                &mut ae,
+                &mut ke,
+                &mut pos,
+                &mut vel,
+                &mut coord_sys,
+                &mut num_of_pts,
+                file_loc.as_mut_ptr(),
+            )
+        };
+        if status != 0 {
+            return Err(MainInterface::get_last_error_message());
+        }
+
+        let new_key = EphemInterface::add_satellite(sat_num, epoch_ds50_utc, ae, ke, coord_sys)?;
+        for i in 0..num_of_pts {
+            let (ds50, pos, vel, _) = EphemInterface::get_state_at_index(key, i + 1)?;
+            EphemInterface::add_state(new_key, ds50, &pos, &vel, None)?;
+        }
+        Ok(new_key)
+    }
+
+    pub fn remove_key(key: i64) {
+        unsafe {
+            ExtEphRemoveSat(key);
+        }
+    }
+}
+
+#[pymethods]
+impl EphemInterface {
+    #[classattr]
+    pub const COORD_ECI: i32 = COORD_ECI;
+
+    #[classattr]
+    pub const COORD_J2K: i32 = COORD_J2K;
+
+    #[classattr]
+    pub const COORD_EFG: i32 = COORD_EFG;
+
+    #[classattr]
+    pub const COORD_ECR: i32 = COORD_ECR;
+
+    #[staticmethod]
+    #[pyo3(name = "add_satellite")]
+    pub fn py_add_satellite(sat_num: i32, epoch_ds50_utc: f64, ae: f64, ke: f64, coord_sys: i32) -> PyResult<i64> {
+        EphemInterface::add_satellite(sat_num, epoch_ds50_utc, ae, ke, coord_sys).map_err(PyException::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "add_state")]
+    pub fn py_add_state(
+        sat_key: i64,
+        ds50_utc: f64,
+        pos: [f64; 3],
+        vel: [f64; 3],
+        cov: Option<[f64; 21]>,
+    ) -> PyResult<()> {
+        EphemInterface::add_state(sat_key, ds50_utc, &pos, &vel, cov.as_ref()).map_err(PyException::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "remove_key")]
+    pub fn py_remove_key(key: i64) {
+        EphemInterface::remove_key(key);
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "get_posvel_at_ds50")]
+    pub fn py_get_posvel_at_ds50(key: i64, ds50_utc: f64) -> PyResult<([f64; 3], [f64; 3])> {
+        EphemInterface::get_posvel_at_ds50(key, ds50_utc).map_err(PyException::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "get_posvel_at_index")]
+    pub fn py_get_posvel_at_index(key: i64, index: i32) -> PyResult<(f64, [f64; 3], [f64; 3], [[f64; 6]; 6])> {
+        EphemInterface::get_state_at_index(key, index).map_err(PyException::new_err)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "get_number_of_states")]
+    pub fn py_get_number_of_states(key: i64) -> PyResult<i32> {
+        EphemInterface::get_number_of_states(key).map_err(PyException::new_err)
     }
 }

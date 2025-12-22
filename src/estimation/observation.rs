@@ -1,11 +1,12 @@
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::vec;
 use uuid::Uuid;
 
-use super::ObservationResidual;
-use crate::bodies::{Satellite, Sensor};
+use super::{ObservationAssociation, ObservationResidual};
+use crate::bodies::{Constellation, Satellite, Sensor};
 use crate::elements::{CartesianVector, TopocentricElements};
+use crate::enums::AssociationConfidence;
 use crate::saal::{astro_func_interface, sat_state_interface};
-
 use crate::time::Epoch;
 use pyo3::prelude::*;
 
@@ -190,6 +191,69 @@ impl Observation {
         self.observed_satellite_id = Some(observed_satellite_id);
     }
 
+    pub fn get_associations(&self, constellation: &Constellation) -> Vec<ObservationAssociation> {
+        let observed_teme_direction = self.observed_teme_topocentric.get_observed_direction();
+        let sat_states = constellation.get_states_at_epoch(self.epoch);
+        let associations = sat_states
+            .par_iter()
+            .filter_map(|(sat_id, sat_state_option)| match sat_state_option {
+                Some(sat_state) => {
+                    let sensor_to_satellite = sat_state.position - self.observer_teme_position;
+                    let teme_estimate =
+                        self.observer_teme_position + (observed_teme_direction * sensor_to_satellite.get_magnitude());
+
+                    let pos_vel_1 = [
+                        sat_state.position[0],
+                        sat_state.position[1],
+                        sat_state.position[2],
+                        sat_state.velocity[0],
+                        sat_state.velocity[1],
+                        sat_state.velocity[2],
+                    ];
+                    let pos_vel_2 = [
+                        teme_estimate[0],
+                        teme_estimate[1],
+                        teme_estimate[2],
+                        sat_state.velocity[0],
+                        sat_state.velocity[1],
+                        sat_state.velocity[2],
+                    ];
+                    let residual = ObservationResidual::from(sat_state_interface::get_relative_state(
+                        &pos_vel_1,
+                        &pos_vel_2,
+                        self.epoch.days_since_1950,
+                    ));
+
+                    if residual.get_range() < 1.0 {
+                        Some(ObservationAssociation::new(
+                            self.id.clone(),
+                            sat_id.clone(),
+                            residual,
+                            AssociationConfidence::High,
+                        ))
+                    } else if residual.get_range() < 10.0 {
+                        Some(ObservationAssociation::new(
+                            self.id.clone(),
+                            sat_id.clone(),
+                            residual,
+                            AssociationConfidence::Medium,
+                        ))
+                    } else if residual.get_range() < 100.0 {
+                        Some(ObservationAssociation::new(
+                            self.id.clone(),
+                            sat_id.clone(),
+                            residual,
+                            AssociationConfidence::Low,
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            })
+            .collect();
+        associations
+    }
     pub fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {
         match satellite.get_state_at_epoch(self.epoch) {
             Some(satellite_state) => {

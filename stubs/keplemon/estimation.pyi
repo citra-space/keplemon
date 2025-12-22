@@ -1,12 +1,18 @@
 # flake8: noqa
 from keplemon.elements import TopocentricElements, CartesianVector
 from keplemon.time import Epoch
-from keplemon.bodies import Satellite, Sensor
-from keplemon.enums import KeplerianType
+from keplemon.bodies import Satellite, Sensor, Constellation
+from keplemon.enums import KeplerianType, AssociationConfidence
 
 class Covariance:
     sigmas: list[float]
     """"""
+
+class ObservationAssociation:
+    observation_id: str
+    satellite_id: str
+    residual: "ObservationResidual"
+    confidence: "AssociationConfidence"
 
 class Observation:
     """
@@ -66,6 +72,18 @@ class Observation:
 
         Returns:
             Calculated residual
+        """
+        ...
+
+    def get_associations(self, sats: Constellation) -> list[ObservationAssociation]:
+        """
+        Calculate the associations of the observation with respect to a given constellation of satellites.
+
+        Args:
+            sats: Constellation of satellites to compare against
+
+        Returns:
+            List of possible observation associations
         """
         ...
 

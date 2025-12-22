@@ -23,14 +23,14 @@ pub struct Observatory {
 
 impl Observatory {
     pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Ephemeris {
-        let ephemeris = Ephemeris::new(self.id.clone(), None, self.get_state_at_epoch(start_epoch));
+        let ephemeris = Ephemeris::new(self.id.clone(), None, self.get_state_at_epoch(start_epoch)).unwrap();
         let diff = end_epoch - start_epoch;
         let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
         let dt = if step < max_step { step } else { max_step };
         let mut next_epoch: Epoch = start_epoch + dt;
 
         while next_epoch <= end_epoch {
-            ephemeris.add_state(self.get_state_at_epoch(next_epoch));
+            ephemeris.add_state(self.get_state_at_epoch(next_epoch)).unwrap();
             next_epoch += dt;
         }
         ephemeris

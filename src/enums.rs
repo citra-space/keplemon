@@ -1,3 +1,4 @@
+mod association_confidence;
 mod classification;
 mod covariance_type;
 mod equinox_type;
@@ -7,6 +8,7 @@ mod reference_frame;
 mod saal_key_mode;
 mod time_system;
 
+pub use association_confidence::AssociationConfidence;
 pub use classification::Classification;
 pub use covariance_type::CovarianceType;
 pub use equinox_type::EquinoxType;
@@ -29,6 +31,7 @@ pub fn register_enums(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     enums.add_class::<EquinoxType>()?;
     enums.add_class::<GeodeticModel>()?;
     enums.add_class::<CovarianceType>()?;
+    enums.add_class::<AssociationConfidence>()?;
     py_run!(
         parent_module.py(),
         enums,

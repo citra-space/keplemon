@@ -1,12 +1,13 @@
 [package]
 name = "keplemon"
-version = "2.0.2"
+version = "2.1.0"
 edition = "2021"
 
 [dependencies]
 ctor = "0.4.1"
 log = "0.4"
 nalgebra = "0.33.2"
+once_cell = "1.21.3"
 pyo3 = { version = "0.24.1", features = ["extension-module"] }
 pyo3-log = "0.12.0"
 rayon = "1.10.0"

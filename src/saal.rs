@@ -10,6 +10,7 @@ pub mod time_func_interface;
 pub mod tle_interface;
 
 mod get_set_string;
+pub use ext_ephem_interface::EphemInterface;
 pub use get_set_string::GetSetString;
 pub use main_interface::MainInterface;
 pub use tle_interface::TLEInterface;
@@ -24,6 +25,7 @@ pub fn register_saal(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     saal.add_class::<sensor_interface::SAALSensor>()?;
     saal.add_class::<obs_interface::ObsInterface>()?;
     saal.add_class::<obs_interface::SAALObservation>()?;
+    saal.add_class::<ext_ephem_interface::EphemInterface>()?;
     saal.add_class::<TLEInterface>()?;
     py_run!(
         parent_module.py(),

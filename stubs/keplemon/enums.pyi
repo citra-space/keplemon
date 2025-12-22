@@ -1,6 +1,20 @@
 # flake8: noqa
 from enum import Enum
 
+class AssociationConfidence(Enum):
+    """
+    Confidence level of an observation association
+
+    Attributes:
+        Low (AssociationConfidence): Low confidence
+        Medium (AssociationConfidence): Medium confidence
+        High (AssociationConfidence): High confidence
+    """
+
+    Low = ...
+    Medium = ...
+    High = ...
+
 class CovarianceType(Enum):
     """
     Reference frame/element types for a covariance matrix

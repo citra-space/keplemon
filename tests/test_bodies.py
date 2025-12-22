@@ -61,7 +61,7 @@ def test_satellite():
     end = Epoch.from_iso("2025-04-16T12:00:00.000000Z", TimeSystem.UTC)
     ca = sat_1.get_close_approach(sat_2, start, end, 25.0)
     assert ca
-    assert ca.epoch.to_iso() == "2025-04-15T12:32:28.531"
+    assert ca.epoch.to_iso() == "2025-04-15T12:32:28.532"
     assert ca.distance == pytest.approx(6.088, abs=0.1)
     assert sat_1.geodetic_position is not None
     assert sat_2.geodetic_position is not None

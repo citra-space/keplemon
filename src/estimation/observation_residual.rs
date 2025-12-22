@@ -2,7 +2,7 @@ use crate::saal::sat_state_interface;
 use pyo3::prelude::*;
 
 #[pyclass]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub struct ObservationResidual {
     range: f64,
     time: f64,

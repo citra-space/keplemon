@@ -81,7 +81,7 @@ impl Constellation {
     }
 
     pub fn get_horizon_access_report(
-        &self,
+        &mut self,
         site: &Observatory,
         start: Epoch,
         end: Epoch,
@@ -94,7 +94,7 @@ impl Constellation {
         // get TEME states for all satellites
         let sat_ephem_list: Vec<Ephemeris> = self
             .satellites
-            .par_iter()
+            .par_iter_mut()
             .filter_map(|(_, sat)| sat.get_ephemeris(start, end, min_duration))
             .collect();
 
@@ -116,8 +116,8 @@ impl Constellation {
     }
 
     pub fn get_ca_report_vs_one(
-        &self,
-        sat: &Satellite,
+        &mut self,
+        sat: &mut Satellite,
         start: Epoch,
         end: Epoch,
         distance_threshold: f64,
@@ -126,7 +126,7 @@ impl Constellation {
             Some(ephemeris) => {
                 let close_approaches = self
                     .satellites
-                    .par_iter()
+                    .par_iter_mut()
                     .filter_map(|(_, other_sat)| {
                         if sat.get_apoapsis()? < other_sat.get_periapsis()? - distance_threshold
                             || other_sat.get_apoapsis()? < sat.get_periapsis()? - distance_threshold
@@ -154,11 +154,11 @@ impl Constellation {
         }
     }
 
-    pub fn get_ca_report_vs_many(&self, start: Epoch, end: Epoch, distance_threshold: f64) -> CloseApproachReport {
+    pub fn get_ca_report_vs_many(&mut self, start: Epoch, end: Epoch, distance_threshold: f64) -> CloseApproachReport {
         let mut report = CloseApproachReport::new(start, end, distance_threshold);
         let ephem_list: Vec<Ephemeris> = self
             .satellites
-            .par_iter()
+            .par_iter_mut()
             .filter_map(|(_, sat)| {
                 sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES))
             })
@@ -191,13 +191,13 @@ impl Constellation {
     }
 
     pub fn get_ephemeris(
-        &self,
+        &mut self,
         start_epoch: Epoch,
         end_epoch: Epoch,
         step_size: TimeSpan,
     ) -> HashMap<String, Option<Ephemeris>> {
         self.satellites
-            .par_iter()
+            .par_iter_mut()
             .map(|(satellite_id, sat)| {
                 let ephemeris = sat.get_ephemeris(start_epoch, end_epoch, step_size);
                 (satellite_id.clone(), ephemeris)

@@ -5,6 +5,7 @@ from keplemon._keplemon.enums import (  # type: ignore
     KeplerianType,
     ReferenceFrame,
     CovarianceType,
+    AssociationConfidence,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "KeplerianType",
     "ReferenceFrame",
     "CovarianceType",
+    "AssociationConfidence",
 ]
