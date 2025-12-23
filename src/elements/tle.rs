@@ -245,6 +245,16 @@ impl TLE {
         // Get the predicted measurements for the reference satellite
         let h_ref = ob.get_predicted_vector(&ref_sat)?;
 
+        self.get_jacobian_with_ref(ob, use_drag, use_srp, &h_ref)
+    }
+
+    pub fn get_jacobian_with_ref(
+        &self,
+        ob: &Observation,
+        use_drag: bool,
+        use_srp: bool,
+        h_ref: &[f64],
+    ) -> Result<DMatrix<f64>, String> {
         let m = h_ref.len();
         let mut n = 6;
         if use_drag {
@@ -340,6 +350,77 @@ impl TLE {
         }
 
         Ok(jac)
+    }
+
+    pub fn build_perturbed_satellites(&self, use_drag: bool, use_srp: bool) -> Result<Vec<(Satellite, f64)>, String> {
+        let mut n = 6;
+        if use_drag {
+            n += 1;
+        }
+        if use_srp {
+            n += 1;
+        }
+        let mut sats = Vec::with_capacity(n);
+
+        let ref_state = self.get_keplerian_state();
+        let ref_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch());
+
+        for j in 0..6 {
+            let mut perturbed_elements = ref_elements;
+            let epsilon = DEFAULT_EPSILONS[j];
+            perturbed_elements[j] += epsilon;
+            let perturbed_kep = KeplerianElements::from(&perturbed_elements);
+            let perturbed_state = KeplerianState::new(
+                ref_state.get_epoch(),
+                perturbed_kep,
+                ref_state.get_frame(),
+                ref_state.get_type(),
+            );
+            let perturbed_tle = TLE::new(
+                self.get_id(),
+                self.get_norad_id(),
+                self.name.clone(),
+                self.classification,
+                self.designator.clone(),
+                perturbed_state,
+                self.force_properties,
+            )?;
+            sats.push((Satellite::from_tle(perturbed_tle), epsilon));
+        }
+
+        if use_drag {
+            let mut perturbed_forces = self.force_properties;
+            let epsilon = DEFAULT_EPSILONS[6];
+            perturbed_forces.set_drag_coefficient(perturbed_forces.get_drag_coefficient() + epsilon);
+            let perturbed_tle = TLE::new(
+                self.get_id(),
+                self.get_norad_id(),
+                self.name.clone(),
+                self.classification,
+                self.designator.clone(),
+                ref_state,
+                perturbed_forces,
+            )?;
+            sats.push((Satellite::from_tle(perturbed_tle), epsilon));
+        }
+
+        if use_srp {
+            let mut perturbed_forces = self.force_properties;
+            let epsilon = DEFAULT_EPSILONS[7];
+            perturbed_forces.set_srp_coefficient(perturbed_forces.get_srp_coefficient() + epsilon);
+            let perturbed_tle = TLE::new(
+                self.get_id(),
+                self.get_norad_id(),
+                self.name.clone(),
+                self.classification,
+                self.designator.clone(),
+                ref_state,
+                perturbed_forces,
+            )?;
+            sats.push((Satellite::from_tle(perturbed_tle), epsilon));
+        }
+
+        Ok(sats)
     }
 
     pub fn get_xa_tle(&self) -> [f64; TLEInterface::XA_TLE_SIZE] {

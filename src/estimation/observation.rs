@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use super::{ObservationAssociation, ObservationResidual};
 use crate::bodies::{Constellation, Satellite, Sensor};
-use crate::elements::{CartesianVector, TopocentricElements};
+use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
 use crate::enums::AssociationConfidence;
 use crate::saal::{astro_func_interface, sat_state_interface};
 use crate::time::Epoch;
@@ -18,6 +18,8 @@ pub struct Observation {
     epoch: Epoch,
     observed_teme_topocentric: TopocentricElements,
     observer_teme_position: CartesianVector,
+    observer_lla: [f64; 3],
+    observer_theta: f64,
     observed_satellite_id: Option<i32>,
 }
 
@@ -48,47 +50,51 @@ impl Observation {
     }
 
     pub fn get_predicted_vector(&self, satellite: &Satellite) -> Result<Vec<f64>, String> {
+        let mut predicted = Vec::new();
+        self.fill_predicted_vector(satellite, &mut predicted)?;
+        Ok(predicted)
+    }
+
+    pub fn fill_predicted_vector(&self, satellite: &Satellite, out: &mut Vec<f64>) -> Result<(), String> {
         match satellite.get_state_at_epoch(self.get_epoch()) {
-            Some(satellite_state) => {
-                let theta_g = self.epoch.to_fk5_greenwich_angle();
-                let lla = astro_func_interface::theta_teme_to_lla(theta_g, &self.observer_teme_position.into());
-                let theta = theta_g + lla[1].to_radians();
-                let xa_topo = astro_func_interface::teme_to_topocentric(
-                    theta,
-                    lla[0],
-                    &self.observer_teme_position.into(),
-                    &satellite_state.position.into(),
-                    &satellite_state.velocity.into(),
-                )?;
-                let mut topo_elements = TopocentricElements::new(
-                    xa_topo[astro_func_interface::XA_TOPO_RA],
-                    xa_topo[astro_func_interface::XA_TOPO_DEC],
-                );
-                topo_elements.set_declination_rate(Some(xa_topo[astro_func_interface::XA_TOPO_DECDOT]));
-                topo_elements.set_right_ascension_rate(Some(xa_topo[astro_func_interface::XA_TOPO_RADOT]));
-                topo_elements.set_range(Some(xa_topo[astro_func_interface::XA_TOPO_RANGE]));
-                topo_elements.set_range_rate(Some(xa_topo[astro_func_interface::XA_TOPO_RANGEDOT]));
-                let mut predicted = vec![topo_elements.get_right_ascension(), topo_elements.get_declination()];
-                if self.get_range().is_some() {
-                    predicted.push(topo_elements.get_range().unwrap());
-                }
-                if self.get_range_rate().is_some() {
-                    predicted.push(topo_elements.get_range_rate().unwrap());
-                }
-                if self.get_right_ascension_rate().is_some() {
-                    predicted.push(topo_elements.get_right_ascension_rate().unwrap());
-                }
-                if self.get_declination_rate().is_some() {
-                    predicted.push(topo_elements.get_declination_rate().unwrap());
-                }
-                Ok(predicted)
-            }
+            Some(satellite_state) => self.fill_predicted_from_state(&satellite_state, out),
             None => Err(format!(
                 "Error propagating satellite {} to {}",
                 satellite.get_id(),
                 self.get_epoch().to_iso()
             )),
         }
+    }
+
+    pub fn fill_predicted_from_state(&self, state: &CartesianState, out: &mut Vec<f64>) -> Result<(), String> {
+        let xa_topo = astro_func_interface::teme_to_topocentric(
+            self.observer_theta,
+            self.observer_lla[0],
+            &self.observer_teme_position.into(),
+            &state.position.into(),
+            &state.velocity.into(),
+        )?;
+        let has_range = self.get_range().is_some();
+        let has_range_rate = self.get_range_rate().is_some();
+        let has_ra_rate = self.get_right_ascension_rate().is_some();
+        let has_dec_rate = self.get_declination_rate().is_some();
+        out.clear();
+        out.reserve(2 + has_range as usize + has_range_rate as usize + has_ra_rate as usize + has_dec_rate as usize);
+        out.push(xa_topo[astro_func_interface::XA_TOPO_RA]);
+        out.push(xa_topo[astro_func_interface::XA_TOPO_DEC]);
+        if has_range {
+            out.push(xa_topo[astro_func_interface::XA_TOPO_RANGE]);
+        }
+        if has_range_rate {
+            out.push(xa_topo[astro_func_interface::XA_TOPO_RANGEDOT]);
+        }
+        if has_ra_rate {
+            out.push(xa_topo[astro_func_interface::XA_TOPO_RADOT]);
+        }
+        if has_dec_rate {
+            out.push(xa_topo[astro_func_interface::XA_TOPO_DECDOT]);
+        }
+        Ok(())
     }
 }
 
@@ -101,12 +107,17 @@ impl Observation {
         observed_teme_topocentric: TopocentricElements,
         observer_teme_position: CartesianVector,
     ) -> Self {
+        let theta_g = epoch.to_fk5_greenwich_angle();
+        let observer_lla = astro_func_interface::theta_teme_to_lla(theta_g, &observer_teme_position.into());
+        let observer_theta = theta_g + observer_lla[1].to_radians();
         Self {
             id: Uuid::new_v4().to_string(),
             sensor,
             epoch,
             observed_teme_topocentric,
             observer_teme_position,
+            observer_lla,
+            observer_theta,
             observed_satellite_id: None,
         }
     }

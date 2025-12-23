@@ -13,3 +13,4 @@ python/keplemon/*.lib
 python/keplemon/*.pyi
 python/keplemon/saal/*.pyi
 site/
+local/

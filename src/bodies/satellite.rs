@@ -37,6 +37,30 @@ impl Satellite {
         }
     }
 
+    pub fn get_jacobian_with_ref(
+        &self,
+        ob: &Observation,
+        use_drag: bool,
+        use_srp: bool,
+        h_ref: &[f64],
+    ) -> Result<DMatrix<f64>, String> {
+        match self.inertial_propagator {
+            Some(ref propagator) => propagator.get_jacobian_with_ref(ob, use_drag, use_srp, h_ref),
+            None => Err("Inertial propagator is not set".to_string()),
+        }
+    }
+
+    pub fn build_perturbed_satellites(
+        &self,
+        use_drag: bool,
+        use_srp: bool,
+    ) -> Result<Vec<(Satellite, f64)>, String> {
+        match self.inertial_propagator {
+            Some(ref propagator) => propagator.build_perturbed_satellites(use_drag, use_srp),
+            None => Err("Inertial propagator is not set".to_string()),
+        }
+    }
+
     pub fn clone_at_epoch(&self, epoch: Epoch) -> Result<Self, String> {
         let mut new_satellite = self.clone();
         match self.inertial_propagator {
