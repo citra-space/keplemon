@@ -30,6 +30,7 @@ pub struct BatchLeastSquares {
     predicted_buffers: Option<Vec<Vec<f64>>>,
     predicted_measurements: Option<DVector<f64>>,
     jacobian: Option<DMatrix<f64>>,
+    eccentricity_constraint_weight: Option<f64>,
 }
 
 #[pymethods]
@@ -57,6 +58,7 @@ impl BatchLeastSquares {
             predicted_buffers: None,
             predicted_measurements: None,
             jacobian: None,
+            eccentricity_constraint_weight: None,
         }
     }
 
@@ -268,6 +270,16 @@ impl BatchLeastSquares {
     }
 
     #[getter]
+    pub fn get_eccentricity_constraint_weight(&self) -> Option<f64> {
+        self.eccentricity_constraint_weight
+    }
+
+    #[setter]
+    pub fn set_eccentricity_constraint_weight(&mut self, weight: Option<f64>) {
+        self.eccentricity_constraint_weight = weight;
+    }
+
+    #[getter]
     pub fn get_covariance(&self) -> Option<Covariance> {
         let residuals = self.get_residuals();
         let mut residual_matrix = DMatrix::zeros(residuals.len(), 6);
@@ -299,6 +311,42 @@ impl BatchLeastSquares {
 impl BatchLeastSquares {
     fn timing_enabled() -> bool {
         std::env::var("KEPLEMON_BLS_TIMING").is_ok()
+    }
+
+    fn apply_eccentricity_constraint(
+        &self,
+        n: &mut DMatrix<f64>,
+        b: &mut DVector<f64>,
+    ) -> Result<(), String> {
+        let weight = match self.eccentricity_constraint_weight {
+            Some(w) if w > 0.0 => w,
+            _ => return Ok(()),
+        };
+        let current_state = self
+            .current_estimate
+            .get_keplerian_state()
+            .ok_or("Missing current keplerian state")?;
+        let target_sat = self.a_priori.clone_at_epoch(current_state.get_epoch())?;
+        let target_state = target_sat
+            .get_keplerian_state()
+            .ok_or("Missing a priori keplerian state")?;
+
+        let current_eq = current_state.get_elements().to_equinoctial();
+        let target_eq = target_state.get_elements().to_equinoctial();
+
+        let r_af = target_eq[crate::saal::astro_func_interface::XA_EQNX_AF]
+            - current_eq[crate::saal::astro_func_interface::XA_EQNX_AF];
+        let r_ag = target_eq[crate::saal::astro_func_interface::XA_EQNX_AG]
+            - current_eq[crate::saal::astro_func_interface::XA_EQNX_AG];
+
+        // Equinoctial delta_x ordering is [a_f, a_g, chi, psi, L, n]
+        if n.nrows() >= 2 && n.ncols() >= 2 && b.len() >= 2 {
+            n[(0, 0)] += weight;
+            b[0] += weight * r_af;
+            n[(1, 1)] += weight;
+            b[1] += weight * r_ag;
+        }
+        Ok(())
     }
 
     fn get_measurements_and_weights(&mut self) {
@@ -486,14 +534,19 @@ impl BatchLeastSquares {
         };
         let mut r = (y - y_hat).clone_owned();
 
-        wrap_ra_residuals(&mut r);
+        let measurement_sizes = match self.measurement_sizes.as_ref() {
+            Some(sizes) => sizes,
+            None => return Err("Missing cached measurement sizes".to_string()),
+        };
+        wrap_ra_residuals(&mut r, measurement_sizes);
 
         let h = match self.jacobian.as_ref() {
             Some(matrix) => matrix,
             None => return Err("Missing cached jacobians".to_string()),
         };
         let normal_start = if timing { Some(Instant::now()) } else { None };
-        let (n, b, wrss) = compute_normal_equations(h, w, &r);
+        let (mut n, mut b, wrss) = compute_normal_equations(h, w, &r);
+        self.apply_eccentricity_constraint(&mut n, &mut b)?;
         if let (true, Some(start)) = (timing, normal_start) {
             eprintln!("BLS timing: normal_equations {:.3?}", start.elapsed());
         }
@@ -526,13 +579,21 @@ impl BatchLeastSquares {
 
 /// Wrap Right Ascension residuals to [-180°, 180°] for shortest angular distance
 /// Measurement vector is [RA1, DEC1, RA2, DEC2, ...], so every even index is RA
-fn wrap_ra_residuals(residuals: &mut DVector<f64>) {
-    for i in (0..residuals.len()).step_by(2) {
-        if residuals[i] > 180.0 {
-            residuals[i] -= 360.0;
-        } else if residuals[i] < -180.0 {
-            residuals[i] += 360.0;
+fn wrap_ra_residuals(residuals: &mut DVector<f64>, measurement_sizes: &[usize]) {
+    let mut offset = 0;
+    for &dim in measurement_sizes.iter() {
+        if offset >= residuals.len() {
+            break;
         }
+        if dim > 0 {
+            let ra_idx = offset;
+            if residuals[ra_idx] > 180.0 {
+                residuals[ra_idx] -= 360.0;
+            } else if residuals[ra_idx] < -180.0 {
+                residuals[ra_idx] += 360.0;
+            }
+        }
+        offset += dim;
     }
 }
 

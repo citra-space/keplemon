@@ -178,16 +178,13 @@ def get_jpl_sun_and_moon_position(ds50_utc: float) -> tuple[list[float], list[fl
     """
     ...
 
-def time_teme_to_lla(ds50_utc: float, lat: float, long: float, ra: float, dec: float) -> tuple[float, float]:
+def time_teme_to_lla(ds50_utc: float, teme_position: list[float]) -> tuple[float, float, float]:
     """
     Convert TEME coordinates to latitude, longitude, and altitude.
 
     Args:
         ds50_utc: Epoch in DS50 UTC format.
-        lat: Sensor latitude in degrees.
-        long: Sensor longitude in degrees.
-        ra: TEME right ascension in degrees.
-        dec: TEME declination in degrees.
+        teme_position: TEME position as a list of floats [x, y, z] in kilometers.
     """
 
 XA_TOPO_AZ: int

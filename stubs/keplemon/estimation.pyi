@@ -175,6 +175,9 @@ class BatchLeastSquares:
     output_type: KeplerianType
     """Type of Keplerian elements to be used in the output state"""
 
+    eccentricity_constraint_weight: float | None
+    """Tikhonov weight that keeps equinoctial a_f/a_g (eccentricity) near the a priori state"""
+
     def __init__(
         self,
         obs: list[Observation],
