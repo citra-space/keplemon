@@ -1,14 +1,14 @@
 [tasks.clean-all]
 description = "Remove and binaries from previous builds"
 script = [
-    "cargo clean",
-    "rm -rf python/keplemon/*.so",
-    "rm -rf python/keplemon/*.dylib",
-    "rm -rf python/keplemon/*.dll",
-    "rm -rf python/keplemon/assets/*",
-    "rm -rf python/keplemon/*.pyi",
-    "cp assets/* python/keplemon/assets/",
-    "cp -r stubs/keplemon/* python/keplemon/",
+  "cargo clean",
+  "rm -rf python/keplemon/*.so",
+  "rm -rf python/keplemon/*.dylib",
+  "rm -rf python/keplemon/*.dll",
+  "rm -rf python/keplemon/assets/*",
+  "rm -rf python/keplemon/*.pyi",
+  "cp assets/* python/keplemon/assets/",
+  "cp -r stubs/keplemon/* python/keplemon/",
 ]
 
 [tasks.copy-mac-arm]
@@ -49,14 +49,14 @@ dependencies = ["copy-mac-x86"]
 [tasks.build-linux-arm]
 description = "Build the wheel for Linux ARM"
 script = [
-    "maturin build --release --strip --target aarch64-unknown-linux-musl --compatibility musllinux_1_2",
+  "maturin build --release --strip --target aarch64-unknown-linux-musl --compatibility musllinux_1_2",
 ]
 dependencies = ["copy-linux-arm"]
 
 [tasks.build-linux-x86]
 description = "Build the wheel for Linux x86"
 script = [
-    "maturin build --release --target x86_64-unknown-linux-gnu --compatibility manylinux2014",
+  "maturin build --release --target x86_64-unknown-linux-gnu --compatibility manylinux2014",
 ]
 dependencies = ["copy-linux-x86"]
 
@@ -150,3 +150,62 @@ description = "Publish the wheel for Windows"
 command = "twine"
 args = ["upload", "target/wheels/*"]
 dependencies = ["test-windows"]
+
+# -------- Local quality gates (fast, deterministic) --------
+
+[tasks.fmt]
+description = "Rust fmt check"
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.clippy]
+description = "Rust clippy (deny warnings)"
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.test-rust]
+description = "Rust unit tests"
+command = "cargo"
+args = ["test", "--all-features"]
+
+[tasks.typecheck]
+description = "Python type check (mypy strict)"
+command = "python"
+args = ["-m", "mypy", "python/keplemon"]
+
+[tasks.test-py]
+description = "Python tests (pure python, no wheel build)"
+command = "pytest"
+args = ["-v", "--tb=short", "tests"]
+
+[tasks.check]
+description = "Single source of truth: format + lint + tests + typing"
+dependencies = ["fmt", "clippy", "test-rust", "typecheck", "test-py"]
+
+# -------- Perf workflow (evidence required) --------
+
+[tasks.bench]
+description = "Criterion benches (perf evidence)"
+command = "cargo"
+args = ["bench"]
+
+[tasks.perf]
+description = "Perf workflow: check + benches"
+dependencies = ["check", "bench"]
+
+# -------- Platform flows remain as-is; add umbrella targets --------
+
+[tasks.ci]
+description = "CI entrypoint (no publishing)"
+# pick the platform job in CI; default to check so AI has a stable target
+dependencies = ["check"]
+
+[tasks.format]
+description = "Apply rustfmt"
+command = "cargo"
+args = ["fmt", "--all"]
+
+[tasks.format-check]
+description = "Check rustfmt"
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]

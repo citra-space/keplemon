@@ -32,6 +32,7 @@ python-source = "python"
 module-name = "keplemon._keplemon"
 include = ["keplemon/*", "keplemon/saal/*"]
 generate-stub = false
+features = ["python"]
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

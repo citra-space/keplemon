@@ -1,0 +1,224 @@
+version: 1
+
+defaults:
+  principles:
+    - correctness-first
+    - no speculative code
+    - minimal surface area
+    - explicit assumptions
+    - deterministic outputs
+  review_required: true
+  output_style:
+    verbosity: concise
+    format: markdown
+    examples_over_explanations: true
+
+agents:
+  architect:
+    role: System Architect
+    authority: design-only
+    allowed:
+      - define-interfaces
+      - propose-architecture
+      - review-design
+    forbidden:
+      - write-production-code
+      - modify-files
+    responsibilities:
+      - rust/python boundary design
+      - API and data contracts
+      - error model conventions
+    deliverables:
+      - interface specs
+      - decision records
+
+  rust_engineer:
+    role: Rust Engineer
+    authority: code
+    languages: [rust]
+    allowed:
+      - write-code
+      - refactor
+      - optimize
+      - add-tests
+      - add-benchmarks
+      - profile
+    constraints:
+      rust:
+        edition: '2021'
+        forbid: [nightly]
+        require: [clippy-clean, no-panics-in-lib]
+      performance:
+        require:
+          - criterion-benchmarks
+          - before-after-results
+          - profiling-notes
+        vectorization:
+          allow:
+            - auto
+            - simd-via-stable-crates
+          forbid:
+            - nightly-simd
+        parallelism:
+          allow:
+            - rayon
+          require:
+            - deterministic-results
+            - bounded-parallelism
+            - no-global-thread-spawns
+    responsibilities:
+      - core library
+      - performance-critical paths
+      - FFI boundary correctness
+    deliverables:
+      - compilable crates
+      - unit tests
+      - benchmarks
+      - perf report (before/after)
+      - passes: cargo make check
+
+  python_engineer:
+    role: Python Engineer
+    authority: code
+    languages: [python]
+    allowed:
+      - write-code
+      - refactor
+      - add-tests
+      - run-type-checks
+    constraints:
+      python:
+        min_version: '3.10'
+        typing:
+          enforcement: strict
+          checker: mypy
+          forbid:
+            - Any
+            - implicit-optional
+        style:
+          lint: ruff
+        require:
+          - type-hints
+          - typecheck-clean
+          - import-safe-modules
+          - deterministic-io
+    responsibilities:
+      - python wrapper ergonomics
+      - typed public APIs
+      - packaging & import safety
+      - tests exercising rust bindings
+    deliverables:
+      - fully-typed modules
+      - pytest tests
+      - mypy report (clean)
+
+  reviewer:
+    role: Code Reviewer
+    authority: veto
+    allowed: [review, request-changes, approve]
+    checks:
+      - correctness
+      - edge-cases
+      - error-model-consistency
+      - ffi-safety
+      - test-coverage
+      - typing-coverage
+      - mypy-clean
+      - perf-regression-risk
+      - benchmark-evidence
+      - determinism-under-parallelism
+      - local-validation-run
+      - no-next-steps-instead-of-running
+      - tests-added-for-change
+      - regression-test-for-bugfix
+      - no-flaky-tests
+    output:
+      format: checklist
+
+  integrator:
+    role: System Integrator
+    authority: merge
+    allowed: [compose-components, wire-systems]
+    responsibilities:
+      - build compatibility (cargo + python packaging)
+      - release hygiene
+      - CI alignment
+    deliverables:
+      - integration notes
+      - validated examples
+
+workflows:
+  feature:
+    sequence:
+      - architect
+      - rust_engineer
+      - python_engineer
+      - reviewer
+      - integrator
+
+  bugfix:
+    sequence:
+      - reviewer
+      - rust_engineer | python_engineer
+      - reviewer
+
+  performance:
+    sequence:
+      - architect
+      - rust_engineer
+      - reviewer
+
+  release:
+    sequence:
+      - reviewer
+      - integrator
+    notes:
+      - require version bump + changelog
+      - build wheel + sdist + crate
+      - run smoke import tests
+
+  ffi_change:
+    sequence:
+      - architect
+      - rust_engineer
+      - python_engineer
+      - reviewer
+      - integrator
+    notes:
+      - require stub/runtime parity
+      - require compatibility notes
+
+  refactor:
+    sequence:
+      - reviewer
+      - rust_engineer | python_engineer
+      - reviewer
+    notes:
+      - no behavior changes unless explicitly stated
+
+  docs:
+    sequence:
+      - architect
+      - python_engineer
+      - reviewer
+    notes:
+      - require runnable examples
+
+  security:
+    sequence:
+      - reviewer
+      - rust_engineer | python_engineer
+      - reviewer
+    notes:
+      - run cargo audit / deny + python dependency audit
+
+policies:
+  no-silent-assumptions: true
+  require-repro-steps-for-bugs: true
+  require-tests-for-code: true
+  forbid-unused-abstractions: true
+  require-local-validation: true
+  local_validation_command: 'cargo make check'
+  forbid_unverified_fixes: true
+  require-python-stubs: true
+  require-stub-runtime-parity: true

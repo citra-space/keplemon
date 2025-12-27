@@ -17,7 +17,36 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
+      - name: Checkout at tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          tag="$(git tag --points-at ${{ github.event.workflow_run.head_sha }} | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Skip publish when no release tag
+        if: ${{ steps.release_tag.outputs.tag == '' }}
+        run: echo "No vX.Y.Z tag for this commit; skipping publish."
+
+      - name: Verify version matches tag
+        if: ${{ steps.release_tag.outputs.tag != '' }}
+        run: |
+          tag_version="${{ steps.release_tag.outputs.tag }}"
+          tag_version="${tag_version#v}"
+          cargo_version="$(grep -m1 '^version = ' Cargo.toml | cut -d'\"' -f2)"
+          py_version="$(grep -m1 '^version = ' pyproject.toml | cut -d'\"' -f2)"
+          if [ "$tag_version" != "$cargo_version" ] || [ "$tag_version" != "$py_version" ]; then
+            echo "Version mismatch: tag=$tag_version cargo=$cargo_version pyproject=$py_version"
+            exit 1
+          fi
+
       - name: Download Linux x86 wheel
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -26,6 +55,7 @@ jobs:
           path: dist/
 
       - name: Download Linux ARM wheel
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -34,6 +64,7 @@ jobs:
           path: dist/
 
       - name: Download macOS ARM wheel
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -42,6 +73,7 @@ jobs:
           path: dist/
 
       - name: Download macOS x86 wheel
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -50,6 +82,7 @@ jobs:
           path: dist/
 
       - name: Download Windows wheel
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
@@ -58,12 +91,15 @@ jobs:
           path: dist/
 
       - name: Set up Python
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: actions/setup-python@v4
         with:
           python-version: "3.x"
 
       - name: Install Twine
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         run: pip install --upgrade twine
 
       - name: Publish to PyPI
+        if: ${{ steps.release_tag.outputs.tag != '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
