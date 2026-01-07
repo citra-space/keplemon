@@ -1,5 +1,4 @@
 from keplemon._keplemon.enums import (  # type: ignore
-    SAALKeyMode,
     TimeSystem,
     Classification,
     KeplerianType,
@@ -9,7 +8,6 @@ from keplemon._keplemon.enums import (  # type: ignore
 )
 
 __all__ = [
-    "SAALKeyMode",
     "TimeSystem",
     "Classification",
     "KeplerianType",

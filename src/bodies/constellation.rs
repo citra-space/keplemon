@@ -5,44 +5,39 @@ use crate::configs;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
 use crate::events::{CloseApproachReport, HorizonAccessReport};
 use crate::time::{Epoch, TimeSpan};
-use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-#[pyclass]
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct Constellation {
-    name: Option<String>,
+    pub name: Option<String>,
     satellites: HashMap<String, Satellite>,
+}
+
+impl From<TLECatalog> for Constellation {
+    fn from(catalog: TLECatalog) -> Self {
+        let mut constellation = Constellation::new();
+        for satellite_id in catalog.keys() {
+            if let Some(tle) = catalog.get(satellite_id.clone()) {
+                let sat = Satellite::from(tle);
+                constellation.add(satellite_id, sat);
+            }
+        }
+        constellation.name = catalog.name;
+        constellation
+    }
 }
 
 impl Constellation {
     pub fn get_satellites(&self) -> &HashMap<String, Satellite> {
         &self.satellites
     }
-}
 
-#[pymethods]
-impl Constellation {
-    #[new]
     pub fn new() -> Self {
         Constellation {
             name: None,
             satellites: HashMap::new(),
         }
-    }
-
-    #[staticmethod]
-    pub fn from_tle_catalog(catalog: TLECatalog) -> Self {
-        let mut constellation = Constellation::new();
-        for satellite_id in catalog.keys() {
-            if let Some(tle) = catalog.get(satellite_id.clone()) {
-                let sat = Satellite::from_tle(tle);
-                constellation.add(satellite_id, sat);
-            }
-        }
-        constellation.name = catalog.get_name();
-        constellation
     }
 
     pub fn get_states_at_epoch(&self, epoch: Epoch) -> HashMap<String, Option<CartesianState>> {
@@ -205,17 +200,7 @@ impl Constellation {
             .collect()
     }
 
-    fn __getitem__(&self, satellite_id: String) -> PyResult<Satellite> {
-        match self.get(satellite_id.clone()) {
-            Some(sat) => Ok(sat),
-            None => Err(pyo3::exceptions::PyKeyError::new_err(format!(
-                "Invalid key: {}",
-                satellite_id
-            ))),
-        }
-    }
-
-    fn keys(&self) -> Vec<String> {
+    pub fn get_keys(&self) -> Vec<String> {
         self.satellites.keys().cloned().collect()
     }
 
@@ -239,17 +224,6 @@ impl Constellation {
         self.satellites.clear();
     }
 
-    #[getter]
-    pub fn get_name(&self) -> Option<String> {
-        self.name.clone()
-    }
-
-    #[setter]
-    pub fn set_name(&mut self, name: Option<String>) {
-        self.name = name;
-    }
-
-    #[getter]
     pub fn get_count(&self) -> usize {
         self.satellites.len()
     }

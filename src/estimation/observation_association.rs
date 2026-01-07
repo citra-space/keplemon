@@ -1,8 +1,6 @@
 use super::ObservationResidual;
 use crate::enums::AssociationConfidence;
-use pyo3::prelude::*;
 
-#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObservationAssociation {
     observation_id: String,
@@ -25,26 +23,19 @@ impl ObservationAssociation {
             confidence,
         }
     }
-}
 
-#[pymethods]
-impl ObservationAssociation {
-    #[getter]
     pub fn get_observation_id(&self) -> &str {
         &self.observation_id
     }
 
-    #[getter]
     pub fn get_satellite_id(&self) -> &str {
         &self.satellite_id
     }
 
-    #[getter]
     pub fn get_confidence(&self) -> AssociationConfidence {
         self.confidence
     }
 
-    #[getter]
     pub fn get_residual(&self) -> ObservationResidual {
         self.residual
     }

@@ -11,6 +11,12 @@ python/keplemon/*.so
 python/keplemon/*.dll
 python/keplemon/*.lib
 python/keplemon/*.pyi
+python/keplemon/*.GEO
+python/keplemon/*.dat
+python/keplemon/.cargo-lock
+SGP4_Open_License.txt
+python/keplemon/*.405
+python/keplemon/*.d
 python/keplemon/saal/*.pyi
 site/
 local/

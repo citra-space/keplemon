@@ -1,35 +1,20 @@
-use crate::saal::astro_func_interface;
-use pyo3::prelude::*;
+use saal::astro;
 
-#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum EquinoxType {
-    MeanOfDate = astro_func_interface::YROFEQNX_CURR,
-    J2000 = astro_func_interface::YROFEQNX_2000,
+pub enum MeanEquinox {
+    OfDate = astro::YROFEQNX_OBTIME,
+    OfYear = astro::YROFEQNX_CURR,
+    J2000 = astro::YROFEQNX_2000,
+    B1950 = astro::YROFEQNX_1950,
 }
 
-#[pymethods]
-impl EquinoxType {
-    #[getter]
+impl MeanEquinox {
     pub fn get_value(&self) -> i32 {
         match self {
-            EquinoxType::MeanOfDate => astro_func_interface::YROFEQNX_CURR as i32,
-            EquinoxType::J2000 => astro_func_interface::YROFEQNX_2000 as i32,
+            MeanEquinox::OfYear => astro::YROFEQNX_CURR as i32,
+            MeanEquinox::J2000 => astro::YROFEQNX_2000 as i32,
+            MeanEquinox::B1950 => astro::YROFEQNX_1950 as i32,
+            MeanEquinox::OfDate => astro::YROFEQNX_OBTIME as i32,
         }
-    }
-
-    fn __repr__(&self) -> &str {
-        match self {
-            EquinoxType::MeanOfDate => "EquinoxType.MeanOfDate",
-            EquinoxType::J2000 => "EquinoxType.J2000",
-        }
-    }
-
-    fn __eq__(&self, other: &Self) -> bool {
-        self == other
-    }
-
-    fn __ne__(&self, other: &Self) -> bool {
-        self != other
     }
 }

@@ -6,45 +6,43 @@ use super::{ObservationAssociation, ObservationResidual};
 use crate::bodies::{Constellation, Satellite, Sensor};
 use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
 use crate::enums::AssociationConfidence;
-use crate::saal::{astro_func_interface, sat_state_interface};
 use crate::time::Epoch;
-use pyo3::prelude::*;
+use saal::{astro, satellite};
 
-#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observation {
-    id: String,
+    pub id: String,
     sensor: Sensor,
     epoch: Epoch,
     observed_teme_topocentric: TopocentricElements,
     observer_teme_position: CartesianVector,
     observer_lla: [f64; 3],
     observer_theta: f64,
-    observed_satellite_id: Option<i32>,
+    pub observed_satellite_id: Option<i32>,
 }
 
 impl Observation {
     pub fn get_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>) {
         let mut m_vec = vec![self.get_right_ascension(), self.get_declination()];
         let mut w_vec = vec![
-            1.0 / self.sensor.get_angular_noise().powi(2),
-            1.0 / self.sensor.get_angular_noise().powi(2),
+            1.0 / self.sensor.angular_noise.powi(2),
+            1.0 / self.sensor.angular_noise.powi(2),
         ];
-        if self.get_range().is_some() && self.sensor.get_range_noise().is_some() {
+        if self.get_range().is_some() && self.sensor.range_noise.is_some() {
             m_vec.push(self.get_range().unwrap());
-            w_vec.push(1.0 / self.sensor.get_range_noise().unwrap().powi(2));
+            w_vec.push(1.0 / self.sensor.range_noise.unwrap().powi(2));
         }
-        if self.get_range_rate().is_some() && self.sensor.get_range_rate_noise().is_some() {
+        if self.get_range_rate().is_some() && self.sensor.range_rate_noise.is_some() {
             m_vec.push(self.get_range_rate().unwrap());
-            w_vec.push(1.0 / self.sensor.get_range_rate_noise().unwrap().powi(2));
+            w_vec.push(1.0 / self.sensor.range_rate_noise.unwrap().powi(2));
         }
-        if self.get_right_ascension_rate().is_some() && self.sensor.get_angular_rate_noise().is_some() {
+        if self.get_right_ascension_rate().is_some() && self.sensor.angular_rate_noise.is_some() {
             m_vec.push(self.get_right_ascension_rate().unwrap());
-            w_vec.push(1.0 / self.sensor.get_angular_rate_noise().unwrap().powi(2));
+            w_vec.push(1.0 / self.sensor.angular_rate_noise.unwrap().powi(2));
         }
-        if self.get_declination_rate().is_some() && self.sensor.get_angular_rate_noise().is_some() {
+        if self.get_declination_rate().is_some() && self.sensor.angular_rate_noise.is_some() {
             m_vec.push(self.get_declination_rate().unwrap());
-            w_vec.push(1.0 / self.sensor.get_angular_rate_noise().unwrap().powi(2));
+            w_vec.push(1.0 / self.sensor.angular_rate_noise.unwrap().powi(2));
         }
         (m_vec, w_vec)
     }
@@ -60,19 +58,18 @@ impl Observation {
             Some(satellite_state) => self.fill_predicted_from_state(&satellite_state, out),
             None => Err(format!(
                 "Error propagating satellite {} to {}",
-                satellite.get_id(),
+                satellite.id,
                 self.get_epoch().to_iso()
             )),
         }
     }
 
     pub fn fill_predicted_from_state(&self, state: &CartesianState, out: &mut Vec<f64>) -> Result<(), String> {
-        let xa_topo = astro_func_interface::teme_to_topocentric(
+        let xa_topo = astro::teme_to_topo(
             self.observer_theta,
             self.observer_lla[0],
             &self.observer_teme_position.into(),
-            &state.position.into(),
-            &state.velocity.into(),
+            &state.into(),
         )?;
         let has_range = self.get_range().is_some();
         let has_range_rate = self.get_range_rate().is_some();
@@ -80,27 +77,23 @@ impl Observation {
         let has_dec_rate = self.get_declination_rate().is_some();
         out.clear();
         out.reserve(2 + has_range as usize + has_range_rate as usize + has_ra_rate as usize + has_dec_rate as usize);
-        out.push(xa_topo[astro_func_interface::XA_TOPO_RA]);
-        out.push(xa_topo[astro_func_interface::XA_TOPO_DEC]);
+        out.push(xa_topo[astro::XA_TOPO_RA]);
+        out.push(xa_topo[astro::XA_TOPO_DEC]);
         if has_range {
-            out.push(xa_topo[astro_func_interface::XA_TOPO_RANGE]);
+            out.push(xa_topo[astro::XA_TOPO_RANGE]);
         }
         if has_range_rate {
-            out.push(xa_topo[astro_func_interface::XA_TOPO_RANGEDOT]);
+            out.push(xa_topo[astro::XA_TOPO_RANGEDOT]);
         }
         if has_ra_rate {
-            out.push(xa_topo[astro_func_interface::XA_TOPO_RADOT]);
+            out.push(xa_topo[astro::XA_TOPO_RADOT]);
         }
         if has_dec_rate {
-            out.push(xa_topo[astro_func_interface::XA_TOPO_DECDOT]);
+            out.push(xa_topo[astro::XA_TOPO_DECDOT]);
         }
         Ok(())
     }
-}
 
-#[pymethods]
-impl Observation {
-    #[new]
     pub fn new(
         sensor: Sensor,
         epoch: Epoch,
@@ -108,7 +101,7 @@ impl Observation {
         observer_teme_position: CartesianVector,
     ) -> Self {
         let theta_g = epoch.to_fk5_greenwich_angle();
-        let observer_lla = astro_func_interface::theta_teme_to_lla(theta_g, &observer_teme_position.into());
+        let observer_lla = astro::gst_teme_to_lla(theta_g, &observer_teme_position.into());
         let observer_theta = theta_g + observer_lla[1].to_radians();
         Self {
             id: Uuid::new_v4().to_string(),
@@ -122,96 +115,64 @@ impl Observation {
         }
     }
 
-    #[getter]
     pub fn get_sensor(&self) -> Sensor {
         self.sensor.clone()
     }
 
-    #[getter]
     pub fn get_epoch(&self) -> Epoch {
         self.epoch
     }
 
-    #[getter]
-    pub fn get_id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[getter]
     pub fn get_range(&self) -> Option<f64> {
-        self.observed_teme_topocentric.get_range()
+        self.observed_teme_topocentric.range
     }
 
-    #[getter]
     pub fn get_range_rate(&self) -> Option<f64> {
-        self.observed_teme_topocentric.get_range_rate()
+        self.observed_teme_topocentric.range_rate
     }
 
-    #[getter]
     pub fn get_right_ascension(&self) -> f64 {
-        self.observed_teme_topocentric.get_right_ascension()
+        self.observed_teme_topocentric.right_ascension
     }
 
-    #[getter]
     pub fn get_declination(&self) -> f64 {
-        self.observed_teme_topocentric.get_declination()
+        self.observed_teme_topocentric.declination
     }
 
-    #[getter]
     pub fn get_right_ascension_rate(&self) -> Option<f64> {
-        self.observed_teme_topocentric.get_right_ascension_rate()
+        self.observed_teme_topocentric.right_ascension_rate
     }
 
-    #[getter]
     pub fn get_declination_rate(&self) -> Option<f64> {
-        self.observed_teme_topocentric.get_declination_rate()
+        self.observed_teme_topocentric.declination_rate
     }
 
-    #[getter]
-    pub fn get_observed_satellite_id(&self) -> Option<i32> {
-        self.observed_satellite_id
-    }
-
-    #[setter]
     pub fn set_range(&mut self, range: Option<f64>) {
-        self.observed_teme_topocentric.set_range(range);
+        self.observed_teme_topocentric.range = range;
     }
 
-    #[setter]
-    pub fn set_id(&mut self, id: String) {
-        self.id = id;
-    }
-
-    #[setter]
     pub fn set_range_rate(&mut self, range_rate: Option<f64>) {
-        self.observed_teme_topocentric.set_range_rate(range_rate);
+        self.observed_teme_topocentric.range_rate = range_rate;
     }
 
-    #[setter]
     pub fn set_right_ascension(&mut self, right_ascension: f64) {
-        self.observed_teme_topocentric.set_right_ascension(right_ascension);
+        self.observed_teme_topocentric.right_ascension = right_ascension;
     }
 
-    #[setter]
     pub fn set_declination(&mut self, declination: f64) {
-        self.observed_teme_topocentric.set_declination(declination);
-    }
-
-    #[setter]
-    pub fn set_observed_satellite_id(&mut self, observed_satellite_id: i32) {
-        self.observed_satellite_id = Some(observed_satellite_id);
+        self.observed_teme_topocentric.declination = declination;
     }
 
     pub fn get_associations(&self, constellation: &Constellation) -> Vec<ObservationAssociation> {
         let observed_teme_direction = self.observed_teme_topocentric.get_observed_direction();
         let sat_states = constellation.get_states_at_epoch(self.epoch);
-        let associations = sat_states
+        sat_states
             .par_iter()
             .filter_map(|(sat_id, sat_state_option)| match sat_state_option {
                 Some(sat_state) => {
                     let sensor_to_satellite = sat_state.position - self.observer_teme_position;
                     let teme_estimate =
-                        self.observer_teme_position + (observed_teme_direction * sensor_to_satellite.get_magnitude());
+                        self.observer_teme_position + (*observed_teme_direction * sensor_to_satellite.get_magnitude());
 
                     let pos_vel_1 = [
                         sat_state.position[0],
@@ -229,10 +190,11 @@ impl Observation {
                         sat_state.velocity[1],
                         sat_state.velocity[2],
                     ];
-                    let residual = ObservationResidual::from(sat_state_interface::get_relative_state(
+                    let residual = ObservationResidual::from(satellite::get_relative_array(
                         &pos_vel_1,
                         &pos_vel_2,
                         self.epoch.days_since_1950,
+                        1,
                     ));
 
                     if residual.get_range() < 1.0 {
@@ -262,15 +224,14 @@ impl Observation {
                 }
                 None => None,
             })
-            .collect();
-        associations
+            .collect()
     }
     pub fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {
         match satellite.get_state_at_epoch(self.epoch) {
             Some(satellite_state) => {
                 let sensor_to_satellite = satellite_state.position - self.observer_teme_position;
                 let teme_estimate = self.observer_teme_position
-                    + (self.observed_teme_topocentric.get_observed_direction() * sensor_to_satellite.get_magnitude());
+                    + (*self.observed_teme_topocentric.get_observed_direction() * sensor_to_satellite.get_magnitude());
 
                 let posvel_1 = [
                     satellite_state.position[0],
@@ -289,10 +250,11 @@ impl Observation {
                     satellite_state.velocity[2],
                 ];
 
-                Some(ObservationResidual::from(sat_state_interface::get_relative_state(
+                Some(ObservationResidual::from(satellite::get_relative_array(
                     &posvel_1,
                     &posvel_2,
                     self.epoch.days_since_1950,
+                    1,
                 )))
             }
             None => None,

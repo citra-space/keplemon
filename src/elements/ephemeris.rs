@@ -1,21 +1,14 @@
 use crate::configs::{
-    CONJUNCTION_STEP_MINUTES,
-    DEFAULT_NORAD_ANALYST_ID,
-    MAX_NEWTON_ITERATIONS,
-    NEWTON_TOLERANCE,
-    ZERO_TOLERANCE,
+    CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MAX_NEWTON_ITERATIONS, NEWTON_TOLERANCE, ZERO_TOLERANCE,
 };
 use crate::elements::{CartesianState, CartesianVector, HorizonState};
 use crate::enums::ReferenceFrame;
 use crate::events::{CloseApproach, HorizonAccess};
 use crate::time::{Epoch, TimeSpan};
-use pyo3::exceptions::PyException;
-use pyo3::prelude::*;
 use std::sync::Arc;
 use std::sync::RwLock;
 use uuid::Uuid;
 
-#[pyclass]
 #[derive(Debug, Clone)]
 pub struct Ephemeris {
     handle: Arc<EphemerisHandle>,
@@ -46,6 +39,18 @@ impl PartialEq for Ephemeris {
 }
 
 impl Ephemeris {
+    pub fn get_id(&self) -> String {
+        self.handle.id.clone()
+    }
+
+    pub fn get_satellite_id(&self) -> String {
+        self.handle.satellite_id.clone()
+    }
+
+    pub fn get_norad_id(&self) -> i32 {
+        self.handle.norad_id
+    }
+
     pub fn get_number_of_states(&self) -> Result<i32, String> {
         Ok(self.handle.states.read().unwrap().len() as i32)
     }
@@ -73,25 +78,6 @@ impl Ephemeris {
             handle: Arc::new(handle),
         })
     }
-}
-
-#[pymethods]
-impl Ephemeris {
-    #[new]
-    pub fn py_new(satellite_id: String, norad_id: Option<i32>, state: CartesianState) -> PyResult<Self> {
-        Ephemeris::new(satellite_id, norad_id, state).map_err(PyException::new_err)
-    }
-
-    #[getter("number_of_states")]
-    pub fn py_get_number_of_states(&self) -> PyResult<i32> {
-        self.get_number_of_states()
-            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
-    }
-
-    #[getter]
-    pub fn get_id(&self) -> String {
-        self.handle.id.clone()
-    }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         let states = self.handle.states.read().ok()?;
@@ -116,12 +102,12 @@ impl Ephemeris {
 
         let mut accesses = Vec::new();
         let mut next_epoch = start_epoch;
-        let mut current_horizon = HorizonState::from_teme_states(
+        let mut current_horizon = HorizonState::from((
             interpolate_state_with_grid(&sensor_states, next_epoch, &sensor_grid)?,
             interpolate_state_with_grid(&sat_states, next_epoch, &sat_grid)?,
-        );
+        ));
 
-        let mut always_visible = current_horizon.get_elevation() >= min_el;
+        let mut always_visible = current_horizon.elements.elevation >= min_el;
         let mut last_entry = current_horizon;
         next_epoch += dt;
 
@@ -130,34 +116,34 @@ impl Ephemeris {
             && interpolate_state_with_grid(&sat_states, next_epoch, &sat_grid).is_some()
         {
             let old_horizon = current_horizon;
-            let old_el_sign = (old_horizon.get_elevation() - min_el).signum();
+            let old_el_sign = (old_horizon.elements.elevation - min_el).signum();
 
-            current_horizon = HorizonState::from_teme_states(
+            current_horizon = HorizonState::from((
                 interpolate_state_with_grid(&sensor_states, next_epoch, &sensor_grid).unwrap(),
                 interpolate_state_with_grid(&sat_states, next_epoch, &sat_grid).unwrap(),
-            );
+            ));
 
-            let new_el_sign = (current_horizon.get_elevation() - min_el).signum();
+            let new_el_sign = (current_horizon.elements.elevation - min_el).signum();
             if old_el_sign != new_el_sign {
                 always_visible = false;
                 let t_guess = estimate_horizon_crossing_epoch(&old_horizon, min_el);
-                if t_guess > start_epoch && t_guess < end_epoch {
-                    if let Some(crossing) =
+                if t_guess > start_epoch
+                    && t_guess < end_epoch
+                    && let Some(crossing) =
                         refine_horizon_crossing(&sensor_states, &sat_states, &sensor_grid, &sat_grid, t_guess, min_el)
-                    {
-                        if crossing.get_elevation_rate().unwrap() > 0.0 {
-                            last_entry = crossing;
-                        } else if crossing.epoch - last_entry.epoch >= min_duration {
-                            accesses.push(HorizonAccess::new(
-                                sat_id.clone(),
-                                sensor_id.clone(),
-                                &last_entry,
-                                &crossing,
-                            ));
-                        }
-                        if crossing.epoch > next_epoch {
-                            next_epoch = crossing.epoch;
-                        }
+                {
+                    if crossing.elements.elevation_rate.unwrap() > 0.0 {
+                        last_entry = crossing;
+                    } else if crossing.epoch - last_entry.epoch >= min_duration {
+                        accesses.push(HorizonAccess::new(
+                            sat_id.clone(),
+                            sensor_id.clone(),
+                            &last_entry,
+                            &crossing,
+                        ));
+                    }
+                    if crossing.epoch > next_epoch {
+                        next_epoch = crossing.epoch;
                     }
                 }
             }
@@ -172,14 +158,14 @@ impl Ephemeris {
             accesses.push(HorizonAccess::new(
                 sat_id,
                 sensor_id,
-                &HorizonState::from_teme_states(
+                &HorizonState::from((
                     interpolate_state_with_grid(&sensor_states, start_epoch, &sensor_grid).unwrap(),
                     interpolate_state_with_grid(&sat_states, start_epoch, &sat_grid).unwrap(),
-                ),
-                &HorizonState::from_teme_states(
+                )),
+                &HorizonState::from((
                     interpolate_state_with_grid(&sensor_states, end_epoch, &sensor_grid).unwrap(),
                     interpolate_state_with_grid(&sat_states, end_epoch, &sat_grid).unwrap(),
-                ),
+                )),
             ));
         }
         Some(accesses)
@@ -227,11 +213,12 @@ impl Ephemeris {
                         self_id.clone(),
                         other_id.clone(),
                         t,
-                    ) {
-                        if ca.get_distance() < min_distance && ca.get_epoch() >= t_min && ca.get_epoch() < t_max {
-                            min_distance = ca.get_distance();
-                            closest_epoch = ca.get_epoch();
-                        }
+                    ) && ca.get_distance() < min_distance
+                        && ca.get_epoch() >= t_min
+                        && ca.get_epoch() < t_max
+                    {
+                        min_distance = ca.get_distance();
+                        closest_epoch = ca.get_epoch();
                     }
                 }
                 None => {
@@ -251,16 +238,6 @@ impl Ephemeris {
         } else {
             None
         }
-    }
-
-    #[getter]
-    pub fn get_satellite_id(&self) -> String {
-        self.handle.satellite_id.clone()
-    }
-
-    #[getter]
-    pub fn get_norad_id(&self) -> i32 {
-        self.handle.norad_id
     }
 }
 
@@ -291,7 +268,7 @@ fn estimate_horizon_crossing_epoch(state_1: &HorizonState, min_elevation: f64) -
     let t0 = state_1.epoch;
 
     // Linear interpolation to find the time when the elevation crosses the minimum
-    let delta_t = (min_elevation - state_1.get_elevation()) / state_1.get_elevation_rate().unwrap();
+    let delta_t = (min_elevation - state_1.elements.elevation) / state_1.elements.elevation_rate.unwrap();
     t0 + TimeSpan::from_seconds(delta_t)
 }
 
@@ -311,10 +288,10 @@ fn refine_horizon_crossing(
         let sensor_teme = interpolate_state_with_grid(sensor_states, t, sensor_grid)?;
         let target_teme = interpolate_state_with_grid(sat_states, t, sat_grid)?;
 
-        let horizon = HorizonState::from_teme_states(sensor_teme, target_teme);
+        let horizon = HorizonState::from((sensor_teme, target_teme));
 
-        let elevation = horizon.get_elevation();
-        let elevation_rate = horizon.get_elevation_rate().unwrap();
+        let elevation = horizon.elements.elevation;
+        let elevation_rate = horizon.elements.elevation_rate.unwrap();
         let dt = (min_el - elevation) / elevation_rate;
         t += TimeSpan::from_seconds(dt);
         if dt.abs() < NEWTON_TOLERANCE {
@@ -322,10 +299,10 @@ fn refine_horizon_crossing(
         }
     }
 
-    Some(HorizonState::from_teme_states(
+    Some(HorizonState::from((
         interpolate_state_with_grid(sensor_states, t, sensor_grid)?,
         interpolate_state_with_grid(sat_states, t, sat_grid)?,
-    ))
+    )))
 }
 
 fn refine_close_approach(
@@ -364,12 +341,7 @@ fn refine_close_approach(
     let state_2 = interpolate_state_with_grid(ephem_2_states, t, ephem_2_grid)?;
     let range = (state_1.position - state_2.position).get_magnitude();
 
-    Some(CloseApproach::new(
-        ephem_1_satellite_id,
-        ephem_2_satellite_id,
-        t,
-        range,
-    ))
+    Some(CloseApproach::new(ephem_1_satellite_id, ephem_2_satellite_id, t, range))
 }
 
 pub fn construct_ephemeris_id(start: Epoch, end: Epoch, step: TimeSpan) -> String {
@@ -407,32 +379,31 @@ fn interpolate_state_with_grid(
         return Some(states.last()?.to_owned());
     }
 
-    if uniform_grid.is_uniform {
-        if let Some(step_seconds) = uniform_grid.step_seconds {
-            let step_days = step_seconds / 86_400.0;
-            if step_days > 0.0 {
-                let offset_days = epoch.days_since_1950 - uniform_grid.start_epoch.days_since_1950;
-                let raw_idx = offset_days / step_days;
-                let idx_rounded = raw_idx.round();
-                if (raw_idx - idx_rounded).abs() * step_seconds <= UNIFORM_STEP_TOLERANCE_SECONDS {
-                    let idx = idx_rounded as isize;
-                    if idx >= 0 && (idx as usize) < states.len() {
-                        return Some(states[idx as usize]);
-                    }
-                }
-                let lower_idx = raw_idx.floor() as isize;
-                if lower_idx < 0 {
-                    return Some(states.first()?.to_owned());
-                }
-                let upper_idx = lower_idx + 1;
-                if (upper_idx as usize) >= states.len() {
-                    return Some(states.last()?.to_owned());
-                }
-                let a = &states[lower_idx as usize];
-                let b = &states[upper_idx as usize];
-                return Some(hermite_interpolate(a, b, epoch));
+    if uniform_grid.is_uniform
+        && let Some(step_seconds) = uniform_grid.step_seconds
+        && let Some(step_days) = Some(step_seconds / 86_400.0)
+        && step_days > 0.0
+    {
+        let offset_days = epoch.days_since_1950 - uniform_grid.start_epoch.days_since_1950;
+        let raw_idx = offset_days / step_days;
+        let idx_rounded = raw_idx.round();
+        if (raw_idx - idx_rounded).abs() * step_seconds <= UNIFORM_STEP_TOLERANCE_SECONDS {
+            let idx = idx_rounded as isize;
+            if idx >= 0 && (idx as usize) < states.len() {
+                return Some(states[idx as usize]);
             }
         }
+        let lower_idx = raw_idx.floor() as isize;
+        if lower_idx < 0 {
+            return Some(states.first()?.to_owned());
+        }
+        let upper_idx = lower_idx + 1;
+        if (upper_idx as usize) >= states.len() {
+            return Some(states.last()?.to_owned());
+        }
+        let a = &states[lower_idx as usize];
+        let b = &states[upper_idx as usize];
+        return Some(hermite_interpolate(a, b, epoch));
     }
 
     match states.binary_search_by(|s| s.epoch.cmp(&epoch)) {
@@ -482,7 +453,12 @@ fn hermite_interpolate(a: &CartesianState, b: &CartesianState, t: Epoch) -> Cart
             / dt_seconds;
     }
 
-    CartesianState::new(t, CartesianVector::from(pos), CartesianVector::from(vel), ReferenceFrame::TEME)
+    CartesianState::new(
+        t,
+        CartesianVector::from(pos),
+        CartesianVector::from(vel),
+        ReferenceFrame::TEME,
+    )
 }
 
 impl Ephemeris {

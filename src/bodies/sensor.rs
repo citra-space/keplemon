@@ -1,20 +1,16 @@
-use pyo3::prelude::*;
 use uuid::Uuid;
 
-#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sensor {
-    id: String,
-    name: Option<String>,
-    angular_noise: f64,
-    range_noise: Option<f64>,
-    range_rate_noise: Option<f64>,
-    angular_rate_noise: Option<f64>,
+    pub id: String,
+    pub name: Option<String>,
+    pub angular_noise: f64,
+    pub range_noise: Option<f64>,
+    pub range_rate_noise: Option<f64>,
+    pub angular_rate_noise: Option<f64>,
 }
 
-#[pymethods]
 impl Sensor {
-    #[new]
     pub fn new(angular_noise: f64) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -24,50 +20,5 @@ impl Sensor {
             range_rate_noise: None,
             angular_rate_noise: None,
         }
-    }
-
-    #[getter]
-    pub fn get_id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[getter]
-    pub fn get_name(&self) -> Option<String> {
-        self.name.clone()
-    }
-
-    #[getter]
-    pub fn get_angular_noise(&self) -> f64 {
-        self.angular_noise
-    }
-
-    #[getter]
-    pub fn get_range_noise(&self) -> Option<f64> {
-        self.range_noise
-    }
-
-    #[getter]
-    pub fn get_range_rate_noise(&self) -> Option<f64> {
-        self.range_rate_noise
-    }
-
-    #[getter]
-    pub fn get_angular_rate_noise(&self) -> Option<f64> {
-        self.angular_rate_noise
-    }
-
-    #[setter]
-    pub fn set_range_noise(&mut self, range_noise: f64) {
-        self.range_noise = Some(range_noise);
-    }
-
-    #[setter]
-    pub fn set_range_rate_noise(&mut self, range_rate_noise: f64) {
-        self.range_rate_noise = Some(range_rate_noise);
-    }
-
-    #[setter]
-    pub fn set_angular_rate_noise(&mut self, angular_rate_noise: f64) {
-        self.angular_rate_noise = Some(angular_rate_noise);
     }
 }

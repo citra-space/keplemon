@@ -1,32 +1,66 @@
 use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
-    construct_ephemeris_id, BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition,
-    KeplerianState, OrbitPlotData, OrbitPlotState, RelativeState, TLE,
+    BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData,
+    OrbitPlotState, RelativeState, TLE, construct_ephemeris_id,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
 use crate::events::{CloseApproach, HorizonAccessReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
-use crate::saal::{astro_func_interface, sat_state_interface};
 use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
 use rayon::prelude::*;
+use saal::{astro, satellite};
 use uuid::Uuid;
 
-#[pyclass(subclass)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Satellite {
-    id: String,
-    norad_id: i32,
-    name: Option<String>,
+    pub id: String,
+    pub norad_id: i32,
+    pub name: Option<String>,
     force_properties: ForceProperties,
     keplerian_state: Option<KeplerianState>,
     inertial_propagator: Option<InertialPropagator>,
     ephemeris_cache: Option<Ephemeris>,
     pub ephemeris_id: Option<String>,
+}
+
+impl Default for Satellite {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Satellite> for TLE {
+    fn from(satellite: Satellite) -> TLE {
+        let state = satellite.get_keplerian_state().unwrap();
+        TLE::new(
+            satellite.id.clone(),
+            satellite.norad_id,
+            satellite.name.clone(),
+            Classification::Unclassified,
+            "".to_string(),
+            state,
+            satellite.force_properties,
+        )
+        .unwrap()
+    }
+}
+
+impl From<TLE> for Satellite {
+    fn from(tle: TLE) -> Self {
+        Self {
+            id: tle.satellite_id.clone(),
+            norad_id: tle.norad_id,
+            name: tle.get_name(),
+            force_properties: tle.get_force_properties(),
+            keplerian_state: Some(tle.get_keplerian_state()),
+            inertial_propagator: Some(InertialPropagator::from(tle)),
+            ephemeris_cache: None,
+            ephemeris_id: None,
+        }
+    }
 }
 
 impl Satellite {
@@ -50,11 +84,7 @@ impl Satellite {
         }
     }
 
-    pub fn build_perturbed_satellites(
-        &self,
-        use_drag: bool,
-        use_srp: bool,
-    ) -> Result<Vec<(Satellite, f64)>, String> {
+    pub fn build_perturbed_satellites(&self, use_drag: bool, use_srp: bool) -> Result<Vec<(Satellite, f64)>, String> {
         match self.inertial_propagator {
             Some(ref propagator) => propagator.build_perturbed_satellites(use_drag, use_srp),
             None => Err("Inertial propagator is not set".to_string()),
@@ -148,17 +178,7 @@ impl Satellite {
             None => None,
         }
     }
-}
 
-impl Default for Satellite {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[pymethods]
-impl Satellite {
-    #[new]
     pub fn new() -> Self {
         Self {
             norad_id: DEFAULT_NORAD_ANALYST_ID,
@@ -192,16 +212,16 @@ impl Satellite {
             state_2.velocity[1],
             state_2.velocity[2],
         ];
-        let xa_delta = sat_state_interface::get_relative_state(&teme_2, &teme_1, epoch.days_since_1950());
+        let xa_delta = satellite::get_relative_array(&teme_2, &teme_1, epoch.days_since_1950, 1);
         let pos = [
-            xa_delta[sat_state_interface::XA_DELTA_PRADIAL],
-            xa_delta[sat_state_interface::XA_DELTA_PINTRCK],
-            xa_delta[sat_state_interface::XA_DELTA_PCRSSTRCK],
+            xa_delta[satellite::XA_DELTA_PRADIAL],
+            xa_delta[satellite::XA_DELTA_PINTRCK],
+            xa_delta[satellite::XA_DELTA_PCRSSTRCK],
         ];
         let vel = [
-            xa_delta[sat_state_interface::XA_DELTA_VRADIAL],
-            xa_delta[sat_state_interface::XA_DELTA_VINTRCK],
-            xa_delta[sat_state_interface::XA_DELTA_VCRSSTRCK],
+            xa_delta[satellite::XA_DELTA_VRADIAL],
+            xa_delta[satellite::XA_DELTA_VINTRCK],
+            xa_delta[satellite::XA_DELTA_VCRSSTRCK],
         ];
         Some(RelativeState {
             epoch,
@@ -217,7 +237,7 @@ impl Satellite {
         let other_state = other.get_state_at_epoch(epoch)?;
         let self_to_other = other_state.position - self_state.position;
         let self_to_earth = self_state.position * -1.0;
-        let (sun, moon) = astro_func_interface::get_jpl_sun_and_moon_position(epoch.days_since_1950);
+        let (sun, moon) = astro::get_jpl_sun_and_moon_position(epoch.days_since_1950);
         let self_to_sun = CartesianVector::from(sun) - self_state.position;
         let self_to_moon = CartesianVector::from(moon) - self_state.position;
         let sun_angle = self_to_other.angle(&self_to_sun);
@@ -230,88 +250,24 @@ impl Satellite {
         ))
     }
 
-    #[getter]
     pub fn get_geodetic_position(&self) -> Option<GeodeticPosition> {
         match self.keplerian_state {
             Some(ref state) => {
-                let teme = state.to_cartesian().to_frame(ReferenceFrame::TEME).position;
-                let lla = astro_func_interface::time_teme_to_lla(state.get_epoch().days_since_1950, &teme.into());
+                let teme: CartesianState = state.into();
+                let teme = teme.to_frame(ReferenceFrame::TEME).position;
+                let lla = astro::time_teme_to_lla(state.epoch.days_since_1950, &teme.into());
                 Some(GeodeticPosition::new(lla[0], lla[1], lla[2]))
             }
             None => None,
         }
     }
 
-    pub fn to_tle(&self) -> PyResult<Option<TLE>> {
-        match self.get_keplerian_state() {
-            Some(state) => match TLE::new(
-                self.id.clone(),
-                self.norad_id,
-                self.name.clone(),
-                Classification::Unclassified,
-                "".to_string(),
-                state,
-                self.force_properties,
-            ) {
-                Ok(tle) => Ok(Some(tle)),
-                Err(e) => Err(PyErr::new::<PyValueError, _>(e.to_string())),
-            },
-            None => Ok(None),
-        }
-    }
-
-    #[staticmethod]
-    pub fn from_tle(tle: TLE) -> Self {
-        Self {
-            id: tle.get_id(),
-            norad_id: tle.get_norad_id(),
-            name: tle.get_name(),
-            force_properties: tle.get_force_properties(),
-            keplerian_state: Some(tle.get_keplerian_state()),
-            inertial_propagator: Some(InertialPropagator::from_tle(tle)),
-            ephemeris_cache: None,
-            ephemeris_id: None,
-        }
-    }
-
-    #[getter]
-    pub fn get_id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[getter]
-    pub fn get_name(&self) -> Option<String> {
-        self.name.clone()
-    }
-
-    #[setter]
-    pub fn set_name(&mut self, name: Option<String>) {
-        self.name = name;
-    }
-
-    #[getter]
     pub fn get_periapsis(&self) -> Option<f64> {
         self.keplerian_state.as_ref().map(|state| state.get_periapsis())
     }
 
-    #[getter]
     pub fn get_apoapsis(&self) -> Option<f64> {
         self.keplerian_state.as_ref().map(|state| state.get_apoapsis())
-    }
-
-    #[setter]
-    pub fn set_id(&mut self, satellite_id: String) {
-        self.id = satellite_id;
-    }
-
-    #[getter]
-    pub fn get_norad_id(&self) -> i32 {
-        self.norad_id
-    }
-
-    #[setter]
-    pub fn set_norad_id(&mut self, norad_id: i32) {
-        self.norad_id = norad_id;
     }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
@@ -320,19 +276,10 @@ impl Satellite {
             .map(|propagator| propagator.get_cartesian_state_at_epoch(epoch))?
     }
 
-    #[pyo3(name = "step_to_epoch")]
-    pub fn py_step_to_epoch(&mut self, epoch: Epoch) -> PyResult<()> {
-        self.step_to_epoch(epoch)
-            .map_err(|e| PyErr::new::<PyValueError, _>(e.to_string()))
-    }
-
-    #[setter]
-    pub fn set_keplerian_state(&mut self, keplerian_state: KeplerianState) -> PyResult<()> {
+    pub fn set_keplerian_state(&mut self, keplerian_state: KeplerianState) -> Result<(), String> {
         self.keplerian_state = Some(keplerian_state);
         match keplerian_state.get_type() {
-            KeplerianType::Osculating => Err(PyErr::new::<PyValueError, _>(
-                "Osculating elements not implemented".to_string(),
-            )),
+            KeplerianType::Osculating => Err("Cannot set osculating elements directly; use TLE instead".to_string()),
             _ => {
                 let tle = TLE::new(
                     self.id.clone(),
@@ -344,52 +291,45 @@ impl Satellite {
                     self.force_properties,
                 )
                 .unwrap();
-                self.inertial_propagator = Some(InertialPropagator::from_tle(tle));
+                self.inertial_propagator = Some(InertialPropagator::from(tle));
                 Ok(())
             }
         }
     }
 
-    #[setter]
     pub fn set_force_properties(&mut self, force_properties: ForceProperties) {
         self.force_properties = force_properties;
-        if let Some(state) = self.get_keplerian_state() {
-            if state.get_type() != KeplerianType::Osculating {
-                let tle = TLE::new(
-                    self.id.clone(),
-                    self.norad_id,
-                    self.name.clone(),
-                    Classification::Unclassified,
-                    "".to_string(),
-                    state,
-                    force_properties,
-                )
-                .unwrap();
-                self.inertial_propagator = Some(InertialPropagator::from_tle(tle));
-            }
+        if let Some(state) = self.get_keplerian_state()
+            && state.get_type() != KeplerianType::Osculating
+        {
+            let tle = TLE::new(
+                self.id.clone(),
+                self.norad_id,
+                self.name.clone(),
+                Classification::Unclassified,
+                "".to_string(),
+                state,
+                force_properties,
+            )
+            .unwrap();
+            self.inertial_propagator = Some(InertialPropagator::from(tle));
         }
     }
 
-    #[getter]
     pub fn get_force_properties(&self) -> ForceProperties {
         self.force_properties
-    }
-
-    #[pyo3(name = "get_ephemeris")]
-    pub fn py_get_ephemeris(&mut self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
-        self.get_ephemeris(start_epoch, end_epoch, step)
     }
 
     pub fn get_plot_data(&self, start: Epoch, end: Epoch, step: TimeSpan) -> Option<OrbitPlotData> {
         match self.get_state_at_epoch(start) {
             Some(state) => {
                 let mut plot_data = OrbitPlotData::new(self.id.clone());
-                plot_data.add_state(OrbitPlotState::from_cartesian_state(&state));
+                plot_data.add_state(OrbitPlotState::from(state));
                 let mut next_epoch: Epoch = start + step;
                 while next_epoch <= end {
                     match self.get_state_at_epoch(next_epoch) {
                         Some(state) => {
-                            plot_data.add_state(OrbitPlotState::from_cartesian_state(&state));
+                            plot_data.add_state(OrbitPlotState::from(state));
                             next_epoch += step;
                         }
                         None => {
@@ -403,7 +343,6 @@ impl Satellite {
         }
     }
 
-    #[getter]
     pub fn get_keplerian_state(&self) -> Option<KeplerianState> {
         self.keplerian_state
     }

@@ -1,9 +1,7 @@
 use super::SphericalVector;
 use nalgebra::Vector3;
-use pyo3::prelude::*;
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
-#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CartesianVector {
     n_vector: Vector3<f64>,
@@ -39,43 +37,25 @@ impl Sub for CartesianVector {
     }
 }
 
-#[pymethods]
 impl CartesianVector {
-    #[new]
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self {
             n_vector: Vector3::new(x, y, z),
         }
     }
 
-    fn __add__(&self, other: &Self) -> Self {
-        Self {
-            n_vector: self.n_vector + other.n_vector,
-        }
-    }
-
-    fn __sub__(&self, other: &Self) -> Self {
-        Self {
-            n_vector: self.n_vector - other.n_vector,
-        }
-    }
-
-    #[getter]
-    fn x(&self) -> f64 {
+    pub fn get_x(&self) -> f64 {
         self.n_vector.x
     }
 
-    #[getter]
-    fn y(&self) -> f64 {
+    pub fn get_y(&self) -> f64 {
         self.n_vector.y
     }
 
-    #[getter]
-    fn z(&self) -> f64 {
+    pub fn get_z(&self) -> f64 {
         self.n_vector.z
     }
 
-    #[getter]
     pub fn get_magnitude(&self) -> f64 {
         self.n_vector.norm()
     }
@@ -96,14 +76,16 @@ impl CartesianVector {
         }
         (dot_product / magnitude_product).acos()
     }
+}
 
-    pub fn to_spherical(&self) -> SphericalVector {
-        let r = self.get_magnitude();
-        let ra = self.n_vector.y.atan2(self.n_vector.x);
-        let dec = self
+impl From<CartesianVector> for SphericalVector {
+    fn from(cart: CartesianVector) -> Self {
+        let r = cart.get_magnitude();
+        let ra = cart.n_vector.y.atan2(cart.n_vector.x);
+        let dec = cart
             .n_vector
             .z
-            .atan2((self.n_vector.x * self.n_vector.x + self.n_vector.y * self.n_vector.y).sqrt());
+            .atan2((cart.n_vector.x * cart.n_vector.x + cart.n_vector.y * cart.n_vector.y).sqrt());
         SphericalVector::new(r, ra.to_degrees(), dec.to_degrees())
     }
 }
@@ -116,7 +98,11 @@ impl From<[f64; 3]> for CartesianVector {
 
 impl From<CartesianVector> for [f64; 3] {
     fn from(cartesian_vector: CartesianVector) -> Self {
-        [cartesian_vector.x(), cartesian_vector.y(), cartesian_vector.z()]
+        [
+            cartesian_vector.get_x(),
+            cartesian_vector.get_y(),
+            cartesian_vector.get_z(),
+        ]
     }
 }
 

@@ -1,26 +1,34 @@
 [package]
 name = "keplemon"
-version = "2.1.2"
-edition = "2021"
+version = "3.0.0"
+edition = "2024"
+build = "build.rs"
+exclude = [
+  "tests/**",
+  "benches/**",
+  "benchmarks/**",
+  "skills/**",
+  "venv/**",
+  "truth/**",
+  "fort.*",
+  "AI.md",
+  "CONTRIBUTING.md",
+  "agents.yaml",
+  "assets/**",
+  "lib/**",
+]
 
 [dependencies]
-ctor = "0.4.1"
-log = "0.4"
-nalgebra = "0.33.2"
-once_cell = "1.21.3"
-pyo3 = { version = "0.24.1", features = ["extension-module"] }
-pyo3-log = "0.12.0"
-rayon = "1.10.0"
-reqwest = "0.12.15"
-uuid = { version = "1.18.0", features = ["v4"] }
+ctor = "0.6.3"
+nalgebra = "0.34.1"
+pyo3 = { version = "0.27.2", optional = true }
+pyo3-log = "0.13.2"
+rayon = "1.11.0"
+saal = "0.1.0"
+uuid = { version = "1.19.0", features = ["v4"] }
 
-[target.'cfg(target_env = "musl")'.dependencies]
-openssl = { version = "0.10.72", default-features = false, features = [
-  "vendored",
-] }
-openssl-sys = { version = "0.9.108", default-features = false, features = [
-  "vendored",
-] }
+[build-dependencies]
+saal = "0.1.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -28,3 +36,6 @@ name = "keplemon"
 
 [dev-dependencies]
 approx = "0.5.1"
+
+[features]
+python = ["pyo3/extension-module", "pyo3/abi3-py310"]

@@ -16,18 +16,6 @@ from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessRep
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
 
-class Earth:
-    @staticmethod
-    def get_equatorial_radius() -> float:
-        """
-        Returns:
-            Equatorial radius of the Earth in kilometers
-        """
-        ...
-
-    @staticmethod
-    def get_kem() -> float: ...
-
 class Satellite:
 
     id: str

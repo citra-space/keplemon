@@ -1,7 +1,5 @@
 use crate::time::Epoch;
-use pyo3::prelude::*;
 
-#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CloseApproach {
     primary_id: String,
@@ -19,26 +17,19 @@ impl CloseApproach {
             distance,
         }
     }
-}
 
-#[pymethods]
-impl CloseApproach {
-    #[getter]
     pub fn get_primary_id(&self) -> String {
         self.primary_id.clone()
     }
 
-    #[getter]
     pub fn get_secondary_id(&self) -> String {
         self.secondary_id.clone()
     }
 
-    #[getter]
     pub fn get_epoch(&self) -> Epoch {
         self.epoch
     }
 
-    #[getter]
     pub fn get_distance(&self) -> f64 {
         self.distance
     }

@@ -1,5 +1,5 @@
 import pytest
-from keplemon.bodies import Satellite, Constellation, Earth, Observatory
+from keplemon.bodies import Satellite, Constellation, Observatory
 from keplemon.catalogs import TLECatalog
 from keplemon.elements import TLE, TopocentricElements
 from keplemon.time import Epoch, TimeSpan
@@ -15,10 +15,6 @@ def test_observatory():
     candidate = fov_report.candidates[0]
     topo = site.get_topocentric_to_satellite(epoch, sats[candidate.satellite_id], ReferenceFrame.TEME)
     assert topo.right_ascension == candidate.direction.right_ascension
-
-
-def test_earth():
-    assert Earth.get_equatorial_radius() == 6378.135
 
 
 def test_constellation():
