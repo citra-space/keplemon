@@ -3,6 +3,7 @@ name = "keplemon"
 version = "3.0.0"
 edition = "2024"
 build = "build.rs"
+description = "Expanded functionality for the Standardized Astrodynamics Algorithms Library (SAAL)"
 exclude = [
   "tests/**",
   "benches/**",
@@ -21,6 +22,7 @@ exclude = [
   "assets/**",
   "lib/**",
 ]
+license = "MIT"
 
 [dependencies]
 ctor = "0.6.3"
