@@ -1,6 +1,6 @@
 [package]
 name = "keplemon"
-version = "3.0.0"
+version = "3.0.1"
 edition = "2024"
 build = "build.rs"
 description = "Expanded functionality for the Standardized Astrodynamics Algorithms Library (SAAL)"
@@ -37,7 +37,7 @@ uuid = { version = "1.19.0", features = ["v4"] }
 saal = "0.1.0"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 name = "keplemon"
 
 [dev-dependencies]
