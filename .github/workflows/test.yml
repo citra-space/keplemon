@@ -1,201 +1,132 @@
-name: test
+name: Test
 
 on:
-    push:
-        branches:
-            - main
-        tags:
-            - 'v*.*.*'
+  push:
+    branches: ['dev']
+  pull_request:
+    branches: ['main']
+
+env:
+  PYTHON_VERSION: '3.10'
 
 jobs:
-    test-windows:
-        runs-on: windows-latest
+  build-wheels:
+    name: build-${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64-gnu
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: 2_24
+            container: ''
+          - name: linux-aarch64-gnu
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: 2_24
+            container: quay.io/pypa/manylinux_2_24_aarch64
+          - name: macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: macos-aarch64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - name: windows-x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
 
-        strategy:
-            fail-fast: true
-            matrix:
-                python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
-        steps:
-            - uses: actions/checkout@v3
-            - name: setup python ${{ matrix.python-version }}
-              uses: actions/setup-python@v3
-              with:
-                  python-version: ${{ matrix.python-version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Setup Rust toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-            - name: Install dependencies
-              run: |
-                  cargo install --locked cargo-make
-                  pip install ".[dev]"
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-            - name: Test build
-              run: cargo make test-windows
+      - name: Test Rust
+        run: cargo test --target ${{ matrix.target }} --lib --tests --bins
 
-            - name: Upload wheel
-              uses: actions/upload-artifact@v4
-              with:
-                  name: windows-${{ matrix.python-version }}-whl
-                  path: target/wheels/*.whl
+      - name: Build wheel (linux)
+        if: ${{ startsWith(matrix.name, 'linux-') }}
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          container: ${{ matrix.container }}
+          args: --release
 
-    test-linux-x86:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
-        steps:
-            - uses: actions/checkout@v4
+      - name: Build wheel
+        if: ${{ !startsWith(matrix.name, 'linux-') }}
+        run: |
+          python -m pip install --upgrade pip maturin
+          maturin build --release --target ${{ matrix.target }}
 
-            - name: Setup Rust toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.name }}
+          path: target/wheels/*.whl
 
-            - name: Build for ${{ matrix.python-version }}
-              run: |
-                  docker run --rm \
-                    -v ${{ github.workspace }}:/io \
-                    -e HOME=/root \
-                    -w /io quay.io/pypa/manylinux2014_x86_64 \
-                    bash -c '
-                      yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
-                      export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
-                      curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
-                      source "$CARGO_HOME/env" && \
-                      cargo install --locked cargo-make && \
-                      cargo install --locked maturin && \
-                      export OPENSSL_DIR=/usr && \
-                      export OPENSSL_LIB_DIR=/usr/lib64 && \
-                      export OPENSSL_INCLUDE_DIR=/usr/include && \
-                      cargo make copy-linux-x86 && \
-                      PYTHON_VERSION=${{ matrix.python-version }} && \
-                      TAG=${PYTHON_VERSION//./} && \
-                      PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
-                      PIP="${PY_BIN%/python}/pip" && \
-                      $PIP install --upgrade pip setuptools wheel auditwheel && \
-                      maturin build --release --compatibility manylinux2014 -i $PY_BIN
-                    '
+  test-python:
+    name: test-${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    needs: build-wheels
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64-gnu
+            runner: ubuntu-latest
+            libc: gnu
+            target: x86_64-unknown-linux-gnu
+          - platform: linux-aarch64-gnu
+            runner: ubuntu-24.04-arm
+            libc: gnu
+            target: aarch64-unknown-linux-gnu
+          - platform: macos-x86_64
+            runner: macos-15-intel
+            libc: native
+            target: x86_64-apple-darwin
+          - platform: macos-aarch64
+            runner: macos-latest
+            libc: native
+            target: aarch64-apple-darwin
+          - platform: windows-x86_64
+            runner: windows-latest
+            libc: native
+            target: x86_64-pc-windows-msvc
 
-            - name: Upload wheel
-              uses: actions/upload-artifact@v4
-              with:
-                  name: linux-x86-${{ matrix.python-version }}-whl
-                  path: target/wheels/*.whl
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    test-linux-arm:
-        runs-on: ubuntu-24.04-arm
-        strategy:
-            matrix:
-                python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
-        steps:
-            - uses: actions/checkout@v3
-            - name: setup python ${{ matrix.python-version }}
-              uses: actions/setup-python@v3
-              with:
-                  python-version: ${{ matrix.python-version }}
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-            - uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform }}
+          path: dist
 
-            - name: Build for ${{ matrix.python-version }}
-              run: |
-                  docker run --rm \
-                    -v ${{ github.workspace }}:/io \
-                    -e HOME=/root \
-                    -w /io quay.io/pypa/manylinux2014_aarch64 \
-                    bash -c '
-                      yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
-                      export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
-                      curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
-                      source "$CARGO_HOME/env" && \
-                      cargo install --locked cargo-make && \
-                      cargo install --locked maturin && \
-                      export OPENSSL_DIR=/usr && \
-                      export OPENSSL_LIB_DIR=/usr/lib64 && \
-                      export OPENSSL_INCLUDE_DIR=/usr/include && \
-                      cargo make copy-linux-arm && \
-                      PYTHON_VERSION=${{ matrix.python-version }} && \
-                      TAG=${PYTHON_VERSION//./} && \
-                      PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
-                      PIP="${PY_BIN%/python}/pip" && \
-                      $PIP install --upgrade pip setuptools wheel auditwheel && \
-                      maturin build --release --compatibility manylinux2014 -i $PY_BIN
-                    '
-            - name: Upload wheel
-              uses: actions/upload-artifact@v4
-              with:
-                  name: linux-arm-${{ matrix.python-version }}-whl
-                  path: target/wheels/*.whl
-
-    test-macos-arm:
-        runs-on: macos-latest
-        strategy:
-            fail-fast: false
-            matrix:
-                python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
-        steps:
-            - uses: actions/checkout@v3
-            - name: setup python ${{ matrix.python-version }}
-              uses: actions/setup-python@v3
-              with:
-                  python-version: ${{ matrix.python-version }}
-
-            - name: Setup Rust toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
-
-            - name: Install dependencies
-              run: |
-                  cargo install --locked cargo-make
-                  pip install ".[dev]"
-
-            - name: Test build
-              run: cargo make test-mac-arm
-
-            - name: Upload wheel
-              uses: actions/upload-artifact@v4
-              with:
-                  name: mac-arm-${{ matrix.python-version }}-whl
-                  path: target/wheels/*.whl
-
-    test-macos-x86:
-        runs-on: macos-15-intel
-        strategy:
-            fail-fast: false
-            matrix:
-                python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
-        steps:
-            - uses: actions/checkout@v3
-            - name: setup python ${{ matrix.python-version }}
-              uses: actions/setup-python@v3
-              with:
-                  python-version: ${{ matrix.python-version }}
-
-            - name: Setup Rust toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
-
-            - name: Install dependencies
-              run: |
-                  cargo install --locked cargo-make
-                  pip install ".[dev]"
-
-            - name: Test build
-              run: cargo make test-mac-x86
-
-            - name: Upload wheel
-              uses: actions/upload-artifact@v4
-              with:
-                  name: mac-x86-${{ matrix.python-version }}-whl
-                  path: target/wheels/*.whl
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install dist/*.whl
+          python -m pytest
