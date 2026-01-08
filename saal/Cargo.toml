@@ -1,0 +1,60 @@
+[package]
+name = "saal"
+version = "0.1.3"
+edition = "2024"
+authors = ["Brandon Sexton <brandon.taylor.sexton@gmail.com>"]
+description = "Wrappers for the Standardized Astrodynamics Algorithms Library (SAAL)"
+license = "MIT"
+exclude = [
+  "tests/**",
+  "benches/**",
+  "benchmarks/**",
+  "skills/**",
+  "venv/**",
+  "truth/**",
+  "fort.*",
+  "AI.md",
+  "CONTRIBUTING.md",
+  "agents.yaml",
+  "assets/**",
+  "lib/**",
+]
+
+[dependencies]
+ctor = "0.6.3"
+pyo3 = { version = "0.27.2", optional = true }
+
+[build-dependencies]
+hex = "0.4.3"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+sha2 = "0.10.8"
+ureq = "2.10.1"
+zip = { version = "2.2.0", default-features = false, features = ["deflate"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "saal"
+
+[features]
+python = ["pyo3/extension-module", "pyo3/abi3-py39"]
+
+[dev-dependencies]
+approx = "0.5.1"
+criterion = "0.5.1"
+
+[[bench]]
+name = "astro_bench"
+harness = false
+
+[[bench]]
+name = "time_bench"
+harness = false
+
+[[bench]]
+name = "tle_bench"
+harness = false
+
+[[bench]]
+name = "sgp4_bench"
+harness = false

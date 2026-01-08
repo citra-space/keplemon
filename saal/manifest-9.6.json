@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "release_version": "9.6",
+  "assets_archive": {
+    "url": "https://github.com/citra-space/saal/releases/download/v{version}-source/assets.zip",
+    "sha256": "sha256:6d003de45bd26894d3d6ee221942dd6c5fdfd2a2d6129ec8e494f271816a857f"
+  },
+  "lib_archives": [
+    {
+      "os": "macos",
+      "arch": "aarch64",
+      "url": "https://github.com/citra-space/saal/releases/download/v{version}-source/mac-arm.zip",
+      "sha256": "sha256:a67c7b9b7e6ed598c797a07142955650aac30b9f8f45b1c7f01b0ea3f2b155da"
+    },
+    {
+      "os": "macos",
+      "arch": "x86_64",
+      "url": "https://github.com/citra-space/saal/releases/download/v{version}-source/mac-x86.zip",
+      "sha256": "sha256:730eba419bfb083ed68ce14c52f8ab1b1e7a5a62c3411f4fc434136b7d3f30a1"
+    },
+    {
+      "os": "linux",
+      "arch": "aarch64",
+      "url": "https://github.com/citra-space/saal/releases/download/v{version}-source/linux-arm.zip",
+      "sha256": "sha256:e5f9cd23c57095155ec302adab37cd21f358839717db0533e22cb4ec5a095e94"
+    },
+    {
+      "os": "linux",
+      "arch": "x86_64",
+      "url": "https://github.com/citra-space/saal/releases/download/v{version}-source/linux-x86.zip",
+      "sha256": "sha256:989d153481a64807c700c68a96a0a6d40fb02255b90df86b98543c42051c950b"
+    },
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "url": "https://github.com/citra-space/saal/releases/download/v{version}-source/windows.zip",
+      "sha256": "sha256:79d5a46f805a1cbfaa0197a557036733034f9d4d6d42656770aa3695f2eff7b7"
+    }
+  ]
+}
