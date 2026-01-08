@@ -43,4 +43,4 @@ name = "keplemon"
 approx = "0.5.1"
 
 [features]
-python = ["pyo3/extension-module", "pyo3/abi3-py310"]
+python = ["pyo3/extension-module", "pyo3/abi3-py39"]
