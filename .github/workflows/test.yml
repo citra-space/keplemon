@@ -34,7 +34,9 @@ jobs:
             -w /io quay.io/pypa/manylinux2014_x86_64 \
             bash -c '
               yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              cat /etc/os-release && rpm -q libgcc && ls -l /lib64/libgcc_s.so.1 && \
               export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
+              export CARGO_TARGET_DIR=/tmp/target && \
               curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
               source "$CARGO_HOME/env" && \
               cargo clean && \
@@ -79,7 +81,9 @@ jobs:
             -w /io quay.io/pypa/manylinux2014_aarch64 \
             bash -c '
               yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              cat /etc/os-release && rpm -q libgcc && ls -l /lib64/libgcc_s.so.1 && \
               export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
+              export CARGO_TARGET_DIR=/tmp/target && \
               curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
               source "$CARGO_HOME/env" && \
               cargo clean && \
