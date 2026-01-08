@@ -37,6 +37,7 @@ jobs:
               export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
               curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
               source "$CARGO_HOME/env" && \
+              cargo clean && \
               cargo install --locked maturin && \
               export OPENSSL_DIR=/usr && \
               export OPENSSL_LIB_DIR=/usr/lib64 && \
@@ -83,6 +84,7 @@ jobs:
               export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
               curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
               source "$CARGO_HOME/env" && \
+              cargo clean && \
               cargo install --locked maturin && \
               export OPENSSL_DIR=/usr && \
               export OPENSSL_LIB_DIR=/usr/lib64 && \
