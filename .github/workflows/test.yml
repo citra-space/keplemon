@@ -34,6 +34,9 @@ jobs:
             -w /io quay.io/pypa/manylinux2014_x86_64 \
             bash -c '
               yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              env | sort | rg -i 'LD|RUST|CARGO|PYTHON' && \
+              find /io -name 'libgcc_s.so.1' -o -name 'libgcc_s.so*' && \
+              file /lib64/libgcc_s.so.1 && sha256sum /lib64/libgcc_s.so.1 && \
               cat /etc/os-release && rpm -q libgcc && ls -l /lib64/libgcc_s.so.1 && \
               export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
               export CARGO_TARGET_DIR=/tmp/target && \
@@ -81,6 +84,9 @@ jobs:
             -w /io quay.io/pypa/manylinux2014_aarch64 \
             bash -c '
               yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              env | sort | rg -i 'LD|RUST|CARGO|PYTHON' && \
+              find /io -name 'libgcc_s.so.1' -o -name 'libgcc_s.so*' && \
+              file /lib64/libgcc_s.so.1 && sha256sum /lib64/libgcc_s.so.1 && \
               cat /etc/os-release && rpm -q libgcc && ls -l /lib64/libgcc_s.so.1 && \
               export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
               export CARGO_TARGET_DIR=/tmp/target && \

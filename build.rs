@@ -35,21 +35,6 @@ fn main() {
             continue;
         }
 
-        // Filter out system libraries that should not be bundled or linked against
-        // to avoid glibc version issues (e.g. glibc 2.34 requirement).
-        // We delete them from target_dir to prevent the linker from using them.
-        let filename_str = filename.to_string_lossy();
-        if filename_str.starts_with("libm.so")
-            || filename_str.starts_with("ld-linux")
-            || filename_str.starts_with("libc.so")
-            || filename_str.starts_with("libpthread.so")
-            || filename_str.starts_with("libdl.so")
-            || filename_str.starts_with("librt.so")
-        {
-            let _ = fs::remove_file(&path);
-            continue;
-        }
-
         let dest_path = python_pkg_dir.join(filename);
         fs::copy(&path, &dest_path)
             .unwrap_or_else(|_| panic!("Failed to copy {} to {}", path.display(), dest_path.display()));
@@ -66,13 +51,8 @@ fn main() {
             println!("cargo:rerun-if-changed={}", path.display());
             let filename = path.file_name().expect("Invalid stub file name");
             let dest_path = python_pkg_dir.join(filename);
-            fs::copy(&path, &dest_path).unwrap_or_else(|_| {
-                panic!(
-                    "Failed to copy stub {} to {}",
-                    path.display(),
-                    dest_path.display()
-                )
-            });
+            fs::copy(&path, &dest_path)
+                .unwrap_or_else(|_| panic!("Failed to copy stub {} to {}", path.display(), dest_path.display()));
         }
     }
 }
