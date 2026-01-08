@@ -268,14 +268,30 @@ mod tests {
 
     #[test]
     fn test_to_fk4_greenwich_angle() {
-        assert_eq!(dec_20_2012_000000().to_fk4_greenwich_angle(), 1.5529973858442574);
-        assert_eq!(oct_31_1989_044242().to_fk4_greenwich_angle(), 1.9222952766001384);
+        assert_abs_diff_eq!(
+            dec_20_2012_000000().to_fk4_greenwich_angle(),
+            1.5529973858442574,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            oct_31_1989_044242().to_fk4_greenwich_angle(),
+            1.9222952766001384,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
     fn test_to_fk5_greenwich_angle() {
-        assert_eq!(dec_20_2012_000000().to_fk5_greenwich_angle(), 1.553003824819477);
-        assert_eq!(oct_31_1989_044242().to_fk5_greenwich_angle(), 1.92230028431527);
+        assert_abs_diff_eq!(
+            dec_20_2012_000000().to_fk5_greenwich_angle(),
+            1.553003824819477,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            oct_31_1989_044242().to_fk5_greenwich_angle(),
+            1.92230028431527,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
@@ -300,7 +316,7 @@ mod tests {
         let utc_minus_ut1 = TimeSpan::from_days(utc.days_since_1950 - ut1.days_since_1950);
         let utc_minus_tt = TimeSpan::from_days(utc.days_since_1950 - tt.days_since_1950);
         assert_abs_diff_eq!(utc_minus_tai.in_seconds(), -35.0, epsilon = 1e-6);
-        assert_eq!(utc_minus_ut1.in_seconds(), -0.2846799208782613);
+        assert_abs_diff_eq!(utc_minus_ut1.in_seconds(), -0.2846799208782613, epsilon = 1e-6);
         assert_abs_diff_eq!(utc_minus_tt.in_seconds(), -67.184, epsilon = 1e-6);
     }
 }

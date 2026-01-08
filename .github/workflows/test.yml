@@ -28,8 +28,8 @@ jobs:
           - name: linux-aarch64-gnu
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            manylinux: 2_24
-            container: quay.io/pypa/manylinux_2_24_aarch64
+            manylinux: 2_34
+            container: quay.io/pypa/manylinux_2_34_aarch64
           - name: macos-x86_64
             runner: macos-15-intel
             target: x86_64-apple-darwin
