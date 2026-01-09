@@ -100,6 +100,21 @@ fn main() {
                     println!("cargo:rerun-if-changed={}", path.display());
                 }
                 let file_name = path.file_name().expect("Invalid asset file name");
+
+                // Filter out system libraries that may come from assets.
+                let filename_str = file_name.to_string_lossy();
+                if filename_str.starts_with("libm.so")
+                    || filename_str.starts_with("libgcc_s.so")
+                    || filename_str.starts_with("libc.so")
+                    || filename_str.starts_with("ld-linux")
+                    || filename_str.starts_with("libstdc++.so")
+                    || filename_str.starts_with("libpthread.so")
+                    || filename_str.starts_with("librt.so")
+                    || filename_str.starts_with("libdl.so")
+                {
+                    continue;
+                }
+
                 for dest_dir in &asset_targets {
                     fs::create_dir_all(dest_dir).expect("Failed to create asset destination directory");
                     let dest_path = dest_dir.join(file_name);
