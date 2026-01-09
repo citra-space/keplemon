@@ -15,6 +15,7 @@ from keplemon._keplemon.elements import (  # type: ignore
     RelativeState,
     BoreToBodyAngles,
     TopocentricState,
+    EquinoctialElements,
 )
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "RelativeState",
     "BoreToBodyAngles",
     "TopocentricState",
+    "EquinoctialElements",
 ]

@@ -17,6 +17,19 @@ class BoreToBodyAngles:
     sun_angle: float
     moon_angle: float
 
+class OrbitPlotState:
+    epoch: Epoch
+    latitude: float
+    longitude: float
+    altitude: float
+    semi_major_axis: float
+    eccentricity: float
+    inclination: float
+    raan: float
+    radius: float
+    apogee_radius: float
+    perigee_radius: float
+
 class OrbitPlotData:
     satellite_id: str
     epochs: list[str]
@@ -137,6 +150,36 @@ class KeplerianElements:
         mean_anomaly: float,
     ) -> None: ...
 
+class EquinoctialElements:
+    """
+    Args:
+        a_f: Equinoctial element a_f
+        a_g: Equinoctial element a_g
+        chi: Equinoctial element chi
+        psi: Equinoctial element psi
+        mean_longitude: Mean longitude in **_degrees_**
+        mean_motion: Mean motion in **_revolutions per day_**
+    """
+
+    a_f: float
+    a_g: float
+    chi: float
+    psi: float
+    mean_longitude: float
+    mean_motion: float
+
+    def __init__(
+        self,
+        a_f: float,
+        a_g: float,
+        chi: float,
+        psi: float,
+        mean_longitude: float,
+        mean_motion: float,
+    ) -> None: ...
+
+    def to_keplerian(self) -> KeplerianElements: ...
+
 class TLE:
 
     norad_id: int
@@ -202,6 +245,12 @@ class TLE:
     !!! note
         This is always calculated using Brouwer mean motion and will differ slightly from Kozai-computed SMA.
     """
+
+    apoapsis: float
+    """Apoapsis radius in **_kilometers_**"""
+
+    periapsis: float
+    """Periapsis radius in **_kilometers_**"""
 
     @classmethod
     def from_lines(cls, line_1: str, line_2: str, line_3: str | None = None) -> TLE:

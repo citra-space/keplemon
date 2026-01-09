@@ -136,19 +136,6 @@ impl InertialPropagator {
         }
     }
 
-    pub fn get_jacobian_with_ref(
-        &self,
-        ob: &Observation,
-        use_drag: bool,
-        use_srp: bool,
-        h_ref: &[f64],
-    ) -> Result<DMatrix<f64>, String> {
-        match &self.tle {
-            Some(tle) => tle.get_jacobian_with_ref(ob, use_drag, use_srp, h_ref),
-            None => Err("Propagation of osculating elements has not been implemented".to_string()),
-        }
-    }
-
     pub fn build_perturbed_satellites(&self, use_drag: bool, use_srp: bool) -> Result<Vec<(Satellite, f64)>, String> {
         match &self.tle {
             Some(tle) => tle.build_perturbed_satellites(use_drag, use_srp),

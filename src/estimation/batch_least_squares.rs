@@ -591,3 +591,87 @@ fn compute_normal_equations(h: &DMatrix<f64>, w: &DVector<f64>, r: &DVector<f64>
 
     (n, b, wrss)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::BatchLeastSquares;
+    use crate::bodies::{Observatory, Satellite, Sensor};
+    use crate::elements::{TLE, TopocentricElements};
+    use crate::enums::{KeplerianType, TimeSystem};
+    use crate::estimation::Observation;
+    use crate::time::{Epoch, TimeSpan};
+    use serde::Deserialize;
+    use std::fs;
+    use std::path::Path;
+
+    #[derive(Debug, Deserialize)]
+    struct TestObservation {
+        epoch: String,
+        ra: f64,
+        dec: f64,
+        sensor_latitude: f64,
+        sensor_longitude: f64,
+        sensor_altitude: f64,
+        angular_noise: f64,
+    }
+
+    #[test]
+    fn test_solve() {
+        let initial_tle = TLE::from_lines(
+            "1 99999U          25334.80826079 -.00000092  00000 0  00000 0 0 0000",
+            "2 99999   5.1462  74.9949 0001499 136.0805 318.9951  0.9987069300000",
+            None,
+        )
+        .unwrap();
+        let initial_sat = Satellite::from(initial_tle);
+        let truth_tle = TLE::from_lines(
+            "1 99999U          25335.68208465 +.00000000  16437-1  00000+0 4 00000",
+            "2 99999   5.2391  74.7607 0001808 154.7302 254.7343  0.99871681000004",
+            None,
+        )
+        .unwrap();
+        let truth_sat = Satellite::from(truth_tle);
+
+        let obs_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("local/test-observations.json");
+        let obs_contents = fs::read_to_string(obs_path).unwrap();
+        let json_obs: Vec<TestObservation> = serde_json::from_str(&obs_contents).unwrap();
+
+        let mut observations: Vec<Observation> = Vec::with_capacity(json_obs.len());
+        for json_ob in json_obs {
+            let epoch = Epoch::from_iso(&json_ob.epoch, TimeSystem::UTC);
+            let site = Observatory::new(
+                json_ob.sensor_latitude,
+                json_ob.sensor_longitude,
+                json_ob.sensor_altitude,
+            );
+            let els = TopocentricElements::new(json_ob.ra, json_ob.dec);
+            let sensor = Sensor::new(json_ob.angular_noise);
+            let ob = Observation::new(sensor, epoch, els, site.get_state_at_epoch(epoch).position);
+            observations.push(ob);
+        }
+
+        let mut bls = BatchLeastSquares::new(observations, &initial_sat);
+        bls.set_output_type(KeplerianType::MeanBrouwerXP);
+        bls.set_estimate_srp(true);
+        bls.solve().unwrap();
+
+        let start = truth_sat.get_keplerian_state().unwrap().epoch;
+        let end = start + TimeSpan::from_days(1.0);
+        let step = TimeSpan::from_minutes(5.0);
+        let mut next_epoch = start;
+        let bls_sat = bls.get_current_estimate();
+        let mut ranges = Vec::new();
+        while next_epoch <= end {
+            let state = bls_sat
+                .get_relative_state_at_epoch(&truth_sat, next_epoch)
+                .expect("Missing relative state");
+            ranges.push(state.position.get_magnitude());
+            next_epoch += step;
+        }
+
+        let rms = bls.get_rms().expect("Missing RMS");
+        assert!(rms < 0.2);
+        let max_range = ranges.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        assert!(max_range < 0.5);
+    }
+}

@@ -239,17 +239,6 @@ impl TLE {
 
         // Get the predicted measurements for the reference satellite
         let h_ref = ob.get_predicted_vector(&ref_sat)?;
-
-        self.get_jacobian_with_ref(ob, use_drag, use_srp, &h_ref)
-    }
-
-    pub fn get_jacobian_with_ref(
-        &self,
-        ob: &Observation,
-        use_drag: bool,
-        use_srp: bool,
-        h_ref: &[f64],
-    ) -> Result<DMatrix<f64>, String> {
         let m = h_ref.len();
         let mut n = 6;
         if use_drag {
@@ -527,6 +516,14 @@ impl TLE {
         tle::fix_blank_exponent_sign(&mut line_1);
         tle::add_check_sums(&mut line_1, &mut line_2)?;
         Ok((line_1, line_2))
+    }
+
+    pub fn get_apoapsis(&self) -> f64 {
+        self.keplerian_state.get_apoapsis()
+    }
+
+    pub fn get_periapsis(&self) -> f64 {
+        self.keplerian_state.get_periapsis()
     }
 
     pub fn get_inclination(&self) -> f64 {

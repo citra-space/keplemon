@@ -5,6 +5,8 @@ from keplemon._keplemon.enums import (  # type: ignore
     ReferenceFrame,
     CovarianceType,
     AssociationConfidence,
+    GeodeticModel,
+    MeanEquinox,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "ReferenceFrame",
     "CovarianceType",
     "AssociationConfidence",
+    "GeodeticModel",
+    "MeanEquinox",
 ]

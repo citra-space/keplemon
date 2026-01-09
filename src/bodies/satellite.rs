@@ -71,19 +71,6 @@ impl Satellite {
         }
     }
 
-    pub fn get_jacobian_with_ref(
-        &self,
-        ob: &Observation,
-        use_drag: bool,
-        use_srp: bool,
-        h_ref: &[f64],
-    ) -> Result<DMatrix<f64>, String> {
-        match self.inertial_propagator {
-            Some(ref propagator) => propagator.get_jacobian_with_ref(ob, use_drag, use_srp, h_ref),
-            None => Err("Inertial propagator is not set".to_string()),
-        }
-    }
-
     pub fn build_perturbed_satellites(&self, use_drag: bool, use_srp: bool) -> Result<Vec<(Satellite, f64)>, String> {
         match self.inertial_propagator {
             Some(ref propagator) => propagator.build_perturbed_satellites(use_drag, use_srp),
@@ -399,5 +386,176 @@ impl Satellite {
 
         report.set_accesses(accesses.into_iter().flatten().collect());
         Some(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Satellite;
+    use crate::bodies::Observatory;
+    use crate::elements::TLE;
+    use crate::enums::TimeSystem;
+    use crate::time::{Epoch, TimeSpan};
+    use approx::assert_abs_diff_eq;
+
+    fn make_satellite(line_1: &str, line_2: &str) -> Satellite {
+        let tle = TLE::from_lines(line_1, line_2, None).unwrap();
+        Satellite::from(tle)
+    }
+
+    #[test]
+    fn test_from_tle() {
+        let sat_1 = make_satellite(
+            "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999",
+            "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660",
+        );
+        let sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+
+        assert_eq!(sat_1.norad_id, 25544);
+        let pos_2 = sat_2.get_geodetic_position().expect("missing geodetic position");
+        let _pos_3 = sat_3.get_geodetic_position().expect("missing geodetic position");
+        assert_abs_diff_eq!(pos_2.latitude, 0.3938497796549098, epsilon = 0.1);
+        assert_abs_diff_eq!(pos_2.longitude, 55.074384090833696, epsilon = 0.1);
+        assert_abs_diff_eq!(pos_2.altitude, 35808.08113476326, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_get_close_approach() {
+        let mut sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let mut sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+        let start = Epoch::from_iso("2025-04-15T12:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2025-04-16T12:00:00.000000Z", TimeSystem::UTC);
+        let ca = sat_2
+            .get_close_approach(&mut sat_3, start, end, 25.0)
+            .expect("missing close approach");
+        assert_eq!(ca.get_epoch().to_iso(), "2025-04-15T12:32:28.532");
+        assert_abs_diff_eq!(ca.get_distance(), 6.088, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_get_relative_state_at_epoch() {
+        let sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+        let epoch = Epoch::from_iso("2025-04-15T12:32:28.532000Z", TimeSystem::UTC);
+        let state = sat_2
+            .get_relative_state_at_epoch(&sat_3, epoch)
+            .expect("missing relative state");
+        assert_abs_diff_eq!(state.position.get_magnitude(), 6.088, epsilon = 0.1);
+        assert_abs_diff_eq!(state.position.get_x(), -3.166, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.position.get_y(), -5.2, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.position.get_z(), 0.0196, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.velocity.get_x(), 0.001, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.velocity.get_y(), -0.0003, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.velocity.get_z(), -0.059, epsilon = 1e-3);
+    }
+
+    #[test]
+    fn test_get_body_angles_at_epoch() {
+        let sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+        let epoch = Epoch::from_iso("2025-04-15T12:32:28.532000Z", TimeSystem::UTC);
+        let angles = sat_2
+            .get_body_angles_at_epoch(&sat_3, epoch)
+            .expect("missing body angles");
+        assert_abs_diff_eq!(angles.get_earth_angle(), 121.3, epsilon = 0.1);
+        assert_abs_diff_eq!(angles.get_sun_angle(), 121.0, epsilon = 0.1);
+        assert_abs_diff_eq!(angles.get_moon_angle(), 88.0, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_get_observatory_access_report() {
+        let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+        let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+        let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();
+        let mut satellite = Satellite::from(tle);
+
+        let mut obs1 = Observatory::new(34.0, -118.0, 100.0);
+        obs1.name = Some("LA Observatory".to_string());
+        let mut obs2 = Observatory::new(51.5, -0.1, 50.0);
+        obs2.name = Some("London Observatory".to_string());
+        let mut obs3 = Observatory::new(-33.9, 18.4, 20.0);
+        obs3.name = Some("Cape Town Observatory".to_string());
+
+        let observatories = vec![obs1.clone(), obs2.clone(), obs3.clone()];
+        let start = Epoch::from_iso("2025-04-18T04:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2025-04-18T08:00:00.000000Z", TimeSystem::UTC);
+        let min_elevation = 10.0;
+        let min_duration = TimeSpan::from_minutes(1.0);
+
+        let report = satellite
+            .get_observatory_access_report(observatories, start, end, min_elevation, min_duration)
+            .expect("missing access report");
+
+        assert_eq!(report.get_start(), start);
+        assert_eq!(report.get_end(), end);
+        assert_abs_diff_eq!(report.get_elevation_threshold(), min_elevation, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            report.get_duration_threshold().in_minutes(),
+            min_duration.in_minutes(),
+            epsilon = 1e-6
+        );
+
+        let accesses = report.get_accesses();
+        assert_eq!(accesses.len(), 3);
+
+        let la_accesses: Vec<_> = accesses
+            .iter()
+            .filter(|a| a.get_observatory_id() == obs1.id)
+            .collect();
+        let london_accesses: Vec<_> = accesses
+            .iter()
+            .filter(|a| a.get_observatory_id() == obs2.id)
+            .collect();
+        let cape_town_accesses: Vec<_> = accesses
+            .iter()
+            .filter(|a| a.get_observatory_id() == obs3.id)
+            .collect();
+
+        assert_eq!(la_accesses.len(), 1);
+        assert_eq!(london_accesses.len(), 0);
+        assert_eq!(cape_town_accesses.len(), 2);
+
+        for access in accesses {
+            let start_state = access.get_start();
+            let end_state = access.get_end();
+            assert!(
+                start_state.elements.elevation >= min_elevation
+                    || (start_state.elements.elevation - min_elevation).abs() <= 0.1
+            );
+            assert!(
+                end_state.elements.elevation >= min_elevation
+                    || (end_state.elements.elevation - min_elevation).abs() <= 0.1
+            );
+            let duration = end_state.epoch - start_state.epoch;
+            assert!(
+                duration.in_minutes() >= min_duration.in_minutes()
+                    || (duration.in_minutes() - min_duration.in_minutes()).abs() <= 0.1
+            );
+        }
     }
 }

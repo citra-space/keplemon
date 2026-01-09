@@ -85,16 +85,6 @@ impl PyInertialPropagator {
         self.inner.get_jacobian(ob, use_drag, use_srp)
     }
 
-    pub fn get_jacobian_with_ref(
-        &self,
-        ob: &Observation,
-        use_drag: bool,
-        use_srp: bool,
-        h_ref: &[f64],
-    ) -> Result<DMatrix<f64>, String> {
-        self.inner.get_jacobian_with_ref(ob, use_drag, use_srp, h_ref)
-    }
-
     pub fn build_perturbed_satellites(
         &self,
         use_drag: bool,

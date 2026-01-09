@@ -55,6 +55,16 @@ impl PyTLE {
     }
 
     #[getter]
+    pub fn get_apoapsis(&self) -> f64 {
+        self.inner.get_apoapsis()
+    }
+
+    #[getter]
+    pub fn get_periapsis(&self) -> f64 {
+        self.inner.get_periapsis()
+    }
+
+    #[getter]
     pub fn get_eccentricity(&self) -> f64 {
         self.inner.get_eccentricity()
     }

@@ -42,6 +42,21 @@ name = "keplemon"
 
 [dev-dependencies]
 approx = "0.5.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+criterion = "0.5"
+
+[[bench]]
+name = "batch_least_squares"
+harness = false
+
+[[bench]]
+name = "satellite"
+harness = false
+
+[[bench]]
+name = "constellation"
+harness = false
 
 [features]
 python = ["pyo3/extension-module", "pyo3/abi3-py39"]
