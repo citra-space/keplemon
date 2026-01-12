@@ -58,7 +58,7 @@ jobs:
 
   build-linux-arm:
     runs-on: ubuntu-24.04-arm
-    needs: build-linux-x86
+    needs: asan-linux-x86
     defaults:
       run:
         shell: bash
@@ -265,6 +265,26 @@ jobs:
           python -m pip install --upgrade pip pytest
           python -m pip install dist/*.whl
           python -m pytest
+
+  asan-linux-x86:
+    runs-on: ubuntu-latest
+    needs: build-linux-x86
+    env:
+      RUST_BACKTRACE: '1'
+      RUST_TEST_THREADS: '1'
+      ASAN_OPTIONS: detect_leaks=0
+      RUSTFLAGS: -Z sanitizer=address
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (nightly + rust-src)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - name: Run Rust tests with ASan
+        run: cargo test --lib -Z build-std --target x86_64-unknown-linux-gnu
 
   test-macos-x86:
     runs-on: macos-15-intel

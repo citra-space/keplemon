@@ -115,8 +115,8 @@ impl Observation {
 
             observations.push(observation);
         }
-        // obs::clear();
-        // sensor::clear()?;
+        obs::clear();
+        sensor::clear()?;
         Ok(observations)
     }
 
