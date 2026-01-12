@@ -199,6 +199,10 @@ jobs:
   test-linux-x86:
     runs-on: ubuntu-latest
     needs: build-linux-arm
+    env:
+      RUST_BACKTRACE: '1'
+      RUST_TEST_THREADS: '1'
+      MALLOC_CHECK_: '3'
     strategy:
       fail-fast: false
       matrix:
