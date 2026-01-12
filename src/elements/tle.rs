@@ -679,6 +679,7 @@ mod tests {
 
     #[test]
     fn test_sgp_from_lines() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let tle = sgp_tle_from_lines();
         assert_eq!(tle.norad_id, 25544);
         assert_eq!(tle.get_epoch().days_since_1950, 25767.51605324);
@@ -700,6 +701,7 @@ mod tests {
 
     #[test]
     fn test_xp_from_lines() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let tle = xp_tle_from_lines();
         assert_eq!(tle.norad_id, 25544);
         assert_eq!(tle.get_inclination(), 51.6443);
@@ -720,6 +722,7 @@ mod tests {
 
     #[test]
     fn test_xp_to_lines() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let tle = xp_tle_from_fields();
         let (line_1, line_2) = tle.get_lines().unwrap();
         assert_eq!(line_1, XP_LINE_1);
@@ -728,6 +731,7 @@ mod tests {
 
     #[test]
     fn test_sgp_to_lines() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let tle = sgp_tle_from_fields();
         let (line_1, line_2) = tle.get_lines().unwrap();
         assert_eq!(line_1, SGP_LINE_1);
@@ -736,6 +740,7 @@ mod tests {
 
     #[test]
     fn test_load_sgp_to_memory() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let mut tle = sgp_tle_from_fields();
         tle.load_to_memory().unwrap();
         assert_ne!(tle.get_key(), 0);
@@ -744,6 +749,7 @@ mod tests {
 
     #[test]
     fn test_load_xp_to_memory() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let mut tle = xp_tle_from_fields();
         tle.load_to_memory().unwrap();
         assert_ne!(tle.get_key(), 0);

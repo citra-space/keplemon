@@ -286,25 +286,37 @@ mod tests {
     #[test]
     fn test_get_ca_report_vs_many() {
         let _guard = TEST_LOCK.lock().expect("test lock poisoned");
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2025-04-15-celestrak.3le");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2025-04-15-ca.3le");
         let mut sats = Constellation::from(load_catalog(path.to_str().unwrap()));
         let start = Epoch::from_iso("2025-04-15T00:00:00.000000Z", TimeSystem::UTC);
         let end = start + TimeSpan::from_minutes(5.0);
         let report = sats.get_ca_report_vs_many(start, end, 1.0);
 
         let mut expected: HashMap<String, HashMap<String, f64>> = HashMap::new();
-        expected.insert("TANDEM-X".to_string(), HashMap::from([("TERRASAR-X".to_string(), 0.049)]));
+        expected.insert(
+            "TANDEM-X".to_string(),
+            HashMap::from([("TERRASAR-X".to_string(), 0.049)]),
+        );
         expected.insert(
             "SHIJIAN-6 05A (SJ-6 05A)".to_string(),
             HashMap::from([("STARLINK-5893".to_string(), 0.672)]),
         );
-        expected.insert("STARLINK-4043".to_string(), HashMap::from([("QB50P2".to_string(), 0.902)]));
-        expected.insert("TERRASAR-X".to_string(), HashMap::from([("TANDEM-X".to_string(), 0.049)]));
+        expected.insert(
+            "STARLINK-4043".to_string(),
+            HashMap::from([("QB50P2".to_string(), 0.902)]),
+        );
+        expected.insert(
+            "TERRASAR-X".to_string(),
+            HashMap::from([("TANDEM-X".to_string(), 0.049)]),
+        );
         expected.insert(
             "STARLINK-5893".to_string(),
             HashMap::from([("SHIJIAN-6 05A (SJ-6 05A)".to_string(), 0.672)]),
         );
-        expected.insert("QB50P2".to_string(), HashMap::from([("STARLINK-4043".to_string(), 0.902)]));
+        expected.insert(
+            "QB50P2".to_string(),
+            HashMap::from([("STARLINK-4043".to_string(), 0.902)]),
+        );
 
         let close_approaches = report.get_close_approaches();
         assert_eq!(close_approaches.len(), 3);
@@ -322,9 +334,7 @@ mod tests {
             let distance = ca.get_distance();
             assert!(expected.contains_key(&primary_name));
             let secondary_map = expected.get(&primary_name).expect("missing secondary map");
-            let expected_distance = secondary_map
-                .get(&secondary_name)
-                .expect("missing expected distance");
+            let expected_distance = secondary_map.get(&secondary_name).expect("missing expected distance");
             assert_abs_diff_eq!(distance, *expected_distance, epsilon = 1e-3);
         }
     }

@@ -7,6 +7,11 @@ from keplemon.enums import TimeSystem
 
 
 @pytest.fixture()
+def ca_3le_catalog():
+    return TLECatalog.from_tle_file("tests/2025-04-15-ca.3le")
+
+
+@pytest.fixture()
 def celestrak_tle_catalog():
     return TLECatalog.from_tle_file("tests/2025-04-15-celestrak.tle")
 
@@ -46,6 +51,11 @@ def celestrak_3le_sats(celestrak_3le_catalog: TLECatalog):
     return Constellation.from_tle_catalog(celestrak_3le_catalog)
 
 
+@pytest.fixture()
+def ca_3le_sats(ca_3le_catalog: TLECatalog):
+    return Constellation.from_tle_catalog(ca_3le_catalog)
+
+
 def test_from_tle_catalog(
     celestrak_3le_sats: Constellation,
     space_track_3le_sats: Constellation,
@@ -63,10 +73,10 @@ def test_from_tle_catalog(
     assert celestrak_tle_sats.name == "tests/2025-04-15-celestrak.tle"
 
 
-def test_get_ca_report_vs_many(celestrak_3le_sats: Constellation):
+def test_get_ca_report_vs_many(ca_3le_sats: Constellation):
     start = Epoch.from_iso("2025-04-15T00:00:00.000000Z", TimeSystem.UTC)
     end = start + TimeSpan.from_minutes(5)
-    report = celestrak_3le_sats.get_ca_report_vs_many(start, end, 1.0)
+    report = ca_3le_sats.get_ca_report_vs_many(start, end, 1.0)
     expected = {
         "TANDEM-X": {"TERRASAR-X": 0.049},
         "SHIJIAN-6 05A (SJ-6 05A)": {"STARLINK-5893": 0.672},
@@ -77,8 +87,8 @@ def test_get_ca_report_vs_many(celestrak_3le_sats: Constellation):
     }
     assert len(report.close_approaches) == 3
     for ca in report.close_approaches:
-        primary_name = celestrak_3le_sats[ca.primary_id].name
-        secondary_name = celestrak_3le_sats[ca.secondary_id].name
+        primary_name = ca_3le_sats[ca.primary_id].name
+        secondary_name = ca_3le_sats[ca.secondary_id].name
         distance = ca.distance
         assert primary_name in expected
         assert secondary_name in expected[primary_name]

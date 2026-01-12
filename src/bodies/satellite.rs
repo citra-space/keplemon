@@ -405,6 +405,7 @@ mod tests {
 
     #[test]
     fn test_from_tle() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let sat_1 = make_satellite(
             "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999",
             "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660",
@@ -428,6 +429,7 @@ mod tests {
 
     #[test]
     fn test_get_close_approach() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let mut sat_2 = make_satellite(
             "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
             "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
@@ -447,6 +449,7 @@ mod tests {
 
     #[test]
     fn test_get_relative_state_at_epoch() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let sat_2 = make_satellite(
             "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
             "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
@@ -470,6 +473,7 @@ mod tests {
 
     #[test]
     fn test_get_body_angles_at_epoch() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let sat_2 = make_satellite(
             "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
             "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
@@ -489,6 +493,7 @@ mod tests {
 
     #[test]
     fn test_get_observatory_access_report() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
         let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
         let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();

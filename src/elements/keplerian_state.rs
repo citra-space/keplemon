@@ -143,6 +143,7 @@ mod tests {
 
     #[test]
     fn test_to_cartesian() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let osc = geo_state();
         let state: CartesianState = osc.into();
         assert_eq!(state.get_frame(), ReferenceFrame::TEME);

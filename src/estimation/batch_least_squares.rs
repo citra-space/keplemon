@@ -617,6 +617,7 @@ mod tests {
 
     #[test]
     fn test_solve() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let initial_tle = TLE::from_lines(
             "1 99999U          25334.80826079 -.00000092  00000 0  00000 0 0 0000",
             "2 99999   5.1462  74.9949 0001499 136.0805 318.9951  0.9987069300000",
@@ -677,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_b3_range_azimuth_elevation_solve() {
-        let _guard = crate::estimation::test_lock::SAAL_FILE_LOCK.lock().unwrap();
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let observations = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt").unwrap();
         let input_line_1 = "1  1328U 65032A   22002.76919088 -.00000054  00000-0  46736-4 0    1";
         let input_line_2 = "2  1328  41.5831 135.3209 0257943 126.6976 235.7772 13.3867251677035";

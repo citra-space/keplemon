@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_from_saal_files() {
-        let _guard = crate::estimation::test_lock::SAAL_FILE_LOCK.lock().unwrap();
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let observations_result = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt");
         assert!(observations_result.is_ok());
         let observations = observations_result.unwrap();

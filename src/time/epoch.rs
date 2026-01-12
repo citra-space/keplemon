@@ -248,30 +248,35 @@ mod tests {
 
     #[test]
     fn test_to_dtg_20() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         assert_eq!(dec_20_2012_000000().to_dtg_20(), "2012/355 0000 00.000");
         assert_eq!(oct_31_1989_044242().to_dtg_20(), "1989/304 0442 42.000");
     }
 
     #[test]
     fn test_to_dtg_19() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         assert_eq!(dec_20_2012_000000().to_dtg_19(), "2012Dec20000000.000");
         assert_eq!(oct_31_1989_044242().to_dtg_19(), "1989Oct31044242.000");
     }
 
     #[test]
     fn test_to_dtg_17() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         assert_eq!(dec_20_2012_000000().to_dtg_17(), "2012/355.00000000");
         assert_eq!(oct_31_1989_044242().to_dtg_17(), "1989/304.19631944");
     }
 
     #[test]
     fn test_to_dtg_15() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         assert_eq!(dec_20_2012_000000().to_dtg_15(), "12355000000.000");
         assert_eq!(oct_31_1989_044242().to_dtg_15(), "89304044242.000");
     }
 
     #[test]
     fn test_to_fk4_greenwich_angle() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         assert_abs_diff_eq!(
             dec_20_2012_000000().to_fk4_greenwich_angle(),
             1.5529973858442574,
@@ -286,6 +291,7 @@ mod tests {
 
     #[test]
     fn test_to_fk5_greenwich_angle() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         assert_abs_diff_eq!(
             dec_20_2012_000000().to_fk5_greenwich_angle(),
             1.553003824819477,
@@ -300,6 +306,7 @@ mod tests {
 
     #[test]
     fn test_to_time_components() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let time_components = dec_20_2012_000000().to_time_components();
         assert_eq!(time_components.year, 2012);
         assert_eq!(time_components.month, 12);
@@ -311,6 +318,7 @@ mod tests {
 
     #[test]
     fn test_to_system() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let utc = dec_20_2012_000000();
         let tai = utc.to_system(TimeSystem::TAI).unwrap();
         let ut1 = utc.to_system(TimeSystem::UT1).unwrap();

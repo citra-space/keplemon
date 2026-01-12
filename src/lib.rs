@@ -11,6 +11,8 @@ pub mod estimation;
 pub mod events;
 pub mod propagation;
 pub mod time;
+#[cfg(test)]
+mod test_lock;
 use rayon::current_num_threads;
 
 pub fn get_thread_count() -> usize {

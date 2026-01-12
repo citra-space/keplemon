@@ -153,6 +153,7 @@ mod tests {
 
     #[test]
     fn test_to_keplerian() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let state = get_state(ReferenceFrame::TEME);
         let osc = KeplerianState::from(state);
         assert_abs_diff_eq!(osc.get_semi_major_axis(), 42164.0, epsilon = 1e-6);
