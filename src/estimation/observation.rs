@@ -8,7 +8,7 @@ use crate::configs;
 use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
 use crate::enums::{AssociationConfidence, TimeSystem};
 use crate::time::Epoch;
-use saal::{astro, obs, satellite, sensor};
+use saal::{astro, get_last_error_message, obs, satellite, sensor};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observation {
@@ -155,9 +155,10 @@ impl Observation {
         match satellite.get_state_at_epoch(self.get_epoch()) {
             Some(satellite_state) => self.fill_predicted_from_state(&satellite_state, out),
             None => Err(format!(
-                "Error propagating satellite {} to {}",
+                "Error propagating satellite {} to {}: {}",
                 satellite.id,
-                self.get_epoch().to_iso()
+                self.get_epoch().to_iso(),
+                get_last_error_message()
             )),
         }
     }
