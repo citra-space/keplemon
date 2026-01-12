@@ -12,20 +12,11 @@ pub struct InertialPropagator {
     tle: Option<TLE>,
 }
 
-impl Drop for InertialPropagator {
-    fn drop(&mut self) {
-        if let Some(tle) = &self.tle {
-            sgp4::remove(tle.get_key()).unwrap();
-        }
-    }
-}
-
 impl Clone for InertialPropagator {
     fn clone(&self) -> Self {
         match &self.tle {
             Some(tle) => {
                 let new_tle = tle.clone();
-                sgp4::load(new_tle.get_key()).unwrap();
                 Self { tle: Some(new_tle) }
             }
             None => Self { tle: None },
@@ -35,7 +26,6 @@ impl Clone for InertialPropagator {
 
 impl From<TLE> for InertialPropagator {
     fn from(tle: TLE) -> Self {
-        sgp4::load(tle.get_key()).unwrap();
         Self { tle: Some(tle) }
     }
 }

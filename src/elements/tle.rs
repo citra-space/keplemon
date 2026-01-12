@@ -7,13 +7,14 @@ use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use saal::{GetSetString, get_last_error_message, sgp4, tle};
 use std::str::FromStr;
+use std::sync::Arc;
 use uuid::Uuid;
 
 const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-8, 1e-6, 1e-4, 1e-4];
 
 #[derive(Debug, PartialEq)]
 pub struct TLE {
-    key: i64,
+    handle: Option<Arc<TLEHandle>>,
     pub norad_id: i32,
     pub satellite_id: String,
     pub name: Option<String>,
@@ -23,16 +24,28 @@ pub struct TLE {
     pub force_properties: ForceProperties,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct TLEHandle {
+    key: i64,
+}
+
+impl Drop for TLEHandle {
+    fn drop(&mut self) {
+        let _ = sgp4::remove(self.key);
+        tle::remove(self.key);
+    }
+}
+
 impl Drop for TLE {
     fn drop(&mut self) {
-        self.remove_from_memory();
+        self.handle = None;
     }
 }
 
 impl Clone for TLE {
     fn clone(&self) -> Self {
-        let mut tle = Self {
-            key: 0,
+        Self {
+            handle: self.handle.clone(),
             norad_id: self.norad_id,
             satellite_id: self.satellite_id.clone(),
             name: self.name.clone(),
@@ -40,9 +53,7 @@ impl Clone for TLE {
             classification: self.classification,
             keplerian_state: self.keplerian_state,
             force_properties: self.force_properties,
-        };
-        tle.load_to_memory().unwrap();
-        tle
+        }
     }
 }
 
@@ -57,7 +68,7 @@ impl TLE {
         force_properties: ForceProperties,
     ) -> Result<Self, String> {
         let mut tle = Self {
-            key: 0,
+            handle: None,
             satellite_id,
             norad_id,
             name,
@@ -73,16 +84,16 @@ impl TLE {
     }
 
     pub fn get_key(&self) -> i64 {
-        self.key
+        self.handle.as_ref().map(|handle| handle.key).unwrap_or(0)
     }
 
     pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
         match self.get_type() {
-            KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.key, epoch.days_since_1950) {
+            KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
                 Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
                 Err(e) => Err(e),
             },
-            _ => match sgp4::get_full_state(self.key, epoch.days_since_1950) {
+            _ => match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
                 Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
                 Err(_) => Err(get_last_error_message()),
             },
@@ -436,21 +447,14 @@ impl TLE {
         self.force_properties
     }
 
-    pub fn remove_from_memory(&mut self) {
-        tle::remove(self.key);
-        self.key = 0;
-    }
-
     pub fn load_to_memory(&mut self) -> Result<(), String> {
+        self.handle = None;
         let xa_tle = self.get_xa_tle();
         let xs_tle = self.get_xs_tle();
-        match tle::load_arrays(xa_tle, &xs_tle) {
-            Ok(key) => {
-                self.key = key;
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
+        let key = tle::load_arrays(xa_tle, &xs_tle)?;
+        sgp4::load(key)?;
+        self.handle = Some(Arc::new(TLEHandle { key }));
+        Ok(())
     }
 
     pub fn from_two_lines(line_1: &str, line_2: &str) -> Result<TLE, String> {
