@@ -5,7 +5,7 @@ use crate::estimation::Observation;
 use crate::propagation::{ForceProperties, SGP4Output};
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
-use saal::{GetSetString, sgp4, tle};
+use saal::{GetSetString, get_last_error_message, sgp4, tle};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -76,25 +76,15 @@ impl TLE {
         self.key
     }
 
-    pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> EquinoctialElements {
+    pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
         match self.get_type() {
             KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.key, epoch.days_since_1950) {
-                Ok(equinoctial_elements) => EquinoctialElements::from(equinoctial_elements),
-                Err(_) => {
-                    sgp4::load(self.key).unwrap();
-                    let els = sgp4::get_equinoctial(self.key, epoch.days_since_1950).unwrap();
-                    sgp4::remove(self.key).unwrap();
-                    EquinoctialElements::from(els)
-                }
+                Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
+                Err(e) => Err(e),
             },
             _ => match sgp4::get_full_state(self.key, epoch.days_since_1950) {
-                Ok(all) => SGP4Output::from(all).get_mean_elements().into(),
-                Err(_) => {
-                    sgp4::load(self.key).unwrap();
-                    let all = sgp4::get_full_state(self.key, epoch.days_since_1950).unwrap();
-                    sgp4::remove(self.key).unwrap();
-                    SGP4Output::from(all).get_mean_elements().into()
-                }
+                Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
+                Err(_) => Err(get_last_error_message()),
             },
         }
     }
@@ -110,10 +100,10 @@ impl TLE {
         let mut stm: DMatrix<f64> = DMatrix::zeros(n, n);
 
         let state_0 = self.get_keplerian_state();
-        let elements_0 = self.get_equinoctial_elements_at_epoch(self.get_epoch());
+        let elements_0 = self.get_equinoctial_elements_at_epoch(self.get_epoch())?;
         let forces_0 = self.get_force_properties();
         let tle_0 = self.clone();
-        let reference_elements = tle_0.get_equinoctial_elements_at_epoch(epoch);
+        let reference_elements = tle_0.get_equinoctial_elements_at_epoch(epoch)?;
 
         // Perturb orbital elements
         for i in 0..6 {
@@ -138,7 +128,7 @@ impl TLE {
             )
             .unwrap();
 
-            let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch);
+            let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
                 stm[(j, i)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
             }
@@ -161,7 +151,7 @@ impl TLE {
             )
             .unwrap();
 
-            let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch);
+            let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
                 stm[(j, current_col)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
             }
@@ -190,7 +180,7 @@ impl TLE {
             )
             .unwrap();
 
-            let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch);
+            let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
                 stm[(j, current_col)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
             }
@@ -200,7 +190,7 @@ impl TLE {
     }
 
     pub fn new_with_delta_x(&self, delta_x: &DVector<f64>, use_drag: bool, use_srp: bool) -> Result<TLE, String> {
-        let mut new_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch());
+        let mut new_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch())?;
 
         for i in 0..6 {
             new_elements[i] += delta_x[i];
@@ -251,7 +241,7 @@ impl TLE {
 
         // Get the reference keplerian elements as an array
         let ref_state = self.get_keplerian_state();
-        let ref_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch());
+        let ref_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch())?;
 
         for j in 0..6 {
             let mut perturbed_elements = ref_elements;
@@ -347,7 +337,7 @@ impl TLE {
         let mut sats = Vec::with_capacity(n);
 
         let ref_state = self.get_keplerian_state();
-        let ref_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch());
+        let ref_elements = self.get_equinoctial_elements_at_epoch(self.get_epoch())?;
 
         for j in 0..6 {
             let mut perturbed_elements = ref_elements;
