@@ -234,6 +234,10 @@ jobs:
   test-linux-arm:
     runs-on: ubuntu-24.04-arm
     needs: test-linux-x86
+    env:
+      RUST_BACKTRACE: '1'
+      RUST_TEST_THREADS: '1'
+      MALLOC_CHECK_: '3'
     strategy:
       fail-fast: false
       matrix:
@@ -265,6 +269,9 @@ jobs:
   test-macos-x86:
     runs-on: macos-15-intel
     needs: build-macos-x86
+    env:
+      RUST_BACKTRACE: '1'
+      RUST_TEST_THREADS: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -296,6 +303,9 @@ jobs:
   test-macos-arm:
     runs-on: macos-latest
     needs: build-macos-arm
+    env:
+      RUST_BACKTRACE: '1'
+      RUST_TEST_THREADS: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -327,6 +337,9 @@ jobs:
   test-windows:
     runs-on: windows-latest
     needs: build-windows
+    env:
+      RUST_BACKTRACE: '1'
+      RUST_TEST_THREADS: '1'
     strategy:
       fail-fast: false
       matrix:
