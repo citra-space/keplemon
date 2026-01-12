@@ -95,6 +95,21 @@ impl Clone for TLE {
 }
 
 impl TLE {
+    pub fn clone_detached(&self) -> Result<Self, String> {
+        let mut tle = Self {
+            handle: None,
+            norad_id: self.norad_id,
+            satellite_id: self.satellite_id.clone(),
+            name: self.name.clone(),
+            designator: self.designator.clone(),
+            classification: self.classification,
+            keplerian_state: self.keplerian_state,
+            force_properties: self.force_properties,
+        };
+        tle.load_to_memory()?;
+        Ok(tle)
+    }
+
     pub fn new(
         satellite_id: String,
         norad_id: i32,

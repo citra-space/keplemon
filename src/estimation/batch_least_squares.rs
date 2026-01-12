@@ -358,7 +358,16 @@ impl BatchLeastSquares {
         let results: Vec<Result<(), String>> = predicted_buffers
             .par_iter_mut()
             .zip(self.obs.par_iter())
-            .map(|(buf, ob)| ob.fill_predicted_vector(&self.current_estimate, buf))
+            .map_init(
+                || self.current_estimate.clone_detached(),
+                |sat_result, (buf, ob)| {
+                    let sat = match sat_result {
+                        Ok(sat) => sat,
+                        Err(err) => return Err(err.clone()),
+                    };
+                    ob.fill_predicted_vector(sat, buf)
+                },
+            )
             .collect();
         for result in results {
             result?;
