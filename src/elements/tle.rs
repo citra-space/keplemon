@@ -447,12 +447,8 @@ impl TLE {
     }
 
     pub fn remove_from_memory(&mut self) {
-        if self.key == 0 {
-            return;
-        }
-        let key = self.key;
+        tle::remove(self.key);
         self.key = 0;
-        tle::remove(key);
     }
 
     pub fn load_to_memory(&mut self) -> Result<(), String> {
@@ -748,7 +744,6 @@ mod tests {
         let mut tle = sgp_tle_from_fields();
         tle.load_to_memory().unwrap();
         assert_ne!(tle.get_key(), 0);
-        tle.remove_from_memory();
     }
 
     #[test]
@@ -757,6 +752,5 @@ mod tests {
         let mut tle = xp_tle_from_fields();
         tle.load_to_memory().unwrap();
         assert_ne!(tle.get_key(), 0);
-        tle.remove_from_memory();
     }
 }
