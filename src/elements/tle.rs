@@ -447,8 +447,12 @@ impl TLE {
     }
 
     pub fn remove_from_memory(&mut self) {
-        tle::remove(self.key);
+        if self.key == 0 {
+            return;
+        }
+        let key = self.key;
         self.key = 0;
+        tle::remove(key);
     }
 
     pub fn load_to_memory(&mut self) -> Result<(), String> {
