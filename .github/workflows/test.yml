@@ -272,8 +272,8 @@ jobs:
     env:
       RUST_BACKTRACE: '1'
       RUST_TEST_THREADS: '1'
-      ASAN_OPTIONS: detect_leaks=0
-      RUSTFLAGS: -Z sanitizer=address
+      ASAN_OPTIONS: detect_leaks=0:symbolize=1
+      RUSTFLAGS: -Z sanitizer=address -C force-frame-pointers=yes -C debuginfo=2
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -282,6 +282,9 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
+
+      - name: Configure ASan symbolizer
+        run: echo "ASAN_SYMBOLIZER_PATH=$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-symbolizer" >> "$GITHUB_ENV"
 
       - name: Run Rust tests with ASan
         run: cargo test --lib -Z build-std --target x86_64-unknown-linux-gnu
