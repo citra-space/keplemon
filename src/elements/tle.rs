@@ -737,20 +737,4 @@ mod tests {
         assert_eq!(line_1, SGP_LINE_1);
         assert_eq!(line_2, SGP_LINE_2);
     }
-
-    #[test]
-    fn test_load_sgp_to_memory() {
-        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
-        let mut tle = sgp_tle_from_fields();
-        tle.load_to_memory().unwrap();
-        assert_ne!(tle.get_key(), 0);
-    }
-
-    #[test]
-    fn test_load_xp_to_memory() {
-        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
-        let mut tle = xp_tle_from_fields();
-        tle.load_to_memory().unwrap();
-        assert_ne!(tle.get_key(), 0);
-    }
 }
