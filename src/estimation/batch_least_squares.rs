@@ -681,7 +681,7 @@ mod tests {
         let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let observations = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt").unwrap();
         let input_line_1 = "1  1328U 65032A   22002.76919088 -.00000054  00000-0  46736-4 0    1";
-        let input_line_2 = "2  1328  41.5831 135.3209 0257943 126.6976 235.7772 13.3867251677035";
+        let input_line_2 = "2  1328  41.1831 135.3209 0257943 126.6976 235.7772 13.3866251677035";
         let tle = TLE::from_lines(input_line_1, input_line_2, None).unwrap();
         let a_priori_sat = Satellite::from(tle);
         let baseline_line_1 = "1  1328U 65032A   22009.34714486  .00000030  00000-0  46736-4 2    19";
@@ -690,8 +690,6 @@ mod tests {
         let baseline_sat = Satellite::from(baseline_tle);
 
         let mut bls = BatchLeastSquares::new(observations, &a_priori_sat);
-        bls.set_output_type(KeplerianType::MeanBrouwerXP);
-        bls.set_estimate_drag(true);
         bls.solve().unwrap();
         let start = baseline_sat.get_keplerian_state().unwrap().epoch;
         let end = start + TimeSpan::from_days(1.0);
