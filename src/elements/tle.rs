@@ -8,9 +8,44 @@ use nalgebra::{DMatrix, DVector};
 use saal::{GetSetString, get_last_error_message, sgp4, tle};
 use std::str::FromStr;
 use std::sync::Arc;
+
+#[cfg(test)]
+use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
 const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-8, 1e-6, 1e-4, 1e-4];
+
+#[cfg(test)]
+static KEY_TRACKER: OnceLock<Mutex<HashMap<i64, usize>>> = OnceLock::new();
+
+#[cfg(test)]
+fn add_key_tracking(key: i64) {
+    let tracker = KEY_TRACKER.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = tracker.lock().expect("key tracker poisoned");
+    if let Some(count) = map.get_mut(&key) {
+        *count += 1;
+    } else {
+        map.insert(key, 1);
+    }
+}
+
+#[cfg(test)]
+fn remove_key_tracking(key: i64) {
+    let tracker = KEY_TRACKER.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = tracker.lock().expect("key tracker poisoned");
+    match map.get_mut(&key) {
+        Some(count) => {
+            if *count <= 1 {
+                map.remove(&key);
+            } else {
+                *count -= 1;
+            }
+        }
+        None => panic!("TLE key removed without matching load: {key}"),
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct TLE {
@@ -31,6 +66,8 @@ struct TLEHandle {
 
 impl Drop for TLEHandle {
     fn drop(&mut self) {
+        #[cfg(test)]
+        remove_key_tracking(self.key);
         let _ = sgp4::remove(self.key);
         tle::remove(self.key);
     }
@@ -453,6 +490,8 @@ impl TLE {
         let xs_tle = self.get_xs_tle();
         let key = tle::load_arrays(xa_tle, &xs_tle)?;
         sgp4::load(key)?;
+        #[cfg(test)]
+        add_key_tracking(key);
         self.handle = Some(Arc::new(TLEHandle { key }));
         Ok(())
     }

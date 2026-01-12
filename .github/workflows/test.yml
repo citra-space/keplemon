@@ -281,7 +281,7 @@ jobs:
       - name: Install Rust (nightly + rust-src)
         uses: dtolnay/rust-toolchain@nightly
         with:
-          components: rust-src
+          components: rust-src, llvm-tools-preview
 
       - name: Configure ASan symbolizer
         run: echo "ASAN_SYMBOLIZER_PATH=$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-symbolizer" >> "$GITHUB_ENV"
