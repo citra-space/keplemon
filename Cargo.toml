@@ -1,6 +1,6 @@
 [package]
 name = "keplemon"
-version = "3.0.1"
+version = "3.0.2"
 edition = "2024"
 build = "build.rs"
 description = "Expanded functionality for the Standardized Astrodynamics Algorithms Library (SAAL)"
@@ -28,14 +28,14 @@ license = "MIT"
 ctor = "0.6.3"
 pyo3 = { version = "0.27.2", optional = true }
 pyo3-log = "0.13.2"
-saal = "1.0.0"
+saal = "1.1.0"
 log = "0.4"
 nalgebra = "0.33.2"
 rayon = "1.10.0"
 uuid = { version = "1.18.0", features = ["v4"] }
 
 [build-dependencies]
-saal = "1.0.0"
+saal = "1.1.0"
 [lib]
 crate-type = ["cdylib", "rlib"]
 name = "keplemon"

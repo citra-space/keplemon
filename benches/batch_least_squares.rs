@@ -18,14 +18,18 @@ struct JsonObservation {
 }
 
 fn load_observations() -> Vec<Observation> {
-    let raw = std::fs::read_to_string("local/test-observations.json")
-        .expect("failed to read local/test-observations.json");
+    let raw =
+        std::fs::read_to_string("tests/test-observations.json").expect("failed to read tests/test-observations.json");
     let json_obs: Vec<JsonObservation> = serde_json::from_str(&raw).expect("failed to parse observations json");
 
     let mut observations = Vec::with_capacity(json_obs.len());
     for json_ob in json_obs {
         let epoch = Epoch::from_iso(&json_ob.epoch, TimeSystem::UTC);
-        let site = Observatory::new(json_ob.sensor_latitude, json_ob.sensor_longitude, json_ob.sensor_altitude);
+        let site = Observatory::new(
+            json_ob.sensor_latitude,
+            json_ob.sensor_longitude,
+            json_ob.sensor_altitude,
+        );
         let els = TopocentricElements::new(json_ob.ra, json_ob.dec);
         let sensor = Sensor::new(json_ob.angular_noise);
         let ob = Observation::new(sensor, epoch, els, site.get_state_at_epoch(epoch).position);

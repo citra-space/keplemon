@@ -19,7 +19,7 @@ def test_solve() -> None:
     )
     truth_sat = Satellite.from_tle(truth_tle)
 
-    with open("./local/test-observations.json", "r") as f:
+    with open("./tests/test-observations.json", "r") as f:
         json_obs = json.load(f)
 
     observations: list[Observation] = []

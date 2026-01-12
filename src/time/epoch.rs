@@ -80,6 +80,10 @@ impl Epoch {
         self.time_system
     }
 
+    pub fn get_gst(&self) -> f64 {
+        time::get_fk5_greenwich_angle(self.to_system(TimeSystem::UT1).unwrap().days_since_1950)
+    }
+
     pub fn from_days_since_1950(days_since_1950: f64, time_system: TimeSystem) -> Self {
         Self {
             days_since_1950,

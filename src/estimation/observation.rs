@@ -3,11 +3,12 @@ use std::vec;
 use uuid::Uuid;
 
 use super::{ObservationAssociation, ObservationResidual};
-use crate::bodies::{Constellation, Satellite, Sensor};
+use crate::bodies::{Constellation, Observatory, Satellite, Sensor};
+use crate::configs;
 use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
-use crate::enums::AssociationConfidence;
+use crate::enums::{AssociationConfidence, TimeSystem};
 use crate::time::Epoch;
-use saal::{astro, satellite};
+use saal::{astro, obs, satellite, sensor};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observation {
@@ -22,6 +23,103 @@ pub struct Observation {
 }
 
 impl Observation {
+    pub fn from_saal_files(sensor_file: &str, observation_file: &str) -> Result<Vec<Observation>, String> {
+        sensor::load_file(sensor_file)?;
+        obs::load_file(observation_file)?;
+        let saal_obs = obs::parse_all()?;
+        let saal_sensors = sensor::parse_all()?;
+        let sensor_map: std::collections::HashMap<i32, sensor::ParsedSensor> =
+            saal_sensors.into_iter().map(|s| (s.number, s)).collect();
+
+        let mut observations: Vec<Observation> = Vec::new();
+        for saal_ob in saal_obs {
+            if !sensor_map.contains_key(&saal_ob.sensor_number) || saal_ob.position.is_none() {
+                continue;
+            }
+            let saal_sensor = sensor_map.get(&saal_ob.sensor_number).unwrap();
+            let observatory = Observatory::new(
+                saal_sensor.latitude.unwrap(),
+                saal_sensor.longitude.unwrap(),
+                saal_sensor.altitude.unwrap(),
+            );
+
+            let epoch = Epoch::from_days_since_1950(saal_ob.epoch, TimeSystem::UTC);
+            let range: Option<f64> = saal_ob.range;
+            let range_rate: Option<f64> = saal_ob.range_rate;
+            let mut right_ascension: f64 = 0.0;
+            let mut declination: f64 = 0.0;
+            let mut right_ascension_rate: Option<f64> = None;
+            let mut declination_rate: Option<f64> = None;
+            let mut angular_noise: f64 = configs::DEFAULT_ANGULAR_NOISE;
+            let range_noise: Option<f64> = saal_sensor.range_noise;
+            let range_rate_noise: Option<f64> = saal_sensor.range_rate_noise;
+            let mut angular_rate_noise: Option<f64> = None;
+
+            if saal_ob.right_ascension.is_some() && saal_ob.declination.is_some() {
+                (right_ascension, declination) = astro::topo_meme_to_teme(
+                    saal_ob.year_of_equinox.unwrap(),
+                    saal_ob.epoch,
+                    right_ascension,
+                    declination,
+                );
+            } else if saal_ob.azimuth.is_some() && saal_ob.elevation.is_some() {
+                let lst = epoch.get_gst() + saal_sensor.longitude.unwrap().to_radians();
+                let lat = saal_sensor.latitude.unwrap();
+                let mut xa_rae = [0.0; astro::XA_RAE_SIZE];
+                let sensor_teme: [f64; 3] = observatory.get_state_at_epoch(epoch).position.into();
+                xa_rae[astro::XA_RAE_AZ] = saal_ob.azimuth.unwrap();
+                xa_rae[astro::XA_RAE_EL] = saal_ob.elevation.unwrap();
+                xa_rae[astro::XA_RAE_RANGE] = saal_ob.range.unwrap_or(1.0);
+                xa_rae[astro::XA_RAE_RANGEDOT] = saal_ob.range_rate.unwrap_or(0.0);
+                xa_rae[astro::XA_RAE_AZDOT] = saal_ob.azimuth_rate.unwrap_or(0.0);
+                xa_rae[astro::XA_RAE_ELDOT] = saal_ob.elevation_rate.unwrap_or(0.0);
+                let teme_ob = astro::horizon_to_teme(lst, lat, &sensor_teme, &xa_rae).unwrap();
+                let xa_topo = astro::teme_to_topo(lst, lat, &sensor_teme, &teme_ob).unwrap();
+                right_ascension = xa_topo[astro::XA_TOPO_RA];
+                declination = xa_topo[astro::XA_TOPO_DEC];
+                if saal_ob.azimuth_rate.is_some() && saal_ob.elevation_rate.is_some() {
+                    right_ascension_rate = Some(xa_topo[astro::XA_TOPO_RADOT]);
+                    declination_rate = Some(xa_topo[astro::XA_TOPO_DECDOT]);
+                }
+                if saal_sensor.azimuth_noise.is_some() && saal_sensor.elevation_noise.is_some() {
+                    angular_noise = (saal_sensor.azimuth_noise.unwrap().powi(2)
+                        + saal_sensor.elevation_noise.unwrap().powi(2))
+                    .sqrt();
+                }
+                if saal_sensor.azimuth_rate_noise.is_some() && saal_sensor.elevation_rate_noise.is_some() {
+                    angular_rate_noise = Some(
+                        (saal_sensor.azimuth_rate_noise.unwrap().powi(2)
+                            + saal_sensor.elevation_rate_noise.unwrap().powi(2))
+                        .sqrt(),
+                    );
+                }
+            }
+            let mut ob_sensor = Sensor::new(angular_noise);
+            let mut topo = TopocentricElements::new(right_ascension, declination);
+
+            if range.is_some() && range_noise.is_some() {
+                ob_sensor.range_noise = range_noise;
+                topo.range = range;
+            }
+            if range_rate.is_some() && range_rate_noise.is_some() {
+                ob_sensor.range_rate_noise = range_rate_noise;
+                topo.range_rate = range_rate;
+            }
+            if (right_ascension_rate.is_some() || declination_rate.is_some()) && angular_rate_noise.is_some() {
+                topo.right_ascension_rate = right_ascension_rate;
+                topo.declination_rate = declination_rate;
+                ob_sensor.angular_rate_noise = angular_rate_noise;
+            }
+
+            let observation = Observation::new(ob_sensor, epoch, topo, observatory.get_state_at_epoch(epoch).position);
+
+            observations.push(observation);
+        }
+        obs::clear();
+        sensor::clear()?;
+        Ok(observations)
+    }
+
     pub fn get_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>) {
         let mut m_vec = vec![self.get_right_ascension(), self.get_declination()];
         let mut w_vec = vec![
@@ -259,5 +357,19 @@ impl Observation {
             }
             None => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_saal_files() {
+        let _guard = crate::estimation::test_lock::SAAL_FILE_LOCK.lock().unwrap();
+        let observations_result = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt");
+        assert!(observations_result.is_ok());
+        let observations = observations_result.unwrap();
+        assert_eq!(observations.len(), 5053);
     }
 }

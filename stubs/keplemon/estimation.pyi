@@ -60,6 +60,8 @@ class Observation:
         observed_teme_topocentric: TopocentricElements,
         observer_teme_position: CartesianVector,
     ) -> None: ...
+    @staticmethod
+    def from_saal_files(sensor_file: str, observation_file: str) -> list["Observation"]: ...
     def get_residual(self, sat: Satellite) -> ObservationResidual | None:
         """
         Calculate the residual of the observation with respect to a given satellite state.

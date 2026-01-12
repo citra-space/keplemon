@@ -63,6 +63,13 @@ impl PyObservation {
         .into()
     }
 
+    #[staticmethod]
+    pub fn from_saal_files(sensor_file: &str, observation_file: &str) -> PyResult<Vec<PyObservation>> {
+        Observation::from_saal_files(sensor_file, observation_file)
+            .map(|observations| observations.into_iter().map(PyObservation::from).collect())
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
     #[getter]
     pub fn get_sensor(&self) -> PySensor {
         PySensor::from(self.inner.get_sensor())
