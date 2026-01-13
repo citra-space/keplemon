@@ -4,7 +4,7 @@ from keplemon._keplemon.time import (  # type: ignore
     Epoch,
 )
 import requests  # type: ignore
-from datetime import datetime, timezone
+from datetime import datetime
 from keplemon._keplemon.enums import TimeSystem  # type: ignore
 
 __all__ = [
@@ -13,28 +13,6 @@ __all__ = [
     "Epoch",
     "request_time_constants_update",
 ]
-
-
-def _from_datetime(dt: datetime) -> Epoch:
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    elif dt.tzinfo != timezone.utc:
-        dt = dt.astimezone(timezone.utc)
-    return Epoch.from_iso(dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ"), TimeSystem.UTC)
-
-
-def _now() -> Epoch:
-    return _from_datetime(datetime.now(timezone.utc))
-
-
-def _to_datetime(epoch: Epoch) -> datetime:
-    iso_str = epoch.to_iso()
-    return datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-
-
-Epoch.now = staticmethod(_now)
-Epoch.from_datetime = staticmethod(_from_datetime)
-Epoch.to_datetime = _to_datetime
 
 
 def request_time_constants_update(output_path: str) -> None:

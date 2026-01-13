@@ -96,6 +96,40 @@ impl PyEpoch {
         }
     }
 
+    #[staticmethod]
+    pub fn now<'py>(py: Python<'py>) -> PyResult<Self> {
+        let datetime = py.import("datetime")?.getattr("datetime")?;
+        let timezone = py.import("datetime")?.getattr("timezone")?;
+        let utc = timezone.getattr("utc")?;
+        let dt = datetime.call_method1("now", (utc,))?;
+        Self::from_datetime(&dt)
+    }
+
+    #[staticmethod]
+    pub fn from_datetime<'py>(dt: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let datetime = dt.py().import("datetime")?.getattr("datetime")?;
+        if !dt.is_instance(&datetime)? {
+            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Expected datetime.datetime instance",
+            ));
+        }
+        let iso = dt.call_method0("isoformat")?.extract::<String>()?;
+        let utc_dt = if iso.ends_with('Z') || iso.ends_with("+00:00") {
+            dt.to_owned()
+        } else {
+            let timezone = dt.py().import("datetime")?.getattr("timezone")?;
+            let utc = timezone.getattr("utc")?;
+            dt.call_method1("astimezone", (utc,))?
+        };
+        let iso = utc_dt
+            .call_method0("isoformat")?
+            .extract::<String>()?
+            .replace("+00:00", "Z");
+        Ok(Self {
+            inner: Epoch::from_iso(&iso, TimeSystem::UTC),
+        })
+    }
+
     pub fn to_dtg_20(&self) -> String {
         self.inner.to_dtg_20()
     }
@@ -152,6 +186,13 @@ impl PyEpoch {
 
     pub fn to_iso(&self) -> String {
         self.inner.to_iso()
+    }
+
+    pub fn to_datetime<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let iso = self.inner.to_iso();
+        let iso = iso.replace('Z', "+00:00");
+        let datetime = py.import("datetime")?.getattr("datetime")?;
+        datetime.call_method1("fromisoformat", (iso,))
     }
 
     pub fn to_system(&self, time_system: PyTimeSystem) -> PyResult<Self> {

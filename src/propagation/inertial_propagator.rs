@@ -17,7 +17,7 @@ impl Clone for InertialPropagator {
         match &self.tle {
             Some(tle) => {
                 let new_tle = tle.clone();
-                Self { tle: Some(new_tle) }
+                new_tle.into()
             }
             None => Self { tle: None },
         }

@@ -1,4 +1,6 @@
 # flake8: noqa
+from typing import Optional
+
 from keplemon.elements import TopocentricElements, CartesianVector
 from keplemon.time import Epoch
 from keplemon.bodies import Satellite, Sensor, Constellation
@@ -32,10 +34,10 @@ class Observation:
     epoch: Epoch
     """Time the measurement was observed"""
 
-    range: float | None
+    range: Optional[float]
     """Observed range from the sensor to the satellite in **_kilometers_**"""
 
-    range_rate: float | None
+    range_rate: Optional[float]
     """Observed range rate from the sensor to the satellite in **_kilometers per second_**"""
 
     right_ascension: float
@@ -44,13 +46,13 @@ class Observation:
     declination: float
     """Observed TEME declination in **_degrees_**"""
 
-    right_ascension_rate: float | None
+    right_ascension_rate: Optional[float]
     """Observed right ascension rate in **_degrees per second_**"""
 
-    declination_rate: float | None
+    declination_rate: Optional[float]
     """Observed declination rate in **_degrees per second_**"""
 
-    observed_satellite_id: int | None
+    observed_satellite_id: Optional[str]
     """Tagged satellite ID of the observation"""
 
     def __init__(
@@ -62,7 +64,7 @@ class Observation:
     ) -> None: ...
     @staticmethod
     def from_saal_files(sensor_file: str, observation_file: str) -> list["Observation"]: ...
-    def get_residual(self, sat: Satellite) -> ObservationResidual | None:
+    def get_residual(self, sat: Satellite) -> Optional[ObservationResidual]:
         """
         Calculate the residual of the observation with respect to a given satellite state.
 
@@ -142,10 +144,10 @@ class BatchLeastSquares:
     current_estimate: Satellite
     """Current estimate of the satellite state after iterating or solving"""
 
-    rms: float | None
+    rms: Optional[float]
     """Root mean square of the residuals in **_kilometers_**"""
 
-    weighted_rms: float | None
+    weighted_rms: Optional[float]
     """Unitless weighted root mean square of the residuals"""
 
     estimate_srp: bool
@@ -171,13 +173,13 @@ class BatchLeastSquares:
     residuals: list[tuple[Epoch, ObservationResidual]]
     """List of residuals for each observation compared to the current estimate"""
 
-    covariance: Covariance | None
+    covariance: Optional[Covariance]
     """UVW covariance matrix of the current estimate in **_kilometers_** and **_kilometers per second_**"""
 
     output_type: KeplerianType
     """Type of Keplerian elements to be used in the output state"""
 
-    eccentricity_constraint_weight: float | None
+    eccentricity_constraint_weight: Optional[float]
     """Tikhonov weight that keeps equinoctial a_f/a_g (eccentricity) near the a priori state"""
 
     def __init__(

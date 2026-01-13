@@ -19,7 +19,7 @@ pub struct Observation {
     observer_teme_position: CartesianVector,
     observer_lla: [f64; 3],
     observer_theta: f64,
-    pub observed_satellite_id: Option<i32>,
+    pub observed_satellite_id: Option<String>,
 }
 
 impl Observation {
@@ -97,6 +97,9 @@ impl Observation {
             let mut ob_sensor = Sensor::new(angular_noise);
             let mut topo = TopocentricElements::new(right_ascension, declination);
 
+            ob_sensor.id = saal_sensor.number.to_string();
+            ob_sensor.name = saal_sensor.description.clone();
+
             if range.is_some() && range_noise.is_some() {
                 ob_sensor.range_noise = range_noise;
                 topo.range = range;
@@ -111,8 +114,9 @@ impl Observation {
                 ob_sensor.angular_rate_noise = angular_rate_noise;
             }
 
-            let observation = Observation::new(ob_sensor, epoch, topo, observatory.get_state_at_epoch(epoch).position);
-
+            let mut observation =
+                Observation::new(ob_sensor, epoch, topo, observatory.get_state_at_epoch(epoch).position);
+            observation.observed_satellite_id = Some(saal_ob.norad_id.to_string());
             observations.push(observation);
         }
         obs::clear();

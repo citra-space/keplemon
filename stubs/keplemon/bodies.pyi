@@ -1,4 +1,6 @@
 # flake8: noqa
+from typing import Optional
+
 from keplemon.elements import (
     TLE,
     CartesianState,
@@ -28,13 +30,13 @@ class Satellite:
     force_properties: ForceProperties
     """Force properties of the satellite used for propagation"""
 
-    name: str | None
+    name: Optional[str]
     """Human-readable name of the satellite"""
 
-    keplerian_state: KeplerianState | None
+    keplerian_state: Optional[KeplerianState]
     """Keplerian state of the satellite at the epoch of the TLE, if available"""
 
-    geodetic_position: GeodeticPosition | None
+    geodetic_position: Optional[GeodeticPosition]
     """Geodetic position of the satellite at the epoch of the TLE, if available"""
 
     def __init__(self) -> None: ...
@@ -54,7 +56,7 @@ class Satellite:
         start: Epoch,
         end: Epoch,
         distance_threshold: float,
-    ) -> None | CloseApproach: ...
+    ) -> Optional[CloseApproach]: ...
     def get_ephemeris(
         self,
         start: Epoch,
@@ -62,7 +64,7 @@ class Satellite:
         step: TimeSpan,
     ) -> Ephemeris: ...
     def get_state_at_epoch(self, epoch: Epoch) -> CartesianState: ...
-    def to_tle(self) -> TLE | None:
+    def to_tle(self) -> Optional[TLE]:
         """
         Returns:
             Satellite as a two-line element set or None if no state is loaded
@@ -70,7 +72,7 @@ class Satellite:
         """
         ...
 
-    def get_relative_state_at_epoch(self, other: Satellite, epoch: Epoch) -> RelativeState | None:
+    def get_relative_state_at_epoch(self, other: Satellite, epoch: Epoch) -> Optional[RelativeState]:
         """
         Calculate the relative state between this satellite and another satellite at a given epoch.
 
@@ -80,7 +82,7 @@ class Satellite:
         """
         ...
 
-    def get_body_angles_at_epoch(self, other: Satellite, epoch: Epoch) -> BoreToBodyAngles | None:
+    def get_body_angles_at_epoch(self, other: Satellite, epoch: Epoch) -> Optional[BoreToBodyAngles]:
         """
         Calculate the bore-to-body angles between this satellite and another satellite at a given epoch.
 
@@ -90,7 +92,7 @@ class Satellite:
         """
         ...
 
-    def get_plot_data(self, start: Epoch, end: Epoch, step: TimeSpan) -> OrbitPlotData | None: ...
+    def get_plot_data(self, start: Epoch, end: Epoch, step: TimeSpan) -> Optional[OrbitPlotData]: ...
     def get_observatory_access_report(
         self,
         observatories: list[Observatory],
@@ -98,7 +100,7 @@ class Satellite:
         end: Epoch,
         min_el: float,
         min_duration: TimeSpan,
-    ) -> HorizonAccessReport | None:
+    ) -> Optional[HorizonAccessReport]:
         """
         Calculate horizon access from multiple observatories to this satellite.
 
@@ -120,7 +122,7 @@ class Constellation:
     count: int
     """Number of satellites in the constellation"""
 
-    name: str | None
+    name: Optional[str]
     """Human-readable name of the constellation"""
 
     def __init__(self) -> None: ...
@@ -239,15 +241,15 @@ class Sensor:
 
     id: str
     """Unique identifier for the sensor."""
-    name: str | None
+    name: Optional[str]
     angular_noise: float
-    range_noise: float | None
+    range_noise: Optional[float]
     """Range noise in **_kilometers_**"""
 
-    range_rate_noise: float | None
+    range_rate_noise: Optional[float]
     """Range rate noise in **_kilometers per second_**"""
 
-    angular_rate_noise: float | None
+    angular_rate_noise: Optional[float]
     """Angular rate noise in **_degrees per second_**"""
     def __init__(self, angular_noise: float) -> None: ...
 

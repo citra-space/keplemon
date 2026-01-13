@@ -1,9 +1,9 @@
 use crate::bindings::elements::PyCartesianState;
 use crate::bindings::events::PyCloseApproach;
 use crate::bindings::events::PyHorizonAccess;
+use crate::bindings::time::PyEpoch;
 use crate::bindings::time::PyTimeSpan;
 use crate::elements::Ephemeris;
-use crate::bindings::time::PyEpoch;
 use crate::time::{Epoch, TimeSpan};
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
@@ -92,11 +92,4 @@ impl PyEphemeris {
     pub fn get_norad_id(&self) -> i32 {
         self.inner.get_norad_id()
     }
-}
-
-pub fn construct_ephemeris_id(start: PyEpoch, end: PyEpoch, step: PyTimeSpan) -> String {
-    let start: Epoch = start.into();
-    let end: Epoch = end.into();
-    let step: TimeSpan = step.into();
-    crate::elements::construct_ephemeris_id(start, end, step)
 }

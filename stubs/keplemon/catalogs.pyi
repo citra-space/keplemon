@@ -1,9 +1,11 @@
 # flake8: noqa
+from typing import Optional
+
 from keplemon.elements import TLE, OrbitPlotData
 
 class TLECatalog:
     count: int
-    name: str | None
+    name: Optional[str]
     def __init__(self) -> None: ...
     @classmethod
     def from_tle_file(cls, filename: str) -> TLECatalog: ...
