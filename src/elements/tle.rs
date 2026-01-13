@@ -24,7 +24,21 @@ impl Drop for SAALKeyHandle {
         if self.key == 0 {
             return;
         }
+        if std::env::var("KEPLEMON_SGP4_LOG").is_ok() {
+            eprintln!(
+                "[tid={:?}] sgp4::remove key={}",
+                thread::current().id(),
+                self.key
+            );
+        }
         let _ = sgp4::remove(self.key);
+        if std::env::var("KEPLEMON_SGP4_LOG").is_ok() {
+            eprintln!(
+                "[tid={:?}] tle::remove key={}",
+                thread::current().id(),
+                self.key
+            );
+        }
         tle::remove(self.key);
     }
 }
@@ -570,7 +584,22 @@ impl TLE {
         let xs_tle = self.get_xs_tle();
         match tle::load_arrays(xa_tle, &xs_tle) {
             Ok(key) => {
-                sgp4::load(key)?;
+                if Self::sgp4_log_enabled() {
+                    eprintln!("[tid={:?}] tle::load_arrays key={}", thread::current().id(), key);
+                }
+                let result = sgp4::load(key);
+                if Self::sgp4_log_enabled() {
+                    match result {
+                        Ok(_) => eprintln!("[tid={:?}] sgp4::load ok key={}", thread::current().id(), key),
+                        Err(_) => eprintln!(
+                            "[tid={:?}] sgp4::load err key={} err={}",
+                            thread::current().id(),
+                            key,
+                            get_last_error_message()
+                        ),
+                    }
+                }
+                result?;
                 self.key = Some(Arc::new(SAALKeyHandle { key }));
                 Ok(())
             }
