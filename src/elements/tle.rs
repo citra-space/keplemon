@@ -8,6 +8,7 @@ use nalgebra::{DMatrix, DVector};
 use saal::{GetSetString, get_last_error_message, sgp4, tle};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::thread;
 
 use uuid::Uuid;
 
@@ -62,6 +63,22 @@ impl Clone for TLE {
 }
 
 impl TLE {
+    fn sgp4_log_enabled() -> bool {
+        std::env::var("KEPLEMON_SGP4_LOG").is_ok()
+    }
+
+    fn log_sgp4(message: &str, key: i64, epoch_ds50: f64) {
+        if Self::sgp4_log_enabled() {
+            eprintln!(
+                "[tid={:?}] {} key={} epoch_ds50={}",
+                thread::current().id(),
+                message,
+                key,
+                epoch_ds50
+            );
+        }
+    }
+
     pub fn new(
         satellite_id: String,
         norad_id: i32,
@@ -92,15 +109,103 @@ impl TLE {
     }
 
     pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
-        let _ = sgp4::load(self.get_key());
+        Self::log_sgp4("get_equinoctial_elements_at_epoch: start", self.get_key(), epoch.days_since_1950);
         match self.get_type() {
             KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
                 Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
-                Err(e) => Err(e),
+                Err(_) => {
+                    Self::log_sgp4(
+                        "get_equinoctial_elements_at_epoch: sgp4 call failed",
+                        self.get_key(),
+                        epoch.days_since_1950,
+                    );
+                    if Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4 call failed err={}",
+                            thread::current().id(),
+                            self.get_key(),
+                            get_last_error_message()
+                        );
+                    }
+                    let load_result = sgp4::load(self.get_key());
+                    if load_result.is_err() && Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4::load failed key={} err={}",
+                            thread::current().id(),
+                            self.get_key(),
+                            get_last_error_message()
+                        );
+                    } else {
+                        Self::log_sgp4(
+                            "get_equinoctial_elements_at_epoch: sgp4::load ok",
+                            self.get_key(),
+                            epoch.days_since_1950,
+                        );
+                    }
+                    match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
+                        Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
+                        Err(e) => {
+                            if Self::sgp4_log_enabled() {
+                                eprintln!(
+                                    "[tid={:?}] get_equinoctial_elements_at_epoch: retry sgp4 call failed key={} epoch_ds50={} err={}",
+                                    thread::current().id(),
+                                    self.get_key(),
+                                    epoch.days_since_1950,
+                                    get_last_error_message()
+                                );
+                            }
+                            Err(e)
+                        }
+                    }
+                }
             },
             _ => match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
                 Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
-                Err(_) => Err(get_last_error_message()),
+                Err(_) => {
+                    Self::log_sgp4(
+                        "get_equinoctial_elements_at_epoch: full_state failed",
+                        self.get_key(),
+                        epoch.days_since_1950,
+                    );
+                    if Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_equinoctial_elements_at_epoch: full_state failed err={}",
+                            thread::current().id(),
+                            self.get_key(),
+                            get_last_error_message()
+                        );
+                    }
+                    let load_result = sgp4::load(self.get_key());
+                    if load_result.is_err() && Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4::load failed key={} err={}",
+                            thread::current().id(),
+                            self.get_key(),
+                            get_last_error_message()
+                        );
+                    } else {
+                        Self::log_sgp4(
+                            "get_equinoctial_elements_at_epoch: sgp4::load ok",
+                            self.get_key(),
+                            epoch.days_since_1950,
+                        );
+                    }
+                    match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
+                        Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
+                        Err(_) => {
+                            if Self::sgp4_log_enabled() {
+                                eprintln!(
+                                    "[tid={:?}] get_equinoctial_elements_at_epoch: retry full_state failed key={} epoch_ds50={} err={}",
+                                    thread::current().id(),
+                                    self.get_key(),
+                                    epoch.days_since_1950,
+                                    get_last_error_message()
+                                );
+                            }
+                            Err(get_last_error_message())
+                        }
+                    }
+                }
             },
         }
     }

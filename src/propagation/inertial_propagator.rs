@@ -5,7 +5,8 @@ use crate::enums::{ReferenceFrame, TimeSystem};
 use crate::estimation::Observation;
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
-use saal::{satellite, sgp4};
+use saal::{get_last_error_message, satellite, sgp4};
+use std::thread;
 
 #[derive(Debug, PartialEq)]
 pub struct InertialPropagator {
@@ -31,6 +32,22 @@ impl From<TLE> for InertialPropagator {
 }
 
 impl InertialPropagator {
+    fn sgp4_log_enabled() -> bool {
+        std::env::var("KEPLEMON_SGP4_LOG").is_ok()
+    }
+
+    fn log_sgp4(message: &str, key: i64, epoch_ds50: f64) {
+        if Self::sgp4_log_enabled() {
+            eprintln!(
+                "[tid={:?}] {} key={} epoch_ds50={}",
+                thread::current().id(),
+                message,
+                key,
+                epoch_ds50
+            );
+        }
+    }
+
     pub fn step_to_epoch(&mut self, epoch: Epoch) -> Result<(), String> {
         match self.tle {
             Some(ref mut tle) => {
@@ -46,8 +63,48 @@ impl InertialPropagator {
     pub fn get_cartesian_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         match &self.tle {
             Some(tle) => {
-                let _ = sgp4::load(tle.get_key());
-                let result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
+                Self::log_sgp4("get_cartesian_state_at_epoch: start", tle.get_key(), epoch.days_since_1950);
+                let mut result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
+                if result.is_err() {
+                    Self::log_sgp4(
+                        "get_cartesian_state_at_epoch: sgp4 call failed",
+                        tle.get_key(),
+                        epoch.days_since_1950,
+                    );
+                    if Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_cartesian_state_at_epoch: sgp4 call failed err={}",
+                            thread::current().id(),
+                            tle.get_key(),
+                            get_last_error_message()
+                        );
+                    }
+                    let load_result = sgp4::load(tle.get_key());
+                    if load_result.is_err() && Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_cartesian_state_at_epoch: sgp4::load failed key={} err={}",
+                            thread::current().id(),
+                            tle.get_key(),
+                            get_last_error_message()
+                        );
+                    } else {
+                        Self::log_sgp4(
+                            "get_cartesian_state_at_epoch: sgp4::load ok",
+                            tle.get_key(),
+                            epoch.days_since_1950,
+                        );
+                    }
+                    result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
+                    if result.is_err() && Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_cartesian_state_at_epoch: retry sgp4 call failed key={} epoch_ds50={} err={}",
+                            thread::current().id(),
+                            tle.get_key(),
+                            epoch.days_since_1950,
+                            get_last_error_message()
+                        );
+                    }
+                }
                 match result {
                     Ok((pos, vel)) => {
                         let pos = CartesianVector::from(pos);
@@ -64,8 +121,48 @@ impl InertialPropagator {
     pub fn get_keplerian_state_at_epoch(&self, epoch: Epoch) -> Option<KeplerianState> {
         match &self.tle {
             Some(tle) => {
-                let _ = sgp4::load(tle.get_key());
-                let result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
+                Self::log_sgp4("get_keplerian_state_at_epoch: start", tle.get_key(), epoch.days_since_1950);
+                let mut result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
+                if result.is_err() {
+                    Self::log_sgp4(
+                        "get_keplerian_state_at_epoch: sgp4 call failed",
+                        tle.get_key(),
+                        epoch.days_since_1950,
+                    );
+                    if Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_keplerian_state_at_epoch: sgp4 call failed err={}",
+                            thread::current().id(),
+                            tle.get_key(),
+                            get_last_error_message()
+                        );
+                    }
+                    let load_result = sgp4::load(tle.get_key());
+                    if load_result.is_err() && Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_keplerian_state_at_epoch: sgp4::load failed key={} err={}",
+                            thread::current().id(),
+                            tle.get_key(),
+                            get_last_error_message()
+                        );
+                    } else {
+                        Self::log_sgp4(
+                            "get_keplerian_state_at_epoch: sgp4::load ok",
+                            tle.get_key(),
+                            epoch.days_since_1950,
+                        );
+                    }
+                    result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
+                    if result.is_err() && Self::sgp4_log_enabled() {
+                        eprintln!(
+                            "[tid={:?}] get_keplerian_state_at_epoch: retry sgp4 call failed key={} epoch_ds50={} err={}",
+                            thread::current().id(),
+                            tle.get_key(),
+                            epoch.days_since_1950,
+                            get_last_error_message()
+                        );
+                    }
+                }
                 match result {
                     Ok(all) => {
                         let start_idx = sgp4::XA_SGP4OUT_MN_A;
