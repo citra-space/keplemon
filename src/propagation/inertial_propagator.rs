@@ -63,7 +63,11 @@ impl InertialPropagator {
     pub fn get_cartesian_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         match &self.tle {
             Some(tle) => {
-                Self::log_sgp4("get_cartesian_state_at_epoch: start", tle.get_key(), epoch.days_since_1950);
+                Self::log_sgp4(
+                    "get_cartesian_state_at_epoch: start",
+                    tle.get_key(),
+                    epoch.days_since_1950,
+                );
                 let mut result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
                 if result.is_err() {
                     Self::log_sgp4(
@@ -76,7 +80,6 @@ impl InertialPropagator {
                             "[tid={:?}] get_cartesian_state_at_epoch: sgp4 call failed err={}",
                             thread::current().id(),
                             tle.get_key(),
-                            get_last_error_message()
                         );
                     }
                     let load_result = sgp4::load(tle.get_key());
@@ -121,7 +124,11 @@ impl InertialPropagator {
     pub fn get_keplerian_state_at_epoch(&self, epoch: Epoch) -> Option<KeplerianState> {
         match &self.tle {
             Some(tle) => {
-                Self::log_sgp4("get_keplerian_state_at_epoch: start", tle.get_key(), epoch.days_since_1950);
+                Self::log_sgp4(
+                    "get_keplerian_state_at_epoch: start",
+                    tle.get_key(),
+                    epoch.days_since_1950,
+                );
                 let mut result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
                 if result.is_err() {
                     Self::log_sgp4(
@@ -134,7 +141,6 @@ impl InertialPropagator {
                             "[tid={:?}] get_keplerian_state_at_epoch: sgp4 call failed err={}",
                             thread::current().id(),
                             tle.get_key(),
-                            get_last_error_message()
                         );
                     }
                     let load_result = sgp4::load(tle.get_key());

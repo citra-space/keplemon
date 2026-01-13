@@ -109,7 +109,11 @@ impl TLE {
     }
 
     pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
-        Self::log_sgp4("get_equinoctial_elements_at_epoch: start", self.get_key(), epoch.days_since_1950);
+        Self::log_sgp4(
+            "get_equinoctial_elements_at_epoch: start",
+            self.get_key(),
+            epoch.days_since_1950,
+        );
         match self.get_type() {
             KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
                 Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
@@ -124,7 +128,6 @@ impl TLE {
                             "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4 call failed err={}",
                             thread::current().id(),
                             self.get_key(),
-                            get_last_error_message()
                         );
                     }
                     let load_result = sgp4::load(self.get_key());
@@ -172,7 +175,6 @@ impl TLE {
                             "[tid={:?}] get_equinoctial_elements_at_epoch: full_state failed err={}",
                             thread::current().id(),
                             self.get_key(),
-                            get_last_error_message()
                         );
                     }
                     let load_result = sgp4::load(self.get_key());
