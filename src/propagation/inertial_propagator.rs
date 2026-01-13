@@ -46,6 +46,7 @@ impl InertialPropagator {
     pub fn get_cartesian_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         match &self.tle {
             Some(tle) => {
+                let _ = sgp4::load(tle.get_key());
                 let result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
                 match result {
                     Ok((pos, vel)) => {
@@ -63,6 +64,7 @@ impl InertialPropagator {
     pub fn get_keplerian_state_at_epoch(&self, epoch: Epoch) -> Option<KeplerianState> {
         match &self.tle {
             Some(tle) => {
+                let _ = sgp4::load(tle.get_key());
                 let result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
                 match result {
                     Ok(all) => {

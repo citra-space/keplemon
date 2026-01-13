@@ -92,6 +92,7 @@ impl TLE {
     }
 
     pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
+        let _ = sgp4::load(self.get_key());
         match self.get_type() {
             KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
                 Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
