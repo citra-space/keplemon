@@ -64,22 +64,6 @@ impl From<TLE> for Satellite {
 }
 
 impl Satellite {
-    pub fn clone_detached(&self) -> Result<Self, String> {
-        let state = self
-            .get_keplerian_state()
-            .ok_or_else(|| "Missing keplerian state".to_string())?;
-        let tle = TLE::new(
-            self.id.clone(),
-            self.norad_id,
-            self.name.clone(),
-            Classification::Unclassified,
-            "".to_string(),
-            state,
-            self.force_properties,
-        )?;
-        Ok(Satellite::from(tle))
-    }
-
     pub fn get_jacobian(&self, ob: &Observation, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
         match self.inertial_propagator {
             Some(ref propagator) => propagator.get_jacobian(ob, use_drag, use_srp),
@@ -544,18 +528,9 @@ mod tests {
         let accesses = report.get_accesses();
         assert_eq!(accesses.len(), 3);
 
-        let la_accesses: Vec<_> = accesses
-            .iter()
-            .filter(|a| a.get_observatory_id() == obs1.id)
-            .collect();
-        let london_accesses: Vec<_> = accesses
-            .iter()
-            .filter(|a| a.get_observatory_id() == obs2.id)
-            .collect();
-        let cape_town_accesses: Vec<_> = accesses
-            .iter()
-            .filter(|a| a.get_observatory_id() == obs3.id)
-            .collect();
+        let la_accesses: Vec<_> = accesses.iter().filter(|a| a.get_observatory_id() == obs1.id).collect();
+        let london_accesses: Vec<_> = accesses.iter().filter(|a| a.get_observatory_id() == obs2.id).collect();
+        let cape_town_accesses: Vec<_> = accesses.iter().filter(|a| a.get_observatory_id() == obs3.id).collect();
 
         assert_eq!(la_accesses.len(), 1);
         assert_eq!(london_accesses.len(), 0);

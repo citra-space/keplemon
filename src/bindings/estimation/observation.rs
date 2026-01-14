@@ -1,10 +1,10 @@
 use super::{PyObservationAssociation, PyObservationResidual};
 use crate::bindings::bodies::{PyConstellation, PySatellite, PySensor};
 use crate::bindings::elements::{PyCartesianVector, PyTopocentricElements};
+use crate::bindings::time::PyEpoch;
 use crate::bodies::Satellite;
 use crate::elements::CartesianState;
 use crate::estimation::Observation;
-use crate::bindings::time::PyEpoch;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 
@@ -116,8 +116,8 @@ impl PyObservation {
     }
 
     #[getter]
-    pub fn get_observed_satellite_id(&self) -> Option<i32> {
-        self.inner.observed_satellite_id
+    pub fn get_observed_satellite_id(&self) -> Option<String> {
+        self.inner.observed_satellite_id.clone()
     }
 
     #[setter]
@@ -146,8 +146,8 @@ impl PyObservation {
     }
 
     #[setter]
-    pub fn set_observed_satellite_id(&mut self, observed_satellite_id: i32) {
-        self.inner.observed_satellite_id = Some(observed_satellite_id);
+    pub fn set_observed_satellite_id(&mut self, observed_satellite_id: Option<String>) {
+        self.inner.observed_satellite_id = observed_satellite_id;
     }
 
     pub fn get_associations(&self, constellation: &PyConstellation) -> Vec<PyObservationAssociation> {

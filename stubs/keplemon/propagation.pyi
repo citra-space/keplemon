@@ -1,6 +1,8 @@
 # flake8: noqa
 from __future__ import annotations
 
+from typing import Optional
+
 from keplemon.elements import CartesianState, GeodeticPosition, KeplerianElements, KeplerianState, TLE
 from keplemon.time import Epoch
 
@@ -27,8 +29,8 @@ class InertialPropagator:
     @staticmethod
     def from_tle(tle: TLE) -> InertialPropagator: ...
 
-    def get_cartesian_state_at_epoch(self, epoch: Epoch) -> CartesianState | None: ...
-    def get_keplerian_state_at_epoch(self, epoch: Epoch) -> KeplerianState | None: ...
+    def get_cartesian_state_at_epoch(self, epoch: Epoch) -> Optional[CartesianState]: ...
+    def get_keplerian_state_at_epoch(self, epoch: Epoch) -> Optional[KeplerianState]: ...
 
     keplerian_state: KeplerianState
     force_properties: ForceProperties

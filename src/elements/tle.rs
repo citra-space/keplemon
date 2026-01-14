@@ -5,51 +5,31 @@ use crate::estimation::Observation;
 use crate::propagation::{ForceProperties, SGP4Output};
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
-use saal::{GetSetString, get_last_error_message, sgp4, tle};
+use saal::{GetSetString, astro, sgp4, tle};
 use std::str::FromStr;
 use std::sync::Arc;
 
-#[cfg(test)]
-use std::collections::HashMap;
-#[cfg(test)]
-use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
 const DEFAULT_EPSILONS: [f64; 8] = [1e-6, 1e-6, 1e-6, 1e-6, 1e-8, 1e-6, 1e-4, 1e-4];
 
-#[cfg(test)]
-static KEY_TRACKER: OnceLock<Mutex<HashMap<i64, usize>>> = OnceLock::new();
-
-#[cfg(test)]
-fn add_key_tracking(key: i64) {
-    let tracker = KEY_TRACKER.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = tracker.lock().expect("key tracker poisoned");
-    if let Some(count) = map.get_mut(&key) {
-        *count += 1;
-    } else {
-        map.insert(key, 1);
-    }
+#[derive(Debug, PartialEq)]
+struct SAALKeyHandle {
+    key: i64,
 }
 
-#[cfg(test)]
-fn remove_key_tracking(key: i64) {
-    let tracker = KEY_TRACKER.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = tracker.lock().expect("key tracker poisoned");
-    match map.get_mut(&key) {
-        Some(count) => {
-            if *count <= 1 {
-                map.remove(&key);
-            } else {
-                *count -= 1;
-            }
+impl Drop for SAALKeyHandle {
+    fn drop(&mut self) {
+        if self.key == 0 {
+            return;
         }
-        None => panic!("TLE key removed without matching load: {key}"),
+        let _ = sgp4::remove(self.key);
+        tle::remove(self.key);
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct TLE {
-    handle: Option<Arc<TLEHandle>>,
     pub norad_id: i32,
     pub satellite_id: String,
     pub name: Option<String>,
@@ -57,32 +37,19 @@ pub struct TLE {
     pub classification: Classification,
     pub keplerian_state: KeplerianState,
     pub force_properties: ForceProperties,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct TLEHandle {
-    key: i64,
-}
-
-impl Drop for TLEHandle {
-    fn drop(&mut self) {
-        #[cfg(test)]
-        remove_key_tracking(self.key);
-        let _ = sgp4::remove(self.key);
-        tle::remove(self.key);
-    }
+    key: Option<Arc<SAALKeyHandle>>,
 }
 
 impl Drop for TLE {
     fn drop(&mut self) {
-        self.handle = None;
+        self.remove_from_memory();
     }
 }
 
 impl Clone for TLE {
     fn clone(&self) -> Self {
         Self {
-            handle: self.handle.clone(),
+            key: self.key.clone(),
             norad_id: self.norad_id,
             satellite_id: self.satellite_id.clone(),
             name: self.name.clone(),
@@ -95,19 +62,18 @@ impl Clone for TLE {
 }
 
 impl TLE {
-    pub fn clone_detached(&self) -> Result<Self, String> {
-        let mut tle = Self {
-            handle: None,
-            norad_id: self.norad_id,
-            satellite_id: self.satellite_id.clone(),
-            name: self.name.clone(),
-            designator: self.designator.clone(),
-            classification: self.classification,
-            keplerian_state: self.keplerian_state,
-            force_properties: self.force_properties,
-        };
-        tle.load_to_memory()?;
-        Ok(tle)
+    fn wrap_equinoctial_delta(index: usize, delta: f64) -> f64 {
+        if index != astro::XA_EQNX_L {
+            return delta;
+        }
+        // Mean longitude wraps at 360 degrees; keep delta in [-180, 180).
+        let mut wrapped = delta % 360.0;
+        if wrapped >= 180.0 {
+            wrapped -= 360.0;
+        } else if wrapped < -180.0 {
+            wrapped += 360.0;
+        }
+        wrapped
     }
 
     pub fn new(
@@ -120,7 +86,6 @@ impl TLE {
         force_properties: ForceProperties,
     ) -> Result<Self, String> {
         let mut tle = Self {
-            handle: None,
             satellite_id,
             norad_id,
             name,
@@ -128,6 +93,7 @@ impl TLE {
             designator,
             keplerian_state,
             force_properties,
+            key: None,
         };
         match tle.load_to_memory() {
             Ok(_) => Ok(tle),
@@ -136,7 +102,7 @@ impl TLE {
     }
 
     pub fn get_key(&self) -> i64 {
-        self.handle.as_ref().map(|handle| handle.key).unwrap_or(0)
+        self.key.as_ref().map(|handle| handle.key).unwrap_or(0)
     }
 
     pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
@@ -147,7 +113,7 @@ impl TLE {
             },
             _ => match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
                 Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
-                Err(_) => Err(get_last_error_message()),
+                Err(e) => Err(e),
             },
         }
     }
@@ -193,7 +159,9 @@ impl TLE {
 
             let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
-                stm[(j, i)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
+                let delta = perturbed_els[j] - reference_elements[j];
+                let delta = Self::wrap_equinoctial_delta(j, delta);
+                stm[(j, i)] = delta / epsilon;
             }
         }
 
@@ -216,7 +184,9 @@ impl TLE {
 
             let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
-                stm[(j, current_col)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
+                let delta = perturbed_els[j] - reference_elements[j];
+                let delta = Self::wrap_equinoctial_delta(j, delta);
+                stm[(j, current_col)] = delta / epsilon;
             }
             stm[(current_col, current_col)] = 1.0;
             current_col += 1;
@@ -245,7 +215,9 @@ impl TLE {
 
             let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
-                stm[(j, current_col)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
+                let delta = perturbed_els[j] - reference_elements[j];
+                let delta = Self::wrap_equinoctial_delta(j, delta);
+                stm[(j, current_col)] = delta / epsilon;
             }
             stm[(current_col, current_col)] = 1.0;
         }
@@ -499,16 +471,24 @@ impl TLE {
         self.force_properties
     }
 
+    pub fn remove_from_memory(&mut self) {
+        if self.key.is_some() {
+            self.key = None;
+        }
+    }
+
     pub fn load_to_memory(&mut self) -> Result<(), String> {
-        self.handle = None;
         let xa_tle = self.get_xa_tle();
         let xs_tle = self.get_xs_tle();
-        let key = tle::load_arrays(xa_tle, &xs_tle)?;
-        sgp4::load(key)?;
-        #[cfg(test)]
-        add_key_tracking(key);
-        self.handle = Some(Arc::new(TLEHandle { key }));
-        Ok(())
+        match tle::load_arrays(xa_tle, &xs_tle) {
+            Ok(key) => {
+                let result = sgp4::load(key);
+                result?;
+                self.key = Some(Arc::new(SAALKeyHandle { key }));
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub fn from_two_lines(line_1: &str, line_2: &str) -> Result<TLE, String> {

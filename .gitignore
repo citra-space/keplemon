@@ -1,14 +1,12 @@
 /target
 __pycache__/
 venv/
-Cargo.lock
 /SGP4_Open_License.txt
 .mypy_cache
 .pytest_cache
 tmp
 python/keplemon/**/*.dylib
 python/keplemon/*.so
-python/keplemon/*.so.*
 python/keplemon/*.dll
 python/keplemon/*.lib
 python/keplemon/*.pyi

@@ -24,7 +24,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Test Rust
-        run: cargo test --target x86_64-unknown-linux-gnu --lib --tests --bins
+        run: KEPLEMON_SGP4_LOG=1 cargo test --target x86_64-unknown-linux-gnu --lib --tests --bins -- --nocapture
 
       - name: Build wheel (manylinux x86)
         run: |

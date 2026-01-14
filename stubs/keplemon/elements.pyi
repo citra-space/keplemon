@@ -1,5 +1,7 @@
 # flake8: noqa
 from __future__ import annotations
+from typing import Optional
+
 from keplemon.time import Epoch
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame
 from keplemon.events import CloseApproach
@@ -74,12 +76,12 @@ class HorizonElements:
         el_rate: Elevation rate in **_degrees per second_**
     """
 
-    range: float | None
+    range: Optional[float]
     azimuth: float
     elevation: float
-    range_rate: float | None
-    azimuth_rate: float | None
-    elevation_rate: float | None
+    range_rate: Optional[float]
+    azimuth_rate: Optional[float]
+    elevation_rate: Optional[float]
 
     def __init__(
         self,
@@ -100,7 +102,7 @@ class HorizonState:
     elements: HorizonElements
     """Horizon elements of the state"""
 
-    range: float | None
+    range: Optional[float]
     """Range in **_kilometers_**"""
 
     azimuth: float
@@ -109,13 +111,13 @@ class HorizonState:
     elevation: float
     """Elevation in **_degrees_**"""
 
-    range_rate: float | None
+    range_rate: Optional[float]
     """Range rate in **_kilometers per second_**"""
 
-    azimuth_rate: float | None
+    azimuth_rate: Optional[float]
     """Azimuth rate in **_degrees per second_**"""
 
-    elevation_rate: float | None
+    elevation_rate: Optional[float]
     """Elevation rate in **_degrees per second_**"""
 
     def __init__(self, epoch: Epoch, elements: HorizonElements) -> None: ...
@@ -253,7 +255,7 @@ class TLE:
     """Periapsis radius in **_kilometers_**"""
 
     @classmethod
-    def from_lines(cls, line_1: str, line_2: str, line_3: str | None = None) -> TLE:
+    def from_lines(cls, line_1: str, line_2: str, line_3: Optional[str] = None) -> TLE:
         """
         Create a TLE object using strings in 2 or 3 line format
         """
@@ -452,18 +454,18 @@ class TopocentricElements:
         declination: TEME declination in **_degrees_**
     """
 
-    range: float | None
+    range: Optional[float]
     """Range in **_kilometers_**"""
 
     right_ascension: float
     declination: float
-    range_rate: float | None
+    range_rate: Optional[float]
     """Range rate in **_kilometers per second_**"""
 
-    right_ascension_rate: float | None
+    right_ascension_rate: Optional[float]
     """Right ascension rate in **_degrees per second**"""
 
-    declination_rate: float | None
+    declination_rate: Optional[float]
     """Declination rate in **_degrees per second**"""
 
     def __init__(self, right_ascension: float, declination: float) -> None: ...
@@ -490,7 +492,7 @@ class TopocentricState:
     elements: TopocentricElements
     """Topocentric elements of the state"""
 
-    range: float | None
+    range: Optional[float]
     """Range in **_kilometers_**"""
 
     right_ascension: float
@@ -499,13 +501,13 @@ class TopocentricState:
     declination: float
     """TEME declination in **_degrees_**"""
 
-    range_rate: float | None
+    range_rate: Optional[float]
     """Range rate in **_kilometers per second_**"""
 
-    right_ascension_rate: float | None
+    right_ascension_rate: Optional[float]
     """Right ascension rate in **_degrees per second**"""
 
-    declination_rate: float | None
+    declination_rate: Optional[float]
     """Declination rate in **_degrees per second**"""
 
     def __init__(self, epoch: Epoch, elements: TopocentricElements) -> None: ...
