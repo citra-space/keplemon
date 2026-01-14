@@ -1,7 +1,6 @@
 /target
 __pycache__/
 venv/
-Cargo.lock
 /SGP4_Open_License.txt
 .mypy_cache
 .pytest_cache
