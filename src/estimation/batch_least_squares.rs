@@ -7,10 +7,13 @@ use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
 use saal::astro;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Instant;
 
 pub const DEFAULT_MAX_ITERATIONS: usize = 20;
+// SAAL's SGP4/astro calls are not thread-safe under rayon on Linux.
+static SAAL_BLS_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatchLeastSquares {
@@ -377,7 +380,10 @@ impl BatchLeastSquares {
                         current_estimate.id
                     );
                 }
-                let result = ob.fill_predicted_vector(current_estimate, buf);
+                let result = {
+                    let _guard = SAAL_BLS_LOCK.lock().expect("saal bls lock poisoned");
+                    ob.fill_predicted_vector(current_estimate, buf)
+                };
                 if trace {
                     eprintln!(
                         "[tid={:?}] BLS predicted end idx={} ob_id={} sat_id={} ok={}",
@@ -477,7 +483,10 @@ impl BatchLeastSquares {
                     let start = offsets[idx];
                     let end = start + dim;
                     let h_ref = &predicted_measurements.as_slice()[start..end];
-                    let h_p = match ob.get_predicted_vector(sat) {
+                    let h_p = match {
+                        let _guard = SAAL_BLS_LOCK.lock().expect("saal bls lock poisoned");
+                        ob.get_predicted_vector(sat)
+                    } {
                         Ok(value) => value,
                         Err(err) => {
                             if trace {
