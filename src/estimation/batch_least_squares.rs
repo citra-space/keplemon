@@ -683,7 +683,7 @@ mod tests {
     fn test_solve() {
         let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
         let initial_tle = TLE::from_lines(
-            "1 99999U          25334.80826079 -.00000092  00000 0  00000 0 4 0000",
+            "1 99999U          25334.80826079 -.00000092  00000 0  00000 0 0 0000",
             "2 99999   5.1462  74.9949 0001499 136.0805 318.9951  0.9987069300000",
             None,
         )
@@ -716,8 +716,8 @@ mod tests {
         }
 
         let mut bls = BatchLeastSquares::new(observations, &initial_sat);
-        // bls.set_output_type(KeplerianType::MeanBrouwerXP);
-        // bls.set_estimate_srp(true);
+        bls.set_output_type(KeplerianType::MeanBrouwerXP);
+        bls.set_estimate_srp(true);
         bls.solve().unwrap();
 
         let start = truth_sat.get_keplerian_state().unwrap().epoch;

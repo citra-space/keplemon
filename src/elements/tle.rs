@@ -19,17 +19,17 @@ struct SAALKeyHandle {
     key: i64,
 }
 
-impl Drop for SAALKeyHandle {
-    fn drop(&mut self) {
-        if self.key == 0 {
-            return;
-        }
-        saal_lock::with_sgp4_key_lock(|| {
-            let _ = sgp4::remove(self.key);
-            tle::remove(self.key);
-        });
-    }
-}
+// impl Drop for SAALKeyHandle {
+//     fn drop(&mut self) {
+//         if self.key == 0 {
+//             return;
+//         }
+//         saal_lock::with_sgp4_key_lock(|| {
+//             let _ = sgp4::remove(self.key);
+//             tle::remove(self.key);
+//         });
+//     }
+// }
 
 #[derive(Debug, PartialEq)]
 pub struct TLE {
