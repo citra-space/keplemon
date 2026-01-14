@@ -1004,9 +1004,9 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "saal"
-version = "1.2.0"
+version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3be677cc9a88d3128871e6d8f6aa064d161e5ad5fb9b5b55ccf9ccbc15da05a"
+checksum = "3e93d42390f410d0333b65f88bc96f447f05b36fa7302207819e9763a682f824"
 dependencies = [
  "ctor",
  "hex",
