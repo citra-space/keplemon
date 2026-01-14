@@ -365,16 +365,16 @@ impl Observation {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[test]
-//     fn test_from_saal_files() {
-//         let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
-//         let observations_result = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt");
-//         assert!(observations_result.is_ok());
-//         let observations = observations_result.unwrap();
-//         assert_eq!(observations.len(), 5053);
-//     }
-// }
+    #[test]
+    fn test_from_saal_files() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
+        let observations_result = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt");
+        assert!(observations_result.is_ok());
+        let observations = observations_result.unwrap();
+        assert_eq!(observations.len(), 5053);
+    }
+}
