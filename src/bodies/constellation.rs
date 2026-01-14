@@ -231,7 +231,7 @@ impl Constellation {
 
 #[cfg(test)]
 mod tests {
-    use super::Constellation;
+    use super::{Constellation, Observatory};
     use crate::catalogs::TLECatalog;
     use crate::enums::TimeSystem;
     use crate::time::{Epoch, TimeSpan};
@@ -283,6 +283,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn get_horizon_access_report() {
+        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+        let space_track_3le_path = base.join("2026-01-14-space-track.3le");
+        let mut sats = Constellation::from(load_catalog(space_track_3le_path.to_str().unwrap()));
+        let site = Observatory::new(31.90703334, -109.02111022, 1.239);
+        let start = Epoch::from_iso("2026-01-14T16:25:42.665Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2026-01-14T17:55:42.665Z", TimeSystem::UTC);
+        let report = sats.get_horizon_access_report(&site, start, end, 1.0, TimeSpan::from_minutes(15.0));
+
+        let mut starlinks = 0;
+        let mut total_starlinks = 0;
+        for sat in sats.get_satellites().values() {
+            if let Some(name) = &sat.name
+                && name.len() >= 8
+                && &name[0..8] == "STARLINK"
+            {
+                total_starlinks += 1;
+            }
+        }
+        for access in report.get_accesses() {
+            let duration = access.get_end().epoch - access.get_start().epoch;
+            let sat_id = access.get_satellite_id();
+            let sat_name = sats.get(sat_id.to_string()).and_then(|sat| sat.name);
+
+            if let Some(name) = &sat_name
+                && name.len() >= 8
+                && &name[0..8] == "STARLINK"
+            {
+                starlinks += 1;
+                assert!(duration <= TimeSpan::from_minutes(15.0));
+            }
+        }
+        assert!(!report.get_accesses().is_empty());
+        assert!(total_starlinks > 0);
+        assert!(starlinks > 0);
+    }
     #[test]
     fn test_get_ca_report_vs_many() {
         let _guard = TEST_LOCK.lock().expect("test lock poisoned");
