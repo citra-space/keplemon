@@ -51,14 +51,19 @@ impl InertialPropagator {
     fn log_tle_state(context: &str, tle: &TLE, epoch_ds50: f64) {
         if Self::sgp4_log_enabled() {
             let state = tle.get_keplerian_state();
+            let mean_motion = state.elements.get_mean_motion(state.get_type());
             eprintln!(
-                "[tid={:?}] {} key={} epoch_ds50={} type={:?} elements={:?}",
+                "[tid={:?}] {} key={} epoch_ds50={} type={:?} mean_motion={} elements={:?} b_star={} b_term={} agom={}",
                 thread::current().id(),
                 context,
                 tle.get_key(),
                 epoch_ds50,
                 state.get_type(),
-                state.elements
+                mean_motion,
+                state.elements,
+                tle.get_b_star(),
+                tle.get_b_term(),
+                tle.get_agom()
             );
         }
     }
