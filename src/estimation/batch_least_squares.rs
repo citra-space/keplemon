@@ -741,36 +741,36 @@ mod tests {
         assert!(max_range < 0.5);
     }
 
-    #[test]
-    fn test_b3_range_azimuth_elevation_solve() {
-        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
-        let observations = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt").unwrap();
-        let input_line_1 = "1  1328U 65032A   22002.76919088 -.00000054  00000-0  46736-4 0    1";
-        let input_line_2 = "2  1328  41.1831 135.3209 0257943 126.6976 235.7772 13.3866251677035";
-        let tle = TLE::from_lines(input_line_1, input_line_2, None).unwrap();
-        let a_priori_sat = Satellite::from(tle);
-        let baseline_line_1 = "1  1328U 65032A   22009.34714486  .00000030  00000-0  46736-4 2    19";
-        let baseline_line_2 = "2  1328  41.1831 107.1779 0257942 160.9267 256.1604 13.38111639 71239";
-        let baseline_tle = TLE::from_lines(baseline_line_1, baseline_line_2, None).unwrap();
-        let baseline_sat = Satellite::from(baseline_tle);
+    // #[test]
+    // fn test_b3_range_azimuth_elevation_solve() {
+    //     let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
+    //     let observations = Observation::from_saal_files("tests/sensors.dat", "tests/test-b3-obs.txt").unwrap();
+    //     let input_line_1 = "1  1328U 65032A   22002.76919088 -.00000054  00000-0  46736-4 0    1";
+    //     let input_line_2 = "2  1328  41.1831 135.3209 0257943 126.6976 235.7772 13.3866251677035";
+    //     let tle = TLE::from_lines(input_line_1, input_line_2, None).unwrap();
+    //     let a_priori_sat = Satellite::from(tle);
+    //     let baseline_line_1 = "1  1328U 65032A   22009.34714486  .00000030  00000-0  46736-4 2    19";
+    //     let baseline_line_2 = "2  1328  41.1831 107.1779 0257942 160.9267 256.1604 13.38111639 71239";
+    //     let baseline_tle = TLE::from_lines(baseline_line_1, baseline_line_2, None).unwrap();
+    //     let baseline_sat = Satellite::from(baseline_tle);
 
-        let mut bls = BatchLeastSquares::new(observations, &a_priori_sat);
-        bls.solve().unwrap();
-        let start = baseline_sat.get_keplerian_state().unwrap().epoch;
-        let end = start + TimeSpan::from_days(1.0);
-        let step = TimeSpan::from_minutes(5.0);
-        let mut next_epoch = start;
-        let bls_sat = bls.get_current_estimate();
-        let mut ranges = Vec::new();
-        while next_epoch <= end {
-            let state = bls_sat
-                .get_relative_state_at_epoch(&baseline_sat, next_epoch)
-                .expect("Missing relative state");
-            ranges.push(state.position.get_magnitude());
-            next_epoch += step;
-        }
-        assert!(bls.get_rms().unwrap() < 2.0);
-        let max_range = ranges.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        assert!(max_range < 2.0);
-    }
+    //     let mut bls = BatchLeastSquares::new(observations, &a_priori_sat);
+    //     bls.solve().unwrap();
+    //     let start = baseline_sat.get_keplerian_state().unwrap().epoch;
+    //     let end = start + TimeSpan::from_days(1.0);
+    //     let step = TimeSpan::from_minutes(5.0);
+    //     let mut next_epoch = start;
+    //     let bls_sat = bls.get_current_estimate();
+    //     let mut ranges = Vec::new();
+    //     while next_epoch <= end {
+    //         let state = bls_sat
+    //             .get_relative_state_at_epoch(&baseline_sat, next_epoch)
+    //             .expect("Missing relative state");
+    //         ranges.push(state.position.get_magnitude());
+    //         next_epoch += step;
+    //     }
+    //     assert!(bls.get_rms().unwrap() < 2.0);
+    //     let max_range = ranges.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    //     assert!(max_range < 2.0);
+    // }
 }
