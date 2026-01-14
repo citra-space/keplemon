@@ -5,7 +5,7 @@ use crate::enums::{ReferenceFrame, TimeSystem};
 use crate::estimation::Observation;
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
-use saal::{get_last_error_message, satellite, sgp4};
+use saal::{satellite, sgp4};
 
 #[derive(Debug, PartialEq)]
 pub struct InertialPropagator {
@@ -46,12 +46,7 @@ impl InertialPropagator {
     pub fn get_cartesian_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         match &self.tle {
             Some(tle) => {
-                let mut result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
-                if result.is_err() {
-                    let _ = sgp4::load(tle.get_key());
-                    result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
-                    let _ = get_last_error_message();
-                }
+                let result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
                 match result {
                     Ok((pos, vel)) => {
                         let pos = CartesianVector::from(pos);
@@ -68,12 +63,7 @@ impl InertialPropagator {
     pub fn get_keplerian_state_at_epoch(&self, epoch: Epoch) -> Option<KeplerianState> {
         match &self.tle {
             Some(tle) => {
-                let mut result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
-                if result.is_err() {
-                    let _ = sgp4::load(tle.get_key());
-                    result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
-                    let _ = get_last_error_message();
-                }
+                let result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
                 match result {
                     Ok(all) => {
                         let start_idx = sgp4::XA_SGP4OUT_MN_A;

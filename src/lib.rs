@@ -13,6 +13,7 @@ pub mod propagation;
 pub mod time;
 #[cfg(test)]
 mod test_lock;
+mod saal_lock;
 use rayon::current_num_threads;
 
 pub fn get_thread_count() -> usize {

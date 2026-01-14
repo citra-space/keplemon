@@ -3,6 +3,7 @@ use crate::bodies::Satellite;
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
 use crate::propagation::{ForceProperties, SGP4Output};
+use crate::saal_lock;
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use saal::{GetSetString, astro, sgp4, tle};
@@ -23,8 +24,10 @@ impl Drop for SAALKeyHandle {
         if self.key == 0 {
             return;
         }
-        let _ = sgp4::remove(self.key);
-        tle::remove(self.key);
+        saal_lock::with_sgp4_key_lock(|| {
+            let _ = sgp4::remove(self.key);
+            tle::remove(self.key);
+        });
     }
 }
 
@@ -480,7 +483,7 @@ impl TLE {
     pub fn load_to_memory(&mut self) -> Result<(), String> {
         let xa_tle = self.get_xa_tle();
         let xs_tle = self.get_xs_tle();
-        match tle::load_arrays(xa_tle, &xs_tle) {
+        saal_lock::with_sgp4_key_lock(|| match tle::load_arrays(xa_tle, &xs_tle) {
             Ok(key) => {
                 let result = sgp4::load(key);
                 result?;
@@ -488,7 +491,7 @@ impl TLE {
                 Ok(())
             }
             Err(e) => Err(e),
-        }
+        })
     }
 
     pub fn from_two_lines(line_1: &str, line_2: &str) -> Result<TLE, String> {

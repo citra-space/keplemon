@@ -716,8 +716,8 @@ mod tests {
         }
 
         let mut bls = BatchLeastSquares::new(observations, &initial_sat);
-        //bls.set_output_type(KeplerianType::MeanBrouwerXP);
-        //bls.set_estimate_srp(true);
+        bls.set_output_type(KeplerianType::MeanBrouwerXP);
+        bls.set_estimate_srp(true);
         bls.solve().unwrap();
 
         let start = truth_sat.get_keplerian_state().unwrap().epoch;
