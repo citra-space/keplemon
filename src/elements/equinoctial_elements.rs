@@ -38,6 +38,12 @@ impl From<&EquinoctialElements> for [f64; astro::XA_EQNX_SIZE] {
     }
 }
 
+impl From<EquinoctialElements> for [f64; astro::XA_EQNX_SIZE] {
+    fn from(eqn: EquinoctialElements) -> Self {
+        Self::from(&eqn)
+    }
+}
+
 impl From<&KeplerianElements> for EquinoctialElements {
     fn from(kep: &KeplerianElements) -> Self {
         let xa_eqnx = astro::keplerian_to_equinoctial(&kep.into());

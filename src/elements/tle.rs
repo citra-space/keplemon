@@ -5,7 +5,7 @@ use crate::estimation::Observation;
 use crate::propagation::{ForceProperties, SGP4Output};
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
-use saal::{GetSetString, get_last_error_message, sgp4, tle};
+use saal::{GetSetString, astro, get_last_error_message, sgp4, tle};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
@@ -25,19 +25,11 @@ impl Drop for SAALKeyHandle {
             return;
         }
         if std::env::var("KEPLEMON_SGP4_LOG").is_ok() {
-            eprintln!(
-                "[tid={:?}] sgp4::remove key={}",
-                thread::current().id(),
-                self.key
-            );
+            eprintln!("[tid={:?}] sgp4::remove key={}", thread::current().id(), self.key);
         }
         let _ = sgp4::remove(self.key);
         if std::env::var("KEPLEMON_SGP4_LOG").is_ok() {
-            eprintln!(
-                "[tid={:?}] tle::remove key={}",
-                thread::current().id(),
-                self.key
-            );
+            eprintln!("[tid={:?}] tle::remove key={}", thread::current().id(), self.key);
         }
         tle::remove(self.key);
     }
@@ -91,6 +83,20 @@ impl TLE {
                 epoch_ds50
             );
         }
+    }
+
+    fn wrap_equinoctial_delta(index: usize, delta: f64) -> f64 {
+        if index != astro::XA_EQNX_L {
+            return delta;
+        }
+        // Mean longitude wraps at 360 degrees; keep delta in [-180, 180).
+        let mut wrapped = delta % 360.0;
+        if wrapped >= 180.0 {
+            wrapped -= 360.0;
+        } else if wrapped < -180.0 {
+            wrapped += 360.0;
+        }
+        wrapped
     }
 
     pub fn new(
@@ -267,7 +273,9 @@ impl TLE {
 
             let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
-                stm[(j, i)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
+                let delta = perturbed_els[j] - reference_elements[j];
+                let delta = Self::wrap_equinoctial_delta(j, delta);
+                stm[(j, i)] = delta / epsilon;
             }
         }
 
@@ -290,7 +298,9 @@ impl TLE {
 
             let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
-                stm[(j, current_col)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
+                let delta = perturbed_els[j] - reference_elements[j];
+                let delta = Self::wrap_equinoctial_delta(j, delta);
+                stm[(j, current_col)] = delta / epsilon;
             }
             stm[(current_col, current_col)] = 1.0;
             current_col += 1;
@@ -319,7 +329,9 @@ impl TLE {
 
             let perturbed_els = tle.get_equinoctial_elements_at_epoch(epoch)?;
             for j in 0..6 {
-                stm[(j, current_col)] = (perturbed_els[j] - reference_elements[j]) / epsilon;
+                let delta = perturbed_els[j] - reference_elements[j];
+                let delta = Self::wrap_equinoctial_delta(j, delta);
+                stm[(j, current_col)] = delta / epsilon;
             }
             stm[(current_col, current_col)] = 1.0;
         }
