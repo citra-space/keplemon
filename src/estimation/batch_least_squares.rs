@@ -7,6 +7,7 @@ use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
 use saal::astro;
+use std::thread;
 use std::time::Instant;
 
 pub const DEFAULT_MAX_ITERATIONS: usize = 20;
@@ -78,6 +79,10 @@ impl BatchLeastSquares {
     pub fn set_output_type(&mut self, output_keplerian_type: KeplerianType) {
         self.output_keplerian_type = output_keplerian_type;
         self.reset();
+    }
+
+    fn trace_enabled() -> bool {
+        std::env::var("KEPLEMON_BLS_TRACE").is_ok()
     }
 
     pub fn get_converged(&self) -> bool {
@@ -355,12 +360,36 @@ impl BatchLeastSquares {
         }
 
         let predicted_buffers = self.predicted_buffers.as_mut().unwrap();
+        let trace = Self::trace_enabled();
         let results: Vec<Result<(), String>> = predicted_buffers
             .par_iter_mut()
             .zip(self.obs.par_iter())
+            .enumerate()
             .map_init(
                 || self.current_estimate.clone(),
-                |sat, (buf, ob)| ob.fill_predicted_vector(sat, buf),
+                |sat, (idx, (buf, ob))| {
+                    if trace {
+                        eprintln!(
+                            "[tid={:?}] BLS predicted start idx={} ob_id={} sat_id={}",
+                            thread::current().id(),
+                            idx,
+                            ob.id,
+                            sat.id
+                        );
+                    }
+                    let result = ob.fill_predicted_vector(sat, buf);
+                    if trace {
+                        eprintln!(
+                            "[tid={:?}] BLS predicted end idx={} ob_id={} sat_id={} ok={}",
+                            thread::current().id(),
+                            idx,
+                            ob.id,
+                            sat.id,
+                            result.is_ok()
+                        );
+                    }
+                    result
+                },
             )
             .collect();
         for result in results {
@@ -429,19 +458,52 @@ impl BatchLeastSquares {
 
         let jacobian = self.jacobian.as_mut().unwrap();
         let mut columns = vec![vec![0.0; m]; n];
+        let trace = Self::trace_enabled();
         let results: Vec<Result<(), String>> = columns
             .par_iter_mut()
             .zip(perturbed_sats.par_iter())
-            .map(|(col, (sat, epsilon))| {
+            .enumerate()
+            .map(|(col_idx, (col, (sat, epsilon)))| {
+                if trace {
+                    eprintln!(
+                        "[tid={:?}] BLS jacobian start col={} sat_id={} epsilon={}",
+                        thread::current().id(),
+                        col_idx,
+                        sat.id,
+                        epsilon
+                    );
+                }
                 for (idx, ob) in self.obs.iter().enumerate() {
                     let dim = measurement_sizes[idx];
                     let start = offsets[idx];
                     let end = start + dim;
                     let h_ref = &predicted_measurements.as_slice()[start..end];
-                    let h_p = ob.get_predicted_vector(sat)?;
+                    let h_p = match ob.get_predicted_vector(sat) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            if trace {
+                                eprintln!(
+                                    "[tid={:?}] BLS jacobian err col={} ob_id={} sat_id={}",
+                                    thread::current().id(),
+                                    col_idx,
+                                    ob.id,
+                                    sat.id
+                                );
+                            }
+                            return Err(err);
+                        }
+                    };
                     for i in 0..dim {
                         col[start + i] = (h_p[i] - h_ref[i]) / epsilon;
                     }
+                }
+                if trace {
+                    eprintln!(
+                        "[tid={:?}] BLS jacobian end col={} sat_id={}",
+                        thread::current().id(),
+                        col_idx,
+                        sat.id
+                    );
                 }
                 Ok(())
             })

@@ -15,3 +15,8 @@ Definition of done:
 Formatting-only changes:
 
 - Always run `cargo fmt` and then `cargo fmt -- --check`.
+
+SAAL Troubleshooting:
+
+- to use sgp4, a key must be loaded by tle and by sgp4
+- tle and sgp4 remove methods must be called separately to clear a tle from saal memory

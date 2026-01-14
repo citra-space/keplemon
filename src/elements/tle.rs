@@ -5,10 +5,9 @@ use crate::estimation::Observation;
 use crate::propagation::{ForceProperties, SGP4Output};
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
-use saal::{GetSetString, astro, get_last_error_message, sgp4, tle};
+use saal::{GetSetString, astro, sgp4, tle};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::thread;
 
 use uuid::Uuid;
 
@@ -24,13 +23,7 @@ impl Drop for SAALKeyHandle {
         if self.key == 0 {
             return;
         }
-        if std::env::var("KEPLEMON_SGP4_LOG").is_ok() {
-            eprintln!("[tid={:?}] sgp4::remove key={}", thread::current().id(), self.key);
-        }
         let _ = sgp4::remove(self.key);
-        if std::env::var("KEPLEMON_SGP4_LOG").is_ok() {
-            eprintln!("[tid={:?}] tle::remove key={}", thread::current().id(), self.key);
-        }
         tle::remove(self.key);
     }
 }
@@ -69,22 +62,6 @@ impl Clone for TLE {
 }
 
 impl TLE {
-    fn sgp4_log_enabled() -> bool {
-        std::env::var("KEPLEMON_SGP4_LOG").is_ok()
-    }
-
-    fn log_sgp4(message: &str, key: i64, epoch_ds50: f64) {
-        if Self::sgp4_log_enabled() {
-            eprintln!(
-                "[tid={:?}] {} key={} epoch_ds50={}",
-                thread::current().id(),
-                message,
-                key,
-                epoch_ds50
-            );
-        }
-    }
-
     fn wrap_equinoctial_delta(index: usize, delta: f64) -> f64 {
         if index != astro::XA_EQNX_L {
             return delta;
@@ -129,105 +106,14 @@ impl TLE {
     }
 
     pub fn get_equinoctial_elements_at_epoch(&self, epoch: Epoch) -> Result<EquinoctialElements, String> {
-        Self::log_sgp4(
-            "get_equinoctial_elements_at_epoch: start",
-            self.get_key(),
-            epoch.days_since_1950,
-        );
         match self.get_type() {
             KeplerianType::MeanBrouwerXP => match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
                 Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
-                Err(_) => {
-                    Self::log_sgp4(
-                        "get_equinoctial_elements_at_epoch: sgp4 call failed",
-                        self.get_key(),
-                        epoch.days_since_1950,
-                    );
-                    if Self::sgp4_log_enabled() {
-                        eprintln!(
-                            "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4 call failed err={}",
-                            thread::current().id(),
-                            self.get_key(),
-                        );
-                    }
-                    let load_result = sgp4::load(self.get_key());
-                    if load_result.is_err() && Self::sgp4_log_enabled() {
-                        eprintln!(
-                            "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4::load failed key={} err={}",
-                            thread::current().id(),
-                            self.get_key(),
-                            get_last_error_message()
-                        );
-                    } else {
-                        Self::log_sgp4(
-                            "get_equinoctial_elements_at_epoch: sgp4::load ok",
-                            self.get_key(),
-                            epoch.days_since_1950,
-                        );
-                    }
-                    match sgp4::get_equinoctial(self.get_key(), epoch.days_since_1950) {
-                        Ok(equinoctial_elements) => Ok(EquinoctialElements::from(equinoctial_elements)),
-                        Err(e) => {
-                            if Self::sgp4_log_enabled() {
-                                eprintln!(
-                                    "[tid={:?}] get_equinoctial_elements_at_epoch: retry sgp4 call failed key={} epoch_ds50={} err={}",
-                                    thread::current().id(),
-                                    self.get_key(),
-                                    epoch.days_since_1950,
-                                    get_last_error_message()
-                                );
-                            }
-                            Err(e)
-                        }
-                    }
-                }
+                Err(e) => Err(e),
             },
             _ => match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
                 Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
-                Err(_) => {
-                    Self::log_sgp4(
-                        "get_equinoctial_elements_at_epoch: full_state failed",
-                        self.get_key(),
-                        epoch.days_since_1950,
-                    );
-                    if Self::sgp4_log_enabled() {
-                        eprintln!(
-                            "[tid={:?}] get_equinoctial_elements_at_epoch: full_state failed err={}",
-                            thread::current().id(),
-                            self.get_key(),
-                        );
-                    }
-                    let load_result = sgp4::load(self.get_key());
-                    if load_result.is_err() && Self::sgp4_log_enabled() {
-                        eprintln!(
-                            "[tid={:?}] get_equinoctial_elements_at_epoch: sgp4::load failed key={} err={}",
-                            thread::current().id(),
-                            self.get_key(),
-                            get_last_error_message()
-                        );
-                    } else {
-                        Self::log_sgp4(
-                            "get_equinoctial_elements_at_epoch: sgp4::load ok",
-                            self.get_key(),
-                            epoch.days_since_1950,
-                        );
-                    }
-                    match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
-                        Ok(all) => Ok(SGP4Output::from(all).get_mean_elements().into()),
-                        Err(_) => {
-                            if Self::sgp4_log_enabled() {
-                                eprintln!(
-                                    "[tid={:?}] get_equinoctial_elements_at_epoch: retry full_state failed key={} epoch_ds50={} err={}",
-                                    thread::current().id(),
-                                    self.get_key(),
-                                    epoch.days_since_1950,
-                                    get_last_error_message()
-                                );
-                            }
-                            Err(get_last_error_message())
-                        }
-                    }
-                }
+                Err(e) => Err(e),
             },
         }
     }
@@ -596,21 +482,7 @@ impl TLE {
         let xs_tle = self.get_xs_tle();
         match tle::load_arrays(xa_tle, &xs_tle) {
             Ok(key) => {
-                if Self::sgp4_log_enabled() {
-                    eprintln!("[tid={:?}] tle::load_arrays key={}", thread::current().id(), key);
-                }
                 let result = sgp4::load(key);
-                if Self::sgp4_log_enabled() {
-                    match result {
-                        Ok(_) => eprintln!("[tid={:?}] sgp4::load ok key={}", thread::current().id(), key),
-                        Err(_) => eprintln!(
-                            "[tid={:?}] sgp4::load err key={} err={}",
-                            thread::current().id(),
-                            key,
-                            get_last_error_message()
-                        ),
-                    }
-                }
                 result?;
                 self.key = Some(Arc::new(SAALKeyHandle { key }));
                 Ok(())
