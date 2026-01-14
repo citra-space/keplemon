@@ -483,10 +483,11 @@ impl BatchLeastSquares {
                     let start = offsets[idx];
                     let end = start + dim;
                     let h_ref = &predicted_measurements.as_slice()[start..end];
-                    let h_p = match {
+                    let h_p_result = {
                         let _guard = SAAL_BLS_LOCK.lock().expect("saal bls lock poisoned");
                         ob.get_predicted_vector(sat)
-                    } {
+                    };
+                    let h_p = match h_p_result {
                         Ok(value) => value,
                         Err(err) => {
                             if trace {

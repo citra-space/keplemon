@@ -6,8 +6,6 @@ use crate::enums::KeplerianType;
 use crate::estimation::{BatchLeastSquares, Observation};
 use pyo3::prelude::*;
 
-pub const DEFAULT_MAX_ITERATIONS: usize = 20;
-
 #[pyclass(name = "BatchLeastSquares")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PyBatchLeastSquares {
@@ -35,9 +33,7 @@ impl PyBatchLeastSquares {
     }
 
     pub fn solve(&mut self) -> PyResult<()> {
-        self.inner
-            .solve()
-            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
+        self.inner.solve().map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
     #[getter]
