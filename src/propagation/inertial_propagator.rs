@@ -48,6 +48,21 @@ impl InertialPropagator {
         }
     }
 
+    fn log_tle_state(context: &str, tle: &TLE, epoch_ds50: f64) {
+        if Self::sgp4_log_enabled() {
+            let state = tle.get_keplerian_state();
+            eprintln!(
+                "[tid={:?}] {} key={} epoch_ds50={} type={:?} elements={:?}",
+                thread::current().id(),
+                context,
+                tle.get_key(),
+                epoch_ds50,
+                state.get_type(),
+                state.elements
+            );
+        }
+    }
+
     fn log_sgp4_load_ok(context: &str, key: i64, epoch_ds50: f64) {
         if Self::sgp4_log_enabled() {
             eprintln!(
@@ -94,6 +109,11 @@ impl InertialPropagator {
                 );
                 let mut result = sgp4::get_position_velocity(tle.get_key(), epoch.days_since_1950);
                 if result.is_err() {
+                    Self::log_tle_state(
+                        "get_cartesian_state_at_epoch: tle state",
+                        tle,
+                        epoch.days_since_1950,
+                    );
                     Self::log_sgp4(
                         "get_cartesian_state_at_epoch: sgp4 call failed",
                         tle.get_key(),
@@ -150,6 +170,11 @@ impl InertialPropagator {
                 );
                 let mut result = sgp4::get_full_state(tle.get_key(), epoch.days_since_1950);
                 if result.is_err() {
+                    Self::log_tle_state(
+                        "get_keplerian_state_at_epoch: tle state",
+                        tle,
+                        epoch.days_since_1950,
+                    );
                     Self::log_sgp4(
                         "get_keplerian_state_at_epoch: sgp4 call failed",
                         tle.get_key(),
