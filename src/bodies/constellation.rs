@@ -42,7 +42,7 @@ impl Constellation {
 
     pub fn get_states_at_epoch(&self, epoch: Epoch) -> HashMap<String, Option<CartesianState>> {
         self.satellites
-            .par_iter()
+            .iter()
             .map(|(satellite_id, sat)| {
                 let state = sat.get_state_at_epoch(epoch);
                 (satellite_id.clone(), state)
@@ -52,7 +52,7 @@ impl Constellation {
 
     pub fn get_plot_data(&self, start: Epoch, end: Epoch, step: TimeSpan) -> HashMap<String, OrbitPlotData> {
         self.satellites
-            .par_iter()
+            .iter()
             .filter_map(|(satellite_id, sat)| {
                 sat.get_plot_data(start, end, step)
                     .map(|plot_data| (satellite_id.clone(), plot_data))
@@ -63,7 +63,7 @@ impl Constellation {
     pub fn step_to_epoch(&mut self, epoch: Epoch) -> Constellation {
         let sat_map = self
             .satellites
-            .par_iter_mut()
+            .iter_mut()
             .filter_map(|(sat_id, sat)| match sat.step_to_epoch(epoch) {
                 Ok(_) => Some((sat_id.clone(), sat.clone())),
                 Err(_) => None,
@@ -83,15 +83,12 @@ impl Constellation {
         min_el: f64,
         min_duration: TimeSpan,
     ) -> HorizonAccessReport {
+        let ephem_dt = min_duration * 0.5;
         // get TEME states for site
-        let site_ephem = site.get_ephemeris(start, end, min_duration);
+        let site_ephem = site.get_ephemeris(start, end, ephem_dt);
 
         // get TEME states for all satellites
-        let sat_ephem_list: Vec<Ephemeris> = self
-            .satellites
-            .par_iter_mut()
-            .filter_map(|(_, sat)| sat.get_ephemeris(start, end, min_duration))
-            .collect();
+        let sat_ephem_list: Vec<Ephemeris> = self.get_ephemeris_list(start, end, ephem_dt);
 
         // create empty report
         let mut report = HorizonAccessReport::new(start, end, min_el, min_duration);
@@ -119,27 +116,31 @@ impl Constellation {
     ) -> CloseApproachReport {
         match sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES)) {
             Some(ephemeris) => {
-                let close_approaches = self
+                let mut candidates = Constellation::new();
+                candidates.satellites = self
                     .satellites
-                    .par_iter_mut()
-                    .filter_map(|(_, other_sat)| {
+                    .iter_mut()
+                    .filter_map(|(id, other_sat)| {
                         if sat.get_apoapsis()? < other_sat.get_periapsis()? - distance_threshold
                             || other_sat.get_apoapsis()? < sat.get_periapsis()? - distance_threshold
                             || sat.get_periapsis()? > other_sat.get_apoapsis()? + distance_threshold
                             || other_sat.get_periapsis()? > sat.get_apoapsis()? + distance_threshold
+                            || sat.id == other_sat.id
                         {
                             return None;
                         }
-                        match other_sat.get_ephemeris(
-                            start,
-                            end,
-                            TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES),
-                        ) {
-                            Some(other_ephemeris) => ephemeris.get_close_approach(&other_ephemeris, distance_threshold),
-
-                            None => None,
-                        }
+                        Some((id.clone(), other_sat.clone()))
                     })
+                    .collect();
+
+                let candidate_ephem = candidates.get_ephemeris_list(
+                    start,
+                    end,
+                    TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES),
+                );
+                let close_approaches = candidate_ephem
+                    .par_iter()
+                    .filter_map(|other_ephem| ephemeris.get_close_approach(other_ephem, distance_threshold))
                     .collect();
                 let mut report = CloseApproachReport::new(start, end, distance_threshold);
                 report.set_close_approaches(close_approaches);
@@ -151,13 +152,8 @@ impl Constellation {
 
     pub fn get_ca_report_vs_many(&mut self, start: Epoch, end: Epoch, distance_threshold: f64) -> CloseApproachReport {
         let mut report = CloseApproachReport::new(start, end, distance_threshold);
-        let ephem_list: Vec<Ephemeris> = self
-            .satellites
-            .par_iter_mut()
-            .filter_map(|(_, sat)| {
-                sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES))
-            })
-            .collect();
+        let ephem_list: Vec<Ephemeris> =
+            self.get_ephemeris_list(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES));
         let num = ephem_list.len();
         let close_approaches = (0..num)
             .into_par_iter()
@@ -197,6 +193,13 @@ impl Constellation {
                 let ephemeris = sat.get_ephemeris(start_epoch, end_epoch, step_size);
                 (satellite_id.clone(), ephemeris)
             })
+            .collect()
+    }
+
+    pub fn get_ephemeris_list(&mut self, start: Epoch, end: Epoch, step: TimeSpan) -> Vec<Ephemeris> {
+        self.satellites
+            .iter_mut()
+            .filter_map(|(_, sat)| sat.get_ephemeris(start, end, step))
             .collect()
     }
 

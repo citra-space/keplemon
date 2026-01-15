@@ -553,7 +553,15 @@ impl TLE {
                 let vel = CartesianVector::from(vel);
                 Ok(CartesianState::new(epoch, pos, vel, ReferenceFrame::TEME))
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                log::error!(
+                    "{} propagating {} TLE to {}",
+                    e,
+                    self.get_name().unwrap_or("UNKNOWN".to_string()),
+                    epoch.to_iso()
+                );
+                Err(e.trim().to_string())
+            }
         }
     }
 

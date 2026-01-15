@@ -1,6 +1,6 @@
 use super::{ObservationAssociation, ObservationResidual};
 use crate::bodies::{Constellation, Observatory, Satellite, Sensor};
-use crate::configs;
+use crate::configs::{self, DEFAULT_ANGULAR_RATE_NOISE};
 use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
 use crate::enums::{AssociationConfidence, TimeSystem};
 use crate::time::Epoch;
@@ -109,6 +109,7 @@ impl Observation {
                 if saal_ob.azimuth_rate.is_some() && saal_ob.elevation_rate.is_some() {
                     right_ascension_rate = Some(xa_topo[astro::XA_TOPO_RADOT]);
                     declination_rate = Some(xa_topo[astro::XA_TOPO_DECDOT]);
+                    angular_rate_noise = Some(DEFAULT_ANGULAR_RATE_NOISE);
                 }
                 if saal_sensor.azimuth_noise.is_some() && saal_sensor.elevation_noise.is_some() {
                     angular_noise = (saal_sensor.azimuth_noise.unwrap().powi(2)

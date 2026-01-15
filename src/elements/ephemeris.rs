@@ -111,6 +111,14 @@ impl Ephemeris {
         let mut last_entry = current_horizon;
         next_epoch += dt;
 
+        log::debug!(
+            "Satellite {} is {} sensor {} horizon at search start {}",
+            sat_id,
+            if always_visible { "above" } else { "below" },
+            sensor_id,
+            start_epoch.to_iso()
+        );
+
         while next_epoch <= end_epoch
             && interpolate_state_with_grid(&sensor_states, next_epoch, &sensor_grid).is_some()
             && interpolate_state_with_grid(&sat_states, next_epoch, &sat_grid).is_some()
@@ -125,13 +133,34 @@ impl Ephemeris {
 
             let new_el_sign = (current_horizon.elements.elevation - min_el).signum();
             if old_el_sign != new_el_sign {
+                log::debug!(
+                    "Satellite {} elevation to sensor {} crossed {:.2} degrees between {} and {}",
+                    sat_id,
+                    sensor_id,
+                    min_el,
+                    next_epoch.to_iso(),
+                    (next_epoch - dt).to_iso()
+                );
                 always_visible = false;
-                let t_guess = estimate_horizon_crossing_epoch(&old_horizon, min_el);
+                let t_guess = estimate_horizon_crossing_epoch(&old_horizon, &current_horizon, min_el);
                 if t_guess > start_epoch
                     && t_guess < end_epoch
-                    && let Some(crossing) =
+                    && let Some(crossing) = {
+                        log::debug!(
+                            "Satellite {} estimated horizon crossing to sensor {} is at {}",
+                            sat_id,
+                            sensor_id,
+                            t_guess.to_iso()
+                        );
                         refine_horizon_crossing(&sensor_states, &sat_states, &sensor_grid, &sat_grid, t_guess, min_el)
+                    }
                 {
+                    log::debug!(
+                        "Satellite {} refined horizon crossing to sensor {} is at {}",
+                        sat_id,
+                        sensor_id,
+                        crossing.epoch.to_iso()
+                    );
                     if crossing.elements.elevation_rate.unwrap() > 0.0 {
                         last_entry = crossing;
                     } else if crossing.epoch - last_entry.epoch >= min_duration {
@@ -155,6 +184,13 @@ impl Ephemeris {
             && always_visible
             && interpolate_state_with_grid(&sat_states, end_epoch, &sat_grid).is_some()
         {
+            log::debug!(
+                "Satellite {} is always above sensor {} horizon between {} and {}",
+                sat_id,
+                sensor_id,
+                start_epoch.to_iso(),
+                end_epoch.to_iso()
+            );
             accesses.push(HorizonAccess::new(
                 sat_id,
                 sensor_id,
@@ -264,12 +300,15 @@ fn estimate_close_approach_epoch(state_1: &CartesianState, state_2: &CartesianSt
     }
 }
 
-fn estimate_horizon_crossing_epoch(state_1: &HorizonState, min_elevation: f64) -> Epoch {
-    let t0 = state_1.epoch;
+fn estimate_horizon_crossing_epoch(state_1: &HorizonState, state_2: &HorizonState, min_elevation: f64) -> Epoch {
+    let y0 = state_1.elements.elevation;
+    let t1 = (state_2.epoch - state_1.epoch).in_seconds();
+    let y1 = state_2.elements.elevation;
+    let m = (y1 - y0) / t1;
 
     // Linear interpolation to find the time when the elevation crosses the minimum
-    let delta_t = (min_elevation - state_1.elements.elevation) / state_1.elements.elevation_rate.unwrap();
-    t0 + TimeSpan::from_seconds(delta_t)
+    let delta_t = (min_elevation - y0) / m;
+    state_1.epoch + TimeSpan::from_seconds(delta_t)
 }
 
 fn refine_horizon_crossing(

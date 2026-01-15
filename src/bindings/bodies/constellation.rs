@@ -80,6 +80,7 @@ impl PyConstellation {
 
     pub fn get_horizon_access_report(
         &mut self,
+        py: Python<'_>,
         site: &PyObservatory,
         start: PyEpoch,
         end: PyEpoch,
@@ -89,13 +90,15 @@ impl PyConstellation {
         let min_duration: TimeSpan = min_duration.into();
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        PyHorizonAccessReport::from(self.inner.get_horizon_access_report(
-            site.inner(),
-            start,
-            end,
-            min_el,
-            min_duration,
-        ))
+        py.allow_threads(|| {
+            PyHorizonAccessReport::from(self.inner.get_horizon_access_report(
+                site.inner(),
+                start,
+                end,
+                min_el,
+                min_duration,
+            ))
+        })
     }
 
     pub fn get_ca_report_vs_one(
