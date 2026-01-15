@@ -128,6 +128,7 @@ impl PyObservatory {
 
     pub fn get_field_of_view_report(
         &self,
+        py: Python<'_>,
         epoch: PyEpoch,
         sensor_direction: PyTopocentricElements,
         angular_threshold: f64,
@@ -136,13 +137,15 @@ impl PyObservatory {
     ) -> PyFieldOfViewReport {
         let epoch: Epoch = epoch.into();
         let reference_frame: ReferenceFrame = reference_frame.into();
-        PyFieldOfViewReport::from(self.inner.get_field_of_view_report(
-            epoch,
-            sensor_direction.into(),
-            angular_threshold,
-            sats.into(),
-            reference_frame,
-        ))
+        py.allow_threads(|| {
+            PyFieldOfViewReport::from(self.inner.get_field_of_view_report(
+                epoch,
+                sensor_direction.into(),
+                angular_threshold,
+                sats.into(),
+                reference_frame,
+            ))
+        })
     }
 
     pub fn get_state_at_epoch(&self, epoch: PyEpoch) -> PyCartesianState {

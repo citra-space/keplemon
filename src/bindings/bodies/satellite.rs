@@ -232,6 +232,7 @@ impl PySatellite {
 
     pub fn get_observatory_access_report(
         &mut self,
+        py: Python<'_>,
         observatories: Vec<PyObservatory>,
         start: PyEpoch,
         end: PyEpoch,
@@ -242,8 +243,10 @@ impl PySatellite {
         let observatories: Vec<Observatory> = observatories.into_iter().map(Observatory::from).collect();
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        self.inner
-            .get_observatory_access_report(observatories, start, end, min_el, min_duration)
-            .map(PyHorizonAccessReport::from)
+        py.allow_threads(|| {
+            self.inner
+                .get_observatory_access_report(observatories, start, end, min_el, min_duration)
+                .map(PyHorizonAccessReport::from)
+        })
     }
 }

@@ -150,12 +150,18 @@ impl PyObservation {
         self.inner.observed_satellite_id = observed_satellite_id;
     }
 
-    pub fn get_associations(&self, constellation: &PyConstellation) -> Vec<PyObservationAssociation> {
-        self.inner
-            .get_associations(constellation.inner())
-            .into_iter()
-            .map(PyObservationAssociation::from)
-            .collect()
+    pub fn get_associations(
+        &self,
+        py: Python<'_>,
+        constellation: &PyConstellation,
+    ) -> Vec<PyObservationAssociation> {
+        py.allow_threads(|| {
+            self.inner
+                .get_associations(constellation.inner())
+                .into_iter()
+                .map(PyObservationAssociation::from)
+                .collect()
+        })
     }
 
     pub fn get_residual(&self, satellite: &PySatellite) -> Option<PyObservationResidual> {

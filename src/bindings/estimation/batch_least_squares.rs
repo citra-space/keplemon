@@ -32,8 +32,9 @@ impl PyBatchLeastSquares {
         BatchLeastSquares::new(obs, a_priori.inner()).into()
     }
 
-    pub fn solve(&mut self) -> PyResult<()> {
-        self.inner.solve().map_err(pyo3::exceptions::PyRuntimeError::new_err)
+    pub fn solve(&mut self, py: Python<'_>) -> PyResult<()> {
+        py.allow_threads(|| self.inner.solve())
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
     #[getter]
