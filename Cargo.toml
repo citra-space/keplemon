@@ -1,6 +1,6 @@
 [package]
 name = "keplemon"
-version = "3.1.1"
+version = "3.1.2"
 edition = "2024"
 build = "build.rs"
 description = "Expanded functionality for the Standardized Astrodynamics Algorithms Library (SAAL)"
@@ -33,6 +33,7 @@ log = "0.4"
 nalgebra = "0.33.2"
 rayon = "1.10.0"
 uuid = { version = "1.18.0", features = ["v4"] }
+libc = "0.2.180"
 
 [build-dependencies]
 saal = "1.3.3"
@@ -56,6 +57,10 @@ harness = false
 
 [[bench]]
 name = "constellation"
+harness = false
+
+[[bench]]
+name = "memory"
 harness = false
 
 [features]

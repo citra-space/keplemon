@@ -1,4 +1,4 @@
-use super::{CartesianState, EquinoctialElements, KeplerianElements, KeplerianState};
+use super::{CartesianState, CartesianVector, EquinoctialElements, KeplerianElements, KeplerianState};
 use crate::bodies::Satellite;
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
@@ -99,6 +99,11 @@ impl TLE {
             Ok(_) => Ok(tle),
             Err(e) => Err(e),
         }
+    }
+    pub fn reload(&mut self) -> Result<(), String> {
+        sgp4::remove(self.get_key())?;
+        sgp4::load(self.get_key())?;
+        Ok(())
     }
 
     pub fn get_key(&self) -> i64 {
@@ -527,6 +532,29 @@ impl TLE {
 
     pub fn get_keplerian_state(&self) -> KeplerianState {
         self.keplerian_state
+    }
+
+    pub fn get_keplerian_state_at_epoch(&self, epoch: Epoch) -> Result<KeplerianState, String> {
+        match sgp4::get_full_state(self.get_key(), epoch.days_since_1950) {
+            Ok(all) => Ok(KeplerianState::new(
+                epoch,
+                SGP4Output::from(all).get_mean_elements(),
+                ReferenceFrame::TEME,
+                self.get_type(),
+            )),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_cartesian_state_at_epoch(&self, epoch: Epoch) -> Result<CartesianState, String> {
+        match sgp4::get_position_velocity(self.get_key(), epoch.days_since_1950) {
+            Ok((pos, vel)) => {
+                let pos = CartesianVector::from(pos);
+                let vel = CartesianVector::from(vel);
+                Ok(CartesianState::new(epoch, pos, vel, ReferenceFrame::TEME))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub fn from_lines(line_1: &str, line_2: &str, line_3: Option<&str>) -> Result<TLE, String> {
