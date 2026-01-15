@@ -160,6 +160,7 @@ impl Satellite {
                 }
                 self.ephemeris_cache = Some(ephemeris.clone());
                 self.ephemeris_id = Some(construct_ephemeris_id(start_epoch, end_epoch, step));
+                self.inertial_propagator.as_mut().unwrap().reload().ok()?;
                 Some(ephemeris)
             }
             None => None,

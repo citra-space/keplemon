@@ -1,14 +1,14 @@
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::vec;
-use uuid::Uuid;
-
 use super::{ObservationAssociation, ObservationResidual};
 use crate::bodies::{Constellation, Observatory, Satellite, Sensor};
 use crate::configs;
 use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
 use crate::enums::{AssociationConfidence, TimeSystem};
 use crate::time::Epoch;
+use log;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use saal::{astro, get_last_error_message, obs, satellite, sensor};
+use std::vec;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Observation {
@@ -33,15 +33,26 @@ impl Observation {
 
         let mut observations: Vec<Observation> = Vec::new();
         for saal_ob in saal_obs {
-            if !sensor_map.contains_key(&saal_ob.sensor_number) || saal_ob.position.is_none() {
+            if !sensor_map.contains_key(&saal_ob.sensor_number) {
+                log::warn!("Skipping observation from tracked sensor {}", saal_ob.sensor_number);
                 continue;
+            } else if saal_ob.position.is_none() {
+                log::warn!(
+                    "Skipping observation from sensor {} with missing position",
+                    saal_ob.sensor_number
+                );
+                continue;
+            } else {
+                log::debug!(
+                    "Processing type {} observation from sensor {}",
+                    saal_ob.observation_type,
+                    saal_ob.sensor_number
+                );
             }
+
+            let lla = astro::efg_to_lla(&saal_ob.position.unwrap())?;
             let saal_sensor = sensor_map.get(&saal_ob.sensor_number).unwrap();
-            let observatory = Observatory::new(
-                saal_sensor.latitude.unwrap(),
-                saal_sensor.longitude.unwrap(),
-                saal_sensor.altitude.unwrap(),
-            );
+            let observatory = Observatory::new(lla[0], lla[1], lla[2]);
 
             let epoch = Epoch::from_days_since_1950(saal_ob.epoch, TimeSystem::UTC);
             let range: Option<f64> = saal_ob.range;
@@ -56,15 +67,33 @@ impl Observation {
             let mut angular_rate_noise: Option<f64> = None;
 
             if saal_ob.right_ascension.is_some() && saal_ob.declination.is_some() {
-                (right_ascension, declination) = astro::topo_meme_to_teme(
-                    saal_ob.year_of_equinox.unwrap(),
-                    saal_ob.epoch,
-                    right_ascension,
-                    declination,
-                );
+                if saal_ob.year_of_equinox.unwrap() > 0 {
+                    (right_ascension, declination) = astro::topo_meme_to_teme(
+                        saal_ob.year_of_equinox.unwrap(),
+                        saal_ob.epoch,
+                        saal_ob.right_ascension.unwrap(),
+                        saal_ob.declination.unwrap(),
+                    );
+                } else {
+                    let mut out_ra = 0.0;
+                    let mut out_dec = 0.0;
+                    unsafe {
+                        astro::RotRADecl(
+                            106,
+                            2,
+                            epoch.days_since_1950,
+                            saal_ob.right_ascension.unwrap(),
+                            saal_ob.declination.unwrap(),
+                            epoch.days_since_1950,
+                            &mut out_ra,
+                            &mut out_dec,
+                        );
+                    }
+                    right_ascension = out_ra;
+                    declination = out_dec;
+                }
             } else if saal_ob.azimuth.is_some() && saal_ob.elevation.is_some() {
-                let lst = epoch.get_gst() + saal_sensor.longitude.unwrap().to_radians();
-                let lat = saal_sensor.latitude.unwrap();
+                let lst = epoch.get_gst() + lla[1].to_radians();
                 let mut xa_rae = [0.0; astro::XA_RAE_SIZE];
                 let sensor_teme: [f64; 3] = observatory.get_state_at_epoch(epoch).position.into();
                 xa_rae[astro::XA_RAE_AZ] = saal_ob.azimuth.unwrap();
@@ -73,8 +102,8 @@ impl Observation {
                 xa_rae[astro::XA_RAE_RANGEDOT] = saal_ob.range_rate.unwrap_or(0.0);
                 xa_rae[astro::XA_RAE_AZDOT] = saal_ob.azimuth_rate.unwrap_or(0.0);
                 xa_rae[astro::XA_RAE_ELDOT] = saal_ob.elevation_rate.unwrap_or(0.0);
-                let teme_ob = astro::horizon_to_teme(lst, lat, &sensor_teme, &xa_rae).unwrap();
-                let xa_topo = astro::teme_to_topo(lst, lat, &sensor_teme, &teme_ob).unwrap();
+                let teme_ob = astro::horizon_to_teme(lst, lla[0], &sensor_teme, &xa_rae).unwrap();
+                let xa_topo = astro::teme_to_topo(lst, lla[0], &sensor_teme, &teme_ob).unwrap();
                 right_ascension = xa_topo[astro::XA_TOPO_RA];
                 declination = xa_topo[astro::XA_TOPO_DEC];
                 if saal_ob.azimuth_rate.is_some() && saal_ob.elevation_rate.is_some() {
@@ -96,22 +125,38 @@ impl Observation {
             }
             let mut ob_sensor = Sensor::new(angular_noise);
             let mut topo = TopocentricElements::new(right_ascension, declination);
+            log::debug!(
+                "Set right ascension to {:.6} ± {:.6} deg",
+                right_ascension,
+                angular_noise
+            );
+            log::debug!("Set declination to {:.6} ± {:.6} deg", declination, angular_noise);
 
             ob_sensor.id = saal_sensor.number.to_string();
             ob_sensor.name = saal_sensor.description.clone();
 
-            if range.is_some() && range_noise.is_some() {
-                ob_sensor.range_noise = range_noise;
-                topo.range = range;
+            if let (Some(r), Some(rn)) = (range, range_noise) {
+                log::debug!("Set range to {:.3} ± {:.3} km", r, rn);
+                ob_sensor.range_noise = Some(rn);
+                topo.range = Some(r);
             }
-            if range_rate.is_some() && range_rate_noise.is_some() {
-                ob_sensor.range_rate_noise = range_rate_noise;
-                topo.range_rate = range_rate;
+            if let (Some(rr), Some(rrn)) = (range_rate, range_rate_noise) {
+                log::debug!("Set range rate to {:.3} ± {:.3} km/s", rr, rrn);
+                ob_sensor.range_rate_noise = Some(rrn);
+                topo.range_rate = Some(rr);
             }
-            if (right_ascension_rate.is_some() || declination_rate.is_some()) && angular_rate_noise.is_some() {
+            if let Some(arn) = angular_rate_noise
+                && (right_ascension_rate.is_some() || declination_rate.is_some())
+            {
+                log::debug!(
+                    "Set right ascension rate to {:?} ± {:.3} deg/s",
+                    right_ascension_rate,
+                    arn
+                );
+                log::debug!("Set declination rate to {:?} ± {:.3} deg/s", declination_rate, arn);
                 topo.right_ascension_rate = right_ascension_rate;
                 topo.declination_rate = declination_rate;
-                ob_sensor.angular_rate_noise = angular_rate_noise;
+                ob_sensor.angular_rate_noise = Some(arn);
             }
 
             let mut observation =

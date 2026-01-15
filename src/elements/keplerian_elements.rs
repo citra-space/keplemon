@@ -54,6 +54,19 @@ impl From<[f64; astro::XA_KEP_SIZE]> for KeplerianElements {
     }
 }
 
+impl From<&[f64; astro::XA_KEP_SIZE]> for KeplerianElements {
+    fn from(xa_kep: &[f64; astro::XA_KEP_SIZE]) -> Self {
+        Self {
+            semi_major_axis: xa_kep[astro::XA_KEP_A],
+            eccentricity: xa_kep[astro::XA_KEP_E],
+            inclination: xa_kep[astro::XA_KEP_INCLI],
+            raan: xa_kep[astro::XA_KEP_NODE],
+            argument_of_perigee: xa_kep[astro::XA_KEP_OMEGA],
+            mean_anomaly: xa_kep[astro::XA_KEP_MA],
+        }
+    }
+}
+
 impl IndexMut<usize> for KeplerianElements {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         match index {
