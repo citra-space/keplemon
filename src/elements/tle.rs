@@ -554,7 +554,7 @@ impl TLE {
                 Ok(CartesianState::new(epoch, pos, vel, ReferenceFrame::TEME))
             }
             Err(e) => {
-                log::error!(
+                log::debug!(
                     "{} propagating {} TLE to {}",
                     e,
                     self.get_name().unwrap_or("UNKNOWN".to_string()),

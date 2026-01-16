@@ -8,9 +8,17 @@ pub struct TimeSpan {
 
 impl PartialOrd for TimeSpan {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.days.partial_cmp(&other.days)
+        Some(self.cmp(other))
     }
 }
+
+impl Ord for TimeSpan {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.days.partial_cmp(&other.days).unwrap()
+    }
+}
+
+impl Eq for TimeSpan {}
 
 impl TimeSpan {
     pub fn new(days: f64) -> Self {
@@ -71,5 +79,49 @@ impl TimeSpan {
 
     pub fn in_hours(&self) -> f64 {
         self.days * DAYS_TO_HOURS
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TimeSpan;
+
+    #[test]
+    fn test_greater_than() {
+        let ts1 = TimeSpan::from_days(2.0);
+        let ts2 = TimeSpan::from_days(1.0);
+        assert!(ts1 > ts2);
+    }
+
+    #[test]
+    fn test_less_than() {
+        let ts1 = TimeSpan::from_days(1.0);
+        let ts2 = TimeSpan::from_days(2.0);
+        assert!(ts1 < ts2);
+    }
+
+    #[test]
+    fn test_equal() {
+        let ts1 = TimeSpan::from_days(1.0);
+        let ts2 = TimeSpan::from_days(1.0);
+        assert_eq!(ts1, ts2);
+    }
+
+    #[test]
+    fn test_less_than_or_equal() {
+        let ts1 = TimeSpan::from_days(1.0);
+        let ts2 = TimeSpan::from_days(2.0);
+        let ts3 = TimeSpan::from_days(1.0);
+        assert!(ts1 <= ts2);
+        assert!(ts1 <= ts3);
+    }
+
+    #[test]
+    fn test_greater_than_or_equal() {
+        let ts1 = TimeSpan::from_days(2.0);
+        let ts2 = TimeSpan::from_days(1.0);
+        let ts3 = TimeSpan::from_days(2.0);
+        assert!(ts1 >= ts2);
+        assert!(ts1 >= ts3);
     }
 }

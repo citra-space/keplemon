@@ -234,7 +234,7 @@ impl Constellation {
 
 #[cfg(test)]
 mod tests {
-    use super::Constellation;
+    use super::{Constellation, Observatory};
     use crate::catalogs::TLECatalog;
     use crate::enums::TimeSystem;
     use crate::time::{Epoch, TimeSpan};
@@ -284,6 +284,20 @@ mod tests {
             celestrak_tle_sats.name.as_deref(),
             Some(celestrak_tle_path.to_str().unwrap())
         );
+    }
+
+    #[test]
+    fn test_get_horizon_access_report() {
+        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/2025-04-15-celestrak.3le");
+        let mut sats = Constellation::from(load_catalog(path.to_str().unwrap()));
+        let observatory = Observatory::new(1.0, 2.0, 0.003);
+
+        let start = Epoch::from_iso("2025-04-15T00:00:00.000000Z", TimeSystem::UTC);
+        let end = start + TimeSpan::from_minutes(60.0);
+        let report = sats.get_horizon_access_report(&observatory, start, end, 10.0, TimeSpan::from_minutes(10.0));
+
+        assert_eq!(report.get_accesses().len(), 365);
     }
 
     #[test]
