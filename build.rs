@@ -2,6 +2,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn target_dir(out_dir: &Path) -> PathBuf {
     out_dir
@@ -14,6 +15,11 @@ fn target_dir(out_dir: &Path) -> PathBuf {
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
+    // CUDA kernel compilation
+    #[cfg(feature = "cuda")]
+    compile_cuda_kernels();
+
+    // Python wheel build
     if env::var("CARGO_FEATURE_PYTHON").is_err() {
         return;
     }
@@ -55,4 +61,74 @@ fn main() {
                 .unwrap_or_else(|_| panic!("Failed to copy stub {} to {}", path.display(), dest_path.display()));
         }
     }
+}
+
+#[cfg(feature = "cuda")]
+fn compile_cuda_kernels() {
+    println!("cargo:rerun-if-changed=kernels/sgp4_init.cu");
+    println!("cargo:rerun-if-changed=kernels/sgp4_batch.cu");
+    println!("cargo:rerun-if-changed=kernels/sgp4_types.cuh");
+    println!("cargo:rerun-if-changed=kernels/sgp4_constants.cuh");
+    
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
+    
+    // Find nvcc - check CUDA_PATH or common locations
+    let cuda_path = env::var("CUDA_PATH")
+        .or_else(|_| env::var("CUDA_HOME"))
+        .unwrap_or_else(|_| "/usr/local/cuda".to_string());
+    
+    let nvcc = PathBuf::from(&cuda_path).join("bin").join("nvcc");
+    
+    // Check if nvcc exists
+    if !nvcc.exists() && !Command::new("nvcc").arg("--version").output().is_ok() {
+        panic!(
+            "nvcc not found. Please install CUDA Toolkit or set CUDA_PATH environment variable. \
+             Looked in: {}", nvcc.display()
+        );
+    }
+    
+    let nvcc_cmd = if nvcc.exists() {
+        nvcc.to_str().unwrap()
+    } else {
+        "nvcc"
+    };
+    
+    // Compile initialization kernel
+    compile_kernel(
+        nvcc_cmd,
+        "kernels/sgp4_init.cu",
+        &format!("{}/sgp4_init.ptx", out_dir),
+    );
+    
+    // Compile batch propagation kernel
+    compile_kernel(
+        nvcc_cmd,
+        "kernels/sgp4_batch.cu",
+        &format!("{}/sgp4_batch.ptx", out_dir),
+    );
+    
+    println!("cargo:info=CUDA kernels compiled successfully");
+}
+
+#[cfg(feature = "cuda")]
+fn compile_kernel(nvcc: &str, input: &str, output: &str) {
+    let status = Command::new(nvcc)
+        .args(&[
+            "-ptx",                    // Compile to PTX
+            "-O3",                     // Optimization level 3
+            "--use_fast_math",         // Use fast math operations
+            "-arch=sm_50",             // Target compute capability 5.0+ (Maxwell and newer)
+            "--std=c++14",             // C++14 standard
+            "-I", "kernels",           // Include directory for headers
+            "-o", output,              // Output PTX file
+            input,                     // Input CUDA source
+        ])
+        .status()
+        .unwrap_or_else(|e| panic!("Failed to execute nvcc: {}", e));
+    
+    if !status.success() {
+        panic!("nvcc compilation failed for {}", input);
+    }
+    
+    println!("cargo:info=Compiled {} to {}", input, output);
 }
