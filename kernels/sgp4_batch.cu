@@ -3,6 +3,7 @@
 
 #include "sgp4_types.cuh"
 #include "sgp4_constants.cuh"
+#include "sgp4_deepspace.cuh"
 #include <stdio.h>
 
 // Debug output disabled for production performance
@@ -14,7 +15,7 @@
 
 // Device function for single satellite propagation
 __device__ void sgp4_propagate_single(
-    const Sgp4Params& p,
+    Sgp4Params& p,  // Non-const since deep space updates atime/xli/xni
     double tsince,  // minutes since TLE epoch
     Sgp4State& state,
     int sat_idx,    // for debug output
@@ -40,6 +41,7 @@ __device__ void sgp4_propagate_single(
         printf("a:           %.10f ER\n", p.a);
         printf("bstar:       %.10e\n", p.bstar);
         printf("is_deep:     %d\n", p.is_deep_space);
+        printf("irez:        %d\n", p.irez);
         printf("eta:         %.10f\n", p.eta);
         printf("mdot:        %.10f rad/min\n", p.mdot);
         printf("argpdot:     %.10e rad/min\n", p.argpdot);
@@ -73,7 +75,6 @@ __device__ void sgp4_propagate_single(
     double mm = xmdf;
     
     double t2 = tsince * tsince;
-    double xnode = nodedf + p.xnodcf * t2;
     double tempa = 1.0 - p.cc1 * tsince;
     double tempe = p.bstar * p.cc4 * tsince;
     double templ = p.t2cof * t2;
@@ -87,6 +88,11 @@ __device__ void sgp4_propagate_single(
         printf("tempe:   %.10e\n", tempe);
         printf("templ:   %.10e\n", templ);
     }
+    
+    double nm = p.no_unkozai;
+    double em = p.ecco;
+    double inclm = p.inclo;
+    double nodem = nodedf;
     
     if (!p.is_deep_space) {
         // Near-earth satellite
@@ -108,11 +114,30 @@ __device__ void sgp4_propagate_single(
             printf("mm:      %.10f rad\n", mm);
             printf("argpm:   %.10f rad\n", argpm);
         }
+    } else {
+        // ═══════════════════════════════════════════════════════════════
+        // DEEP SPACE SECULAR EFFECTS
+        // ═══════════════════════════════════════════════════════════════
+        
+        // Initialize working variables
+        mm = xmdf;
+        argpm = argpdf;
+        nodem = nodedf;
+        double tc = tsince;
+        
+        // Apply deep space secular contributions (DSPACE)
+        dspace(tsince, tc, em, argpm, inclm, mm, nm, nodem, p);
+        
+        if (debug) {
+            printf("\n--- Deep Space Secular ---\n");
+            printf("nm (ds):    %.10f rad/min\n", nm);
+            printf("em (ds):    %.10f\n", em);
+            printf("inclm (ds): %.10f rad\n", inclm);
+            printf("mm (ds):    %.10f rad\n", mm);
+            printf("argpm (ds): %.10f rad\n", argpm);
+            printf("nodem (ds): %.10f rad\n", nodem);
+        }
     }
-    
-    double nm = p.no_unkozai;
-    double em = p.ecco;
-    double inclm = p.inclo;
     
     // Update for secular effects
     double am = pow(XKE / nm, X2O3) * tempa * tempa;
@@ -136,10 +161,28 @@ __device__ void sgp4_propagate_single(
     
     mm = mm + nm * templ;
     
+    // For deep space, apply lunar-solar periodics (DPPER)
+    double xnode = nodem;
+    if (p.is_deep_space) {
+        dpper(p.inclo, false, tsince, em, inclm, nodem, argpm, mm, p);
+        xnode = nodem;
+        
+        if (debug) {
+            printf("\n--- Deep Space Periodics ---\n");
+            printf("em (pp):    %.10f\n", em);
+            printf("inclm (pp): %.10f rad\n", inclm);
+            printf("nodem (pp): %.10f rad\n", nodem);
+            printf("argpm (pp): %.10f rad\n", argpm);
+            printf("mm (pp):    %.10f rad\n", mm);
+        }
+    }
+    
     // Normalize angles
     xnode = fmod(xnode, TWOPI);
     argpm = fmod(argpm, TWOPI);
     mm = fmod(mm, TWOPI);
+    if (xnode < 0.0) xnode += TWOPI;
+    if (mm < 0.0) mm += TWOPI;
     
     if (debug) {
         printf("mm (final): %.10f rad\n", mm);
@@ -323,7 +366,9 @@ extern "C" __global__ void sgp4_propagate_kernel(
     
     if (sat_idx >= n_sats || time_idx >= n_times) return;
     
-    const Sgp4Params& p = params[sat_idx];
+    // Create a local copy of params for this thread
+    // Deep space propagation modifies atime/xli/xni, so each thread needs its own copy
+    Sgp4Params p = params[sat_idx];
     
     // Compute tsince (minutes since this satellite's TLE epoch)
     double jd = jd_times[time_idx];

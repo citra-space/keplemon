@@ -77,8 +77,77 @@ pub struct Sgp4ParamsGpu {
     pub aycof: f64,
     pub delmo_const: f64,
     
+    // ═══════════════════════════════════════════════════════════════════
+    // DEEP SPACE PARAMETERS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    // Greenwich sidereal time at epoch
+    pub gsto: f64,
+    
+    // Lunar-solar terms (from DSCOM)
+    pub e3: f64,
+    pub ee2: f64,
+    pub peo: f64,
+    pub pgho: f64,
+    pub pho: f64,
+    pub pinco: f64,
+    pub plo: f64,
+    pub se2: f64,
+    pub se3: f64,
+    pub sgh2: f64,
+    pub sgh3: f64,
+    pub sgh4: f64,
+    pub sh2: f64,
+    pub sh3: f64,
+    pub si2: f64,
+    pub si3: f64,
+    pub sl2: f64,
+    pub sl3: f64,
+    pub sl4: f64,
+    pub xgh2: f64,
+    pub xgh3: f64,
+    pub xgh4: f64,
+    pub xh2: f64,
+    pub xh3: f64,
+    pub xi2: f64,
+    pub xi3: f64,
+    pub xl2: f64,
+    pub xl3: f64,
+    pub xl4: f64,
+    pub zmol: f64,
+    pub zmos: f64,
+    
+    // Secular rates (from DSINIT)
+    pub dedt: f64,
+    pub didt: f64,
+    pub dmdt: f64,
+    pub dnodt: f64,
+    pub domdt: f64,
+    
+    // Resonance terms (from DSINIT)
+    pub d2201: f64,
+    pub d2211: f64,
+    pub d3210: f64,
+    pub d3222: f64,
+    pub d4410: f64,
+    pub d4422: f64,
+    pub d5220: f64,
+    pub d5232: f64,
+    pub d5421: f64,
+    pub d5433: f64,
+    pub del1: f64,
+    pub del2: f64,
+    pub del3: f64,
+    pub xfact: f64,
+    pub xlamo: f64,
+    pub xli: f64,
+    pub xni: f64,
+    pub atime: f64,
+    
+    // Flags
     pub is_deep_space: i32,
-    pub _padding: [i32; 3],
+    pub irez: i32,          // 0=none, 1=one-day, 2=half-day resonance
+    pub _padding: [i32; 2], // Maintain 8-byte alignment
 }
 
 unsafe impl cudarc::driver::DeviceRepr for Sgp4ParamsGpu {}
@@ -229,18 +298,10 @@ impl CudaSgp4Propagator {
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
         
-        // Check if we can reuse cached times (same length and values)
-        let times_gpu = if self.cached_n_times == n_times && self.cached_times_gpu.is_some() {
-            // Reuse cached times - zero CPU→GPU transfer for times
-            self.cached_times_gpu.as_ref().unwrap()
-        } else {
-            // Upload Julian Date times to GPU and cache them
-            let new_times_gpu = dev.htod_sync_copy(jd_times)
-                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            self.cached_times_gpu = Some(new_times_gpu);
-            self.cached_n_times = n_times;
-            self.cached_times_gpu.as_ref().unwrap()
-        };
+        // Always upload times to GPU (caching requires value comparison which is expensive)
+        // The time array is typically small, so the overhead is minimal
+        let times_gpu = dev.htod_sync_copy(jd_times)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
         
         // Reuse output buffer if same size, otherwise allocate new
         if self.cached_n_results != n_results || self.cached_states_gpu.is_none() {
@@ -268,7 +329,7 @@ impl CudaSgp4Propagator {
         unsafe {
             self.propagate_kernel.clone().launch(
                 cfg, 
-                (params_gpu, times_gpu, states_gpu, self.n_satellites as i32, n_times as i32)
+                (params_gpu, &times_gpu, states_gpu, self.n_satellites as i32, n_times as i32)
             ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
         

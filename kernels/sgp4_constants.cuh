@@ -33,4 +33,39 @@
 // Thresholds
 #define DEEP_SPACE_PERIOD_MIN 225.0    // minutes (period above which deep space is used)
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DEEP SPACE CONSTANTS (Lunar/Solar perturbations)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Moon constants
+#define ZNS 1.19459e-5                 // Mean motion of sun (rad/min)
+#define C1SS 2.9864797e-6              // Solar secular coefficient
+#define ZES 0.01675                    // Solar eccentricity
+#define ZNL 1.5835218e-4               // Mean motion of moon (rad/min)
+#define C1L 0.00015835218              // Lunar secular coefficient
+#define ZEL 0.05490                    // Lunar eccentricity
+
+// Resonance constants
+#define ROOT22 1.7891679e-6
+#define ROOT32 3.7393792e-7
+#define ROOT44 7.3636953e-9
+#define ROOT52 1.1428639e-7
+#define ROOT54 2.1765803e-9
+#define G22 5.7686396
+#define G32 0.95240898
+#define G44 1.8014998
+#define G52 1.0508330
+#define G54 4.4108898
+#define Q22 1.7891679e-6
+#define Q31 2.1460748e-6
+#define Q33 2.2123015e-7
+
+// Thresholds for resonance
+#define RPTIM 4.37526908801129966e-3   // Solar rate (rad/min)
+#define STEP 720.0                     // Step size for resonance integration
+#define STEP2 259200.0                 // 180 days in minutes
+
+// Deep space inclination limits
+#define INCLM_LIM 5.2359877e-2         // ~3 degrees in radians
+
 #endif // SGP4_CONSTANTS_CUH
