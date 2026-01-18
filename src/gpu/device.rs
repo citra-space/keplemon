@@ -67,8 +67,10 @@ pub enum CudaError {
     DeviceInitialization(String),
     KernelLoad(String),
     MemoryAllocation(String),
+    AllocationFailed(String),
     KernelLaunch(String),
     Synchronization(String),
+    NotInitialized,
 }
 
 impl std::fmt::Display for CudaError {
@@ -77,8 +79,10 @@ impl std::fmt::Display for CudaError {
             CudaError::DeviceInitialization(msg) => write!(f, "CUDA device initialization failed: {}", msg),
             CudaError::KernelLoad(msg) => write!(f, "Kernel load failed: {}", msg),
             CudaError::MemoryAllocation(msg) => write!(f, "GPU memory allocation failed: {}", msg),
+            CudaError::AllocationFailed(msg) => write!(f, "GPU memory allocation failed: {}", msg),
             CudaError::KernelLaunch(msg) => write!(f, "Kernel launch failed: {}", msg),
             CudaError::Synchronization(msg) => write!(f, "Device synchronization failed: {}", msg),
+            CudaError::NotInitialized => write!(f, "Propagator not initialized with satellite data"),
         }
     }
 }

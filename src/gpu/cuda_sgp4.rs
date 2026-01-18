@@ -1,12 +1,14 @@
 //! CUDA SGP4 batch propagator implementation
 
 use super::device::{CudaDevice, CudaError};
+use cudarc::driver::{CudaSlice, LaunchAsync, LaunchConfig};
 
-// Note: For now, this module provides the structure for CUDA SGP4.
-// Full integration with keplemon TLE types will be added in subsequent iterations.
+// Include the PTX at compile time
+const SGP4_INIT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/sgp4_init.ptx"));
+const SGP4_BATCH_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/sgp4_batch.ptx"));
 
 /// Raw TLE data that matches CUDA structure
-#[repr(C, align(16))]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct TleDataGpu {
     pub epoch_jd: f64,
@@ -21,9 +23,71 @@ pub struct TleDataGpu {
     pub nddot: f64,
 }
 
+// SAFETY: TleDataGpu is #[repr(C)] with only f64 fields, valid for GPU transfer
+unsafe impl cudarc::driver::DeviceRepr for TleDataGpu {}
+
+/// SGP4 initialized parameters (matches CUDA Sgp4Params structure)
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Sgp4ParamsGpu {
+    // TLE epoch and elements
+    pub epoch_jd: f64,
+    pub inclo: f64,
+    pub nodeo: f64,
+    pub ecco: f64,
+    pub argpo: f64,
+    pub mo: f64,
+    pub no_kozai: f64,
+    pub bstar: f64,
+    pub ndot: f64,
+    pub nddot: f64,
+    
+    // Derived constants
+    pub a: f64,
+    pub alta: f64,
+    pub altp: f64,
+    pub con41: f64,
+    pub con42: f64,
+    pub cosio: f64,
+    pub cosio2: f64,
+    pub cosio4: f64,
+    pub cc1: f64,
+    pub cc4: f64,
+    pub cc5: f64,
+    pub d2: f64,
+    pub d3: f64,
+    pub d4: f64,
+    pub delmo: f64,
+    pub eta: f64,
+    pub argpdot: f64,
+    pub omgcof: f64,
+    pub sinmao: f64,
+    pub t2cof: f64,
+    pub t3cof: f64,
+    pub t4cof: f64,
+    pub t5cof: f64,
+    pub x1mth2: f64,
+    pub x7thm1: f64,
+    pub xlcof: f64,
+    pub xmcof: f64,
+    pub xnodcf: f64,
+    pub nodedot: f64,
+    pub mdot: f64,
+    pub no_unkozai: f64,
+    pub aycof: f64,
+    pub delmo_const: f64,
+    
+    pub is_deep_space: i32,
+    pub _padding: [i32; 3],
+}
+
+unsafe impl cudarc::driver::DeviceRepr for Sgp4ParamsGpu {}
+// SAFETY: Sgp4ParamsGpu is composed entirely of f64, i32, and arrays thereof, all valid as zero
+unsafe impl cudarc::driver::ValidAsZeroBits for Sgp4ParamsGpu {}
+
 /// Output state (position and velocity)
-#[repr(C, align(16))]
-#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Sgp4StateGpu {
     pub x: f64,
     pub y: f64,
@@ -32,19 +96,45 @@ pub struct Sgp4StateGpu {
     pub vy: f64,
     pub vz: f64,
     pub error_code: i32,
-    pub _padding: f64,
+    pub _padding: i32,
 }
+
+unsafe impl cudarc::driver::DeviceRepr for Sgp4StateGpu {}
+// SAFETY: Sgp4StateGpu is composed entirely of f64 and i32, all valid as zero
+unsafe impl cudarc::driver::ValidAsZeroBits for Sgp4StateGpu {}
 
 /// GPU-accelerated SGP4 batch propagator
 pub struct CudaSgp4Propagator {
     device: CudaDevice,
+    n_satellites: usize,
+    #[allow(dead_code)]
+    tle_data_gpu: Option<CudaSlice<TleDataGpu>>,
+    params_gpu: Option<CudaSlice<Sgp4ParamsGpu>>,
+    #[allow(dead_code)]
+    kernels_loaded: bool,
 }
 
 impl CudaSgp4Propagator {
     /// Create a new CUDA SGP4 propagator
     pub fn new() -> Result<Self, CudaError> {
         let device = CudaDevice::new()?;
-        Ok(Self { device })
+        
+        // Load PTX modules
+        device.device()
+            .load_ptx(SGP4_INIT_PTX.into(), "sgp4_init", &["sgp4_init_kernel"])
+            .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+        
+        device.device()
+            .load_ptx(SGP4_BATCH_PTX.into(), "sgp4_batch", &["sgp4_propagate_kernel"])
+            .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+        
+        Ok(Self { 
+            device,
+            n_satellites: 0,
+            tle_data_gpu: None,
+            params_gpu: None,
+            kernels_loaded: true,
+        })
     }
     
     /// Check if CUDA is available
@@ -56,10 +146,113 @@ impl CudaSgp4Propagator {
     pub fn device(&self) -> &CudaDevice {
         &self.device
     }
-}
-
-impl Default for CudaSgp4Propagator {
-    fn default() -> Self {
-        Self::new().expect("Failed to initialize CUDA device")
+    
+    /// Initialize satellites from TLE data
+    pub fn init_satellites(&mut self, tle_data: &[TleDataGpu]) -> Result<(), CudaError> {
+        self.n_satellites = tle_data.len();
+        
+        if self.n_satellites == 0 {
+            return Ok(());
+        }
+        
+        let dev = self.device.device();
+        
+        // Upload TLE data to GPU
+        let tle_gpu = dev.htod_sync_copy(tle_data)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        
+        // Allocate space for initialized parameters
+        let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(self.n_satellites)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        
+        // Run initialization kernel
+        let init_kernel = dev.get_func("sgp4_init", "sgp4_init_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
+        
+        let block_size = 256u32;
+        let grid_size = (self.n_satellites as u32 + block_size - 1) / block_size;
+        
+        let cfg = LaunchConfig {
+            grid_dim: (grid_size, 1, 1),
+            block_dim: (block_size, 1, 1),
+            shared_mem_bytes: 0,
+        };
+        
+        // Launch: sgp4_init_kernel(TleData* tle_in, Sgp4Params* params_out, int n_satellites)
+        unsafe {
+            init_kernel.launch(cfg, (&tle_gpu, &params_gpu, self.n_satellites as i32))
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+        }
+        
+        // Sync to ensure kernel completed
+        dev.synchronize()
+            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+        
+        self.tle_data_gpu = Some(tle_gpu);
+        self.params_gpu = Some(params_gpu);
+        
+        Ok(())
+    }
+    
+    /// Propagate all initialized satellites to given Julian Date times
+    /// 
+    /// # Arguments
+    /// * `jd_times` - Array of Julian Dates to propagate to
+    /// 
+    /// # Returns
+    /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
+    /// The kernel internally computes tsince for each satellite based on its TLE epoch.
+    pub fn propagate(&self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
+        if self.n_satellites == 0 {
+            return Err(CudaError::NotInitialized);
+        }
+        
+        let params_gpu = self.params_gpu.as_ref()
+            .ok_or(CudaError::NotInitialized)?;
+        
+        let dev = self.device.device();
+        let n_times = jd_times.len();
+        let n_results = self.n_satellites * n_times;
+        
+        // Upload Julian Date times to GPU
+        let times_gpu = dev.htod_sync_copy(jd_times)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        
+        // Allocate output buffer
+        let states_gpu: CudaSlice<Sgp4StateGpu> = dev.alloc_zeros(n_results)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        
+        // Get propagation kernel
+        let prop_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
+        
+        // Launch config: 2D grid (satellites x times)
+        let block_x = 16u32;
+        let block_y = 16u32;
+        let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
+        let grid_y = (n_times as u32 + block_y - 1) / block_y;
+        
+        let cfg = LaunchConfig {
+            grid_dim: (grid_x, grid_y, 1),
+            block_dim: (block_x, block_y, 1),
+            shared_mem_bytes: 0,
+        };
+        
+        // Launch: sgp4_propagate_kernel(params, jd_times, states, n_sats, n_times)
+        unsafe {
+            prop_kernel.launch(
+                cfg, 
+                (params_gpu, &times_gpu, &states_gpu, self.n_satellites as i32, n_times as i32)
+            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+        }
+        
+        // Sync and copy results back
+        dev.synchronize()
+            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+        
+        let results = dev.dtoh_sync_copy(&states_gpu)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        
+        Ok(results)
     }
 }

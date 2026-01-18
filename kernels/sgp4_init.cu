@@ -1,13 +1,20 @@
 // SGP4 Initialization Kernel
-// Processes TLE data and computes derived constants for batch propagation
+// Based on Vallado's sgp4init() from his C++ implementation
+// Uses WGS-72 constants for compatibility with AFSPC/saal
 
 #include "sgp4_types.cuh"
 #include "sgp4_constants.cuh"
 
 // Device function for SGP4 initialization
 __device__ void sgp4_init_single(const TleData& tle, Sgp4Params& p) {
-    // Convert TLE elements to radians and native units
+    // ═══════════════════════════════════════════════════════════════════
+    // CONVERT TLE ELEMENTS TO INTERNAL UNITS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    // Store epoch
     p.epoch_jd = tle.epoch_jd;
+    
+    // Angles: TLE is in degrees, convert to radians
     p.inclo = tle.inclination * DEG2RAD;
     p.nodeo = tle.raan * DEG2RAD;
     p.ecco = tle.eccentricity;
@@ -17,122 +24,185 @@ __device__ void sgp4_init_single(const TleData& tle, Sgp4Params& p) {
     p.ndot = tle.ndot;
     p.nddot = tle.nddot;
     
-    // Convert mean motion from revs/day to radians/minute
+    // Mean motion: TLE is in revs/day, convert to radians/minute
     p.no_kozai = tle.mean_motion * TWOPI / MINUTES_PER_DAY;
     
-    // Pre-compute trigonometric values
+    // ═══════════════════════════════════════════════════════════════════
+    // GEOMETRIC PARAMETERS
+    // ═══════════════════════════════════════════════════════════════════
+    
     double cosio = cos(p.inclo);
-    p.cosio = cosio;
-    p.cosio2 = cosio * cosio;
-    p.cosio4 = p.cosio2 * p.cosio2;
     double sinio = sin(p.inclo);
+    double cosio2 = cosio * cosio;
+    double cosio4 = cosio2 * cosio2;
     
-    // Common expressions
-    p.con41 = 3.0 * p.cosio2 - 1.0;
-    p.con42 = 1.0 - 5.0 * p.cosio2;
-    p.x1mth2 = 1.0 - p.cosio2;
-    p.x7thm1 = 7.0 * p.cosio2 - 1.0;
+    p.cosio = cosio;
+    p.cosio2 = cosio2;
+    p.cosio4 = cosio4;
     
-    // WGS-72 constants for un-Kozai the mean motion
-    double ak = pow(XKE / p.no_kozai, X2O3);
-    double d1 = 0.75 * J2 * (3.0 * p.cosio2 - 1.0) / 
-                (pow(1.0 - p.ecco * p.ecco, 1.5));
-    double del = d1 / (ak * ak);
-    double ao = ak * (1.0 - del * (1.0/3.0 + del * (1.0 + 134.0/81.0 * del)));
-    double delo = d1 / (ao * ao);
-    double no_unkozai = p.no_kozai / (1.0 + delo);
-    p.no_unkozai = no_unkozai;
+    double eccsq = p.ecco * p.ecco;
+    double omeosq = 1.0 - eccsq;
+    double rteosq = sqrt(omeosq);
     
-    // Semi-major axis
-    double a = pow(XKE / no_unkozai, X2O3);
-    p.a = a;
+    // Common SGP4 expressions
+    p.con41 = 3.0 * cosio2 - 1.0;
+    p.x1mth2 = 1.0 - cosio2;
+    p.x7thm1 = 7.0 * cosio2 - 1.0;
     
-    // Eccentricity squared
-    double e2 = p.ecco * p.ecco;
-    double omeosq = 1.0 - e2;
+    // ═══════════════════════════════════════════════════════════════════
+    // UN-KOZAI THE MEAN MOTION
+    // ═══════════════════════════════════════════════════════════════════
     
-    // Perigee and apogee altitudes
-    double rp = a * (1.0 - p.ecco);
-    double ra = a * (1.0 + p.ecco);
-    p.altp = (rp - 1.0) * RE;  // km
-    p.alta = (ra - 1.0) * RE;  // km
+    double a1 = pow(XKE / p.no_kozai, X2O3);
+    double d1 = 0.75 * J2 * (3.0 * cosio2 - 1.0) / (rteosq * omeosq);
+    double del_1 = d1 / (a1 * a1);
+    double adel = a1 * (1.0 - del_1 * del_1 - del_1 * (1.0/3.0 + 134.0 * del_1 * del_1 / 81.0));
+    double del_0 = d1 / (adel * adel);
+    p.no_unkozai = p.no_kozai / (1.0 + del_0);
     
-    // Determine deep space vs near-earth
-    double period = TWOPI / no_unkozai;  // minutes
+    double ao = pow(XKE / p.no_unkozai, X2O3);
+    p.a = ao;
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // PERIGEE CALCULATIONS  
+    // ═══════════════════════════════════════════════════════════════════
+    
+    double po = ao * omeosq;
+    double con42 = 1.0 - 5.0 * cosio2;
+    double rp = ao * (1.0 - p.ecco);
+    p.altp = (rp - 1.0) * RE;  // Perigee altitude in km
+    p.alta = (ao * (1.0 + p.ecco) - 1.0) * RE;  // Apogee altitude in km
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // DEEP SPACE CHECK
+    // ═══════════════════════════════════════════════════════════════════
+    
+    double period = TWOPI / p.no_unkozai;  // Period in minutes
     p.is_deep_space = (period >= DEEP_SPACE_PERIOD_MIN) ? 1 : 0;
     
-    // Common calculations
-    double s = RE / a + 1.0;
-    double qoms2t = pow((120.0 - 78.0) / RE, 4.0);
-    double temp0 = qoms2t * pow(s, 4.0);
+    // ═══════════════════════════════════════════════════════════════════
+    // ATMOSPHERIC DRAG TERMS (S and QOMS2T)
+    // ═══════════════════════════════════════════════════════════════════
     
-    double temp1 = cos(p.inclo);
-    double temp2 = temp0 * J2;
-    double temp3 = temp2 * J2;
+    // The "s" parameter depends on perigee height
+    // For perigee < 156 km: s = perigee - 78
+    // For perigee >= 156 km but < 220 km: s = perigee - 78
+    // For perigee >= 220 km: s = 78/RE (fixed)
     
-    p.mdot = no_unkozai + 0.5 * temp2 * no_unkozai / omeosq * 
-             (-1.0 + 3.0 * p.cosio2);
-    p.argpdot = -0.5 * temp2 / omeosq * (5.0 * p.cosio2 - 1.0);
-    p.nodedot = -temp2 * cosio / omeosq;
+    double perige = (rp - 1.0) * RE;  // Perigee altitude in km
+    double s4, qzms24;
     
-    double betal = sqrt(omeosq);
-    p.eta = a * p.ecco * betal;
-    p.delmo = pow(1.0 + p.eta * cos(p.mo), 3.0);
-    
-    // C coefficients for near-earth satellites
-    if (!p.is_deep_space) {
-        double c1sq = 1.5 * J2 * (3.0 * p.cosio2 - 1.0) / 
-                      (omeosq * omeosq);
-        p.cc1 = p.bstar * 2.0 / (4.0 * a * betal * omeosq) * c1sq;
-        
-        double cosio4 = p.cosio4;
-        double temp4 = temp0 * J2;
-        double c4 = 2.0 * no_unkozai * temp4 / omeosq;
-        double c5 = 0.5 * temp4 * a * betal / omeosq;
-        
-        p.cc4 = c4;
-        p.cc5 = c5;
-        
-        // D terms
-        double theta2 = p.cosio2;
-        double theta4 = theta2 * theta2;
-        double temp = c1sq - 2.0 * theta2;
-        p.d2 = 4.0 * a * p.cc1 * temp;
-        
-        temp = 3.0 * temp - 12.0 * theta2 * theta2;
-        p.d3 = (17.0 * a + s) * p.cc1 * temp / 3.0;
-        
-        temp = 3.0 * (1.0 - 13.0 * theta2 + 5.0 * theta4);
-        p.d4 = 0.5 * a * p.cc1 * (5.0 + temp) * temp;
-        
-        // T coefficients
-        p.t2cof = 1.5 * p.cc1;
-        p.t3cof = p.d2 + 2.0 * p.cc1 * p.cc1;
-        p.t4cof = 0.25 * (3.0 * p.d3 + p.cc1 * (12.0 * p.d2 + 10.0 * p.cc1 * p.cc1));
-        p.t5cof = 0.2 * (3.0 * p.d4 + 12.0 * p.cc1 * p.d3 + 
-                  6.0 * p.d2 * p.d2 + 15.0 * p.cc1 * p.cc1 * (2.0 * p.d2 + p.cc1 * p.cc1));
-        
-        // Additional coefficients
-        p.sinmao = sin(p.mo);
-        p.omgcof = p.bstar * 1.5 * J2 * (5.0 * p.cosio2 - 1.0);
-        p.xmcof = -X2O3 * qoms2t * p.bstar * RE / p.eta;
-        p.xlcof = 0.125 * 1.5 * J2 * sinio * (3.0 + 5.0 * cosio) / 
-                  (1.0 + cosio);
-        p.aycof = 0.25 * 1.5 * J2 * sinio;
-        p.xnodcf = 3.5 * omeosq * p.nodedot * p.cosio;
+    // s4 is in Earth radii
+    if (perige < 156.0) {
+        s4 = perige - 78.0;
+        if (perige < 98.0) {
+            s4 = 20.0;
+        }
+        qzms24 = pow((120.0 - s4) / RE, 4.0);
+        s4 = s4 / RE + 1.0;
     } else {
-        // Deep space satellites - simplified initialization
-        // (Full deep space periodic effects would go here)
-        p.cc1 = p.cc4 = p.cc5 = 0.0;
+        s4 = 78.0 / RE + 1.0;
+        qzms24 = pow((120.0 - 78.0) / RE, 4.0);
+    }
+    
+    double pinvsq = 1.0 / (po * po);
+    double tsi = 1.0 / (ao - s4);
+    p.eta = ao * p.ecco * tsi;
+    double etasq = p.eta * p.eta;
+    double eeta = p.ecco * p.eta;
+    double psisq = fabs(1.0 - etasq);
+    double coef = qzms24 * pow(tsi, 4.0);
+    double coef1 = coef / pow(psisq, 3.5);
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // C COEFFICIENTS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    double cc2 = coef1 * p.no_unkozai * (ao * (1.0 + 1.5 * etasq + eeta * (4.0 + etasq)) +
+                 0.375 * J2 * tsi / psisq * p.con41 * (8.0 + 3.0 * etasq * (8.0 + etasq)));
+    p.cc1 = p.bstar * cc2;
+    
+    double cc3 = 0.0;
+    if (p.ecco > 1.0e-4) {
+        cc3 = -2.0 * coef * tsi * J3 / (J2 * p.no_unkozai * sinio);
+    }
+    
+    p.x1mth2 = 1.0 - cosio2;
+    p.cc4 = 2.0 * p.no_unkozai * coef1 * ao * omeosq *
+            (p.eta * (2.0 + 0.5 * etasq) + p.ecco * (0.5 + 2.0 * etasq) -
+            J2 * tsi / (ao * psisq) *
+            (-3.0 * p.con41 * (1.0 - 2.0 * eeta + etasq * (1.5 - 0.5 * eeta)) +
+            0.75 * p.x1mth2 * (2.0 * etasq - eeta * (1.0 + etasq)) * cos(2.0 * p.argpo)));
+    p.cc5 = 2.0 * coef1 * ao * omeosq * (1.0 + 2.75 * (etasq + eeta) + eeta * etasq);
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // SECULAR RATE TERMS (MDOT, ARGPDOT, NODEDOT)
+    // ═══════════════════════════════════════════════════════════════════
+    
+    double temp1 = 1.5 * J2 * pinvsq * p.no_unkozai;
+    double temp2 = 0.5 * temp1 * J2 * pinvsq;
+    double temp3 = -0.46875 * J4 * pinvsq * pinvsq * p.no_unkozai;
+    
+    p.mdot = p.no_unkozai + 0.5 * temp1 * rteosq * p.con41 +
+             0.0625 * temp2 * rteosq * (13.0 - 78.0 * cosio2 + 137.0 * cosio4);
+    
+    p.argpdot = -0.5 * temp1 * con42 +
+                0.0625 * temp2 * (7.0 - 114.0 * cosio2 + 395.0 * cosio4) +
+                temp3 * (3.0 - 36.0 * cosio2 + 49.0 * cosio4);
+    
+    double xhdot1 = -temp1 * cosio;
+    p.nodedot = xhdot1 + (0.5 * temp2 * (4.0 - 19.0 * cosio2) +
+                2.0 * temp3 * (3.0 - 7.0 * cosio2)) * cosio;
+    p.xnodcf = 3.5 * omeosq * xhdot1 * p.cc1;
+    p.t2cof = 1.5 * p.cc1;
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // LONG PERIOD TERMS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    // Note: Must use J3OJ2 = J3/J2, not just J3!
+    if (fabs(cosio + 1.0) > 1.5e-12) {
+        p.xlcof = -0.25 * J3OJ2 * sinio * (3.0 + 5.0 * cosio) / (1.0 + cosio);
+    } else {
+        // Retrograde orbit at 180° - use a safe denominator
+        p.xlcof = -0.25 * J3OJ2 * sinio * (3.0 + 5.0 * cosio) / 1.5e-12;
+    }
+    p.aycof = -0.5 * J3OJ2 * sinio;
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // NEAR-EARTH SPECIFIC TERMS
+    // ═══════════════════════════════════════════════════════════════════
+    
+    if (!p.is_deep_space) {
+        double c1sq = p.cc1 * p.cc1;
+        p.d2 = 4.0 * ao * tsi * c1sq;
+        double temp = p.d2 * tsi * p.cc1 / 3.0;
+        p.d3 = (17.0 * ao + s4) * temp;
+        p.d4 = 0.5 * temp * ao * tsi * (221.0 * ao + 31.0 * s4) * p.cc1;
+        p.t3cof = p.d2 + 2.0 * c1sq;
+        p.t4cof = 0.25 * (3.0 * p.d3 + p.cc1 * (12.0 * p.d2 + 10.0 * c1sq));
+        p.t5cof = 0.2 * (3.0 * p.d4 + 12.0 * p.cc1 * p.d3 +
+                  6.0 * p.d2 * p.d2 + 15.0 * c1sq * (2.0 * p.d2 + c1sq));
+        
+        p.sinmao = sin(p.mo);
+        p.delmo = pow(1.0 + p.eta * cos(p.mo), 3.0);
+        p.omgcof = p.bstar * cc3 * cos(p.argpo);
+        p.xmcof = 0.0;
+        if (p.ecco > 1.0e-4) {
+            p.xmcof = -X2O3 * coef * p.bstar / eeta;
+        }
+    } else {
+        // Deep space - zero out near-earth terms
         p.d2 = p.d3 = p.d4 = 0.0;
-        p.t2cof = p.t3cof = p.t4cof = p.t5cof = 0.0;
+        p.t3cof = p.t4cof = p.t5cof = 0.0;
         p.sinmao = 0.0;
-        p.omgcof = p.xmcof = p.xlcof = p.aycof = p.xnodcf = 0.0;
+        p.delmo = 0.0;
+        p.omgcof = p.xmcof = 0.0;
     }
 }
 
 // Kernel to initialize batch of satellites
-__global__ void sgp4_init_batch(
+extern "C" __global__ void sgp4_init_kernel(
     const TleData* __restrict__ tle_data,  // [n_sats]
     Sgp4Params* __restrict__ params,        // [n_sats] output
     int n_sats
