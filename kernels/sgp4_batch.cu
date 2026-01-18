@@ -6,9 +6,9 @@
 #include "sgp4_deepspace.cuh"
 #include <stdio.h>
 
-// Debug output enabled for dpper comparison
-// Set to 0 for production performance
-#define DEBUG_PRINT 1
+// Debug output disabled for production performance
+// Set to 1 to enable detailed propagation debug output
+#define DEBUG_PRINT 0
 
 // Helper macro for fused sincos (CUDA provides sincos for double precision)
 #define SINCOS(angle, sinvar, cosvar) sincos((angle), &(sinvar), &(cosvar))
@@ -325,13 +325,23 @@ __device__ void sgp4_propagate_single(
     }
     
     if (debug) {
-        printf("\n--- Short Period Periodics ---\n");
-        printf("rl:      %.10f ER\n", rl);
-        printf("rdotl:   %.10f\n", rdotl);
-        printf("rvdotl:  %.10f\n", rvdotl);
-        printf("su:      %.10f rad\n", su);
-        printf("temp1:   %.10e\n", temp1);
-        printf("temp2:   %.10e\n", temp2);
+        printf("\n--- Short Period Periodics (BEFORE updates) ---\n");
+        printf("rl:      %.16f ER\n", rl);
+        printf("rdotl:   %.16f\n", rdotl);
+        printf("rvdotl:  %.16f\n", rvdotl);
+        printf("su:      %.16f rad\n", su);
+        printf("sin2u:   %.16f\n", sin2u);
+        printf("cos2u:   %.16f\n", cos2u);
+        printf("pl:      %.16f ER\n", pl);
+        printf("temp:    %.16f\n", temp);
+        printf("temp1:   %.16e\n", temp1);
+        printf("temp2:   %.16e\n", temp2);
+        printf("betal:   %.16f\n", betal);
+        printf("cosip:   %.16f\n", cosip);
+        printf("sinip:   %.16f\n", sinip);
+        printf("con41_eff:  %.16f\n", con41_eff);
+        printf("x1mth2_eff: %.16f\n", x1mth2_eff);
+        printf("x7thm1_eff: %.16f\n", x7thm1_eff);
     }
     
     // Update short period periodics
@@ -344,8 +354,12 @@ __device__ void sgp4_propagate_single(
     double rvdot = rvdotl + nm * temp1 * (x1mth2_eff * cos2u + 1.5 * con41_eff) / XKE;
     
     if (debug) {
-        printf("mrt:     %.10f ER (%.6f km)\n", mrt, mrt * RE);
-        printf("mvt:     %.10f\n", mvt);
+        printf("\n--- Short Period Periodics (AFTER updates) ---\n");
+        printf("mrt:     %.16f ER (%.10f km)\n", mrt, mrt * RE);
+        printf("su_new:  %.16f rad\n", su);
+        printf("xnode:   %.16f rad\n", xnode_new);
+        printf("xinc:    %.16f rad\n", xinc);
+        printf("mvt:     %.16f\n", mvt);
         printf("rvdot:   %.10f\n", rvdot);
         printf("xinc:    %.10f rad\n", xinc);
     }
@@ -374,8 +388,14 @@ __device__ void sgp4_propagate_single(
     
     if (debug) {
         printf("\n--- Orientation Vectors ---\n");
-        printf("U: [%.10f, %.10f, %.10f]\n", ux, uy, uz);
-        printf("V: [%.10f, %.10f, %.10f]\n", vx, vy, vz);
+        printf("sinsu:   %.16f\n", sinsu);
+        printf("cossu:   %.16f\n", cossu);
+        printf("snod:    %.16f\n", snod);
+        printf("cnod:    %.16f\n", cnod);
+        printf("sini:    %.16f\n", sini);
+        printf("cosi:    %.16f\n", cosi);
+        printf("U: [%.16f, %.16f, %.16f]\n", ux, uy, uz);
+        printf("V: [%.16f, %.16f, %.16f]\n", vx, vy, vz);
     }
     
     // ═════════════════════════════════════════════════════════════

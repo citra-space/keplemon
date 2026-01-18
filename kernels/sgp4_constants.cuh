@@ -1,23 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════════════════════
-// SGP4 Constants Header - WGS-72 Gravity Model
+// SGP4 Constants Header - WGS-72 OLD Gravity Model
 // ═══════════════════════════════════════════════════════════════════════════════════
 //
 // This file contains ALL physical constants used by the CUDA SGP4 propagator.
-// Constants are from the WGS-72 (World Geodetic System 1972) gravity model,
-// which matches the AFSPC (Air Force Space Command) implementation and the
-// python-sgp4 library's default configuration.
+// Constants are from the WGS-72 OLD (original World Geodetic System 1972) gravity model,
+// which matches the python-sgp4 library's default configuration.
 //
-// IMPORTANT: Do NOT mix WGS-72 and WGS-84 constants. The SGP4 algorithm was
-// developed and tuned for WGS-72. Using WGS-84 constants will produce incorrect
-// results that don't match reference implementations.
+// IMPORTANT: SGP4 uses WGS-72 OLD constants (from the original 1972 specification).
+// There are TWO versions of WGS-72:
+//   - WGS-72 OLD (1972): Original specification with J2=0.001082616
+//   - WGS-72 (1976):     Revised specification with J2=0.00108262998905
 //
-// WGS-72 vs WGS-84 key differences:
-//   Constant     WGS-72              WGS-84
-//   ─────────────────────────────────────────────────────
-//   RE (km)      6378.135            6378.137
-//   J2           0.001082616         0.00108262998905
-//   J3          -0.00000253881      -0.00000253215306
-//   mu (km³/s²)  398600.8            398600.5
+// python-sgp4 uses WGS-72 OLD to match historical TLE catalogs and the original
+// Spacetrack Report #3 implementation.
+//
+// Constant differences (WGS-72 OLD vs newer standards):
+//   Constant     WGS-72 OLD (1972)   WGS-72 (1976)       WGS-84
+//   ───────────────────────────────────────────────────────────────────
+//   RE (km)      6378.135            6378.135            6378.137
+//   J2           0.001082616         0.00108262998905    0.00108263
+//   J3          -0.00000253881      -0.00000253215306   -0.00000253215
+//   mu (km³/s²)  398600.8            398600.8            398600.5
 //
 // References:
 //   - Hoots & Roehrich, "Spacetrack Report No. 3" (1980)
@@ -40,10 +43,10 @@
 #define X2O3 (2.0 / 3.0)
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// WGS-72 EARTH GRAVITY MODEL CONSTANTS
+// WGS-72 OLD EARTH GRAVITY MODEL CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════════════
 // These values MUST match python-sgp4's 'wgs72' constants exactly.
-// Source: sgp4.earth_gravity.wgs72
+// Source: sgp4.earth_gravity.wgs72 (uses WGS-72 OLD from 1972 spec)
 
 // Earth equatorial radius (km)
 #define RE 6378.135
@@ -60,10 +63,10 @@
 // TUMIN = 1.0 / XKE (minutes per time unit)
 #define TUMIN 13.44683969695931
 
-// Zonal harmonic coefficients (unnormalized) - WGS-72 values from python-sgp4
-// These MUST match exactly for agreement with reference implementations
-#define J2  0.00108262998905          // Second zonal harmonic (WGS-72)
-#define J3 -0.00000253215306          // Third zonal harmonic (WGS-72)
+// Zonal harmonic coefficients (unnormalized) - WGS-72 OLD (1972) values from python-sgp4
+// These MUST match python-sgp4 exactly for agreement with reference implementations
+#define J2  0.001082616               // Second zonal harmonic (WGS-72 OLD)
+#define J3 -0.00000253881             // Third zonal harmonic (WGS-72 OLD)
 #define J4 -0.00000165597             // Fourth zonal harmonic
 
 // Derived ratio for long-period periodics
