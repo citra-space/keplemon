@@ -84,6 +84,42 @@ from keplemon.time import load_time_constants
 load_time_constants("custom_path.txt")
 ```
 
+## CUDA GPU Acceleration
+
+KepLemon supports optional CUDA GPU acceleration for batch satellite propagation, providing significant performance 
+improvements when processing multiple satellites simultaneously.
+
+### Performance Benefits
+
+GPU acceleration becomes beneficial when propagating:
+- **40+ satellites** with moderate time resolution (45+ time points)
+- **100+ satellites** with any reasonable time resolution
+- Long-term propagations over multiple orbital periods
+
+**Key Performance Metrics:**
+- Up to **41x speedup** for large satellite constellations
+- GPU crossover point: ~900-1000 total propagations (satellites × time points)
+- Typical speedup: **10-40x** for 40+ satellites
+
+### Quick Start
+
+```bash
+# Build with CUDA support (Rust users)
+cargo build --features cuda
+
+# Run tests with GPU acceleration
+cargo test --features cuda --release
+```
+
+### Requirements
+
+- CUDA Toolkit 12.6+
+- NVIDIA GPU with Compute Capability 5.0+ (Maxwell or newer)
+- Set `CUDA_PATH` environment variable if needed
+
+For detailed information including usage examples, performance benchmarks, crossover analysis, and troubleshooting, 
+see the [CUDA GPU Acceleration Guide](CUDA_README.md).
+
 ## Contributing
 
 Anyone is welcome to contribute to KepLemon. Users are encouraged to start by opening issues or forking the repository.

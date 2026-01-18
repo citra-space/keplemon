@@ -96,19 +96,58 @@ if Constellation::is_gpu_available() {
 
 ## Performance
 
-GPU acceleration provides significant speedups for large batch operations:
+### GPU Crossover Points
 
-| Satellites | Time Steps | CPU Time | GPU Time | Speedup |
-|------------|------------|----------|----------|---------|
-| 100        | 100        | ~50ms    | ~5ms     | 10x     |
-| 1,000      | 100        | ~500ms   | ~15ms    | 33x     |
-| 5,000      | 100        | ~2.5s    | ~30ms    | 83x     |
+Based on comprehensive benchmarking, GPU acceleration becomes beneficial when:
 
-*Benchmarks run on NVIDIA RTX 4090 vs AMD Ryzen 9 5950X (single-threaded)*
+- **40+ satellites** with 45+ time points (e.g., 5 LEO periods at 10-min intervals)
+- **100+ satellites** with just 9+ time points (e.g., 1 LEO period at 10-min intervals)
+- **10 satellites** with 90+ time points (e.g., 1 LEO period at 1-min intervals)
 
-Run your own benchmarks:
+**Critical Threshold**: ~900-1000 total propagations (satellites × time points)
+
+**GPU Overhead**: ~0.15-0.20 ms (memory transfer + kernel launch)
+
+### Performance by Scenario
+
+**LEO Satellites (~90 minute period):**
+
+| Satellites | Time Points | Speedup | Recommendation |
+|------------|-------------|---------|----------------|
+| 10         | 90 (1-min dt, 1 period) | 1.05x | GPU wins |
+| 40         | 90 (1-min dt, 1 period) | 4.72x | GPU wins |
+| 100        | 90 (1-min dt, 1 period) | 10.36x | GPU wins |
+| 500        | 90 (1-min dt, 1 period) | 19.59x | GPU wins |
+
+**GEO Satellites (~24 hour period):**
+
+| Satellites | Time Points | Speedup | Recommendation |
+|------------|-------------|---------|----------------|
+| 10         | 1436 (1-min dt, 1 period) | 15.34x | GPU wins |
+| 40         | 1436 (1-min dt, 1 period) | 31.79x | GPU wins |
+| 100        | 1436 (1-min dt, 1 period) | 41.40x | **Best GPU performance** |
+| 500        | 144 (10-min dt, 1 period) | 28.43x | GPU wins |
+
+**Week-Long Propagation (168 hours):**
+
+| Satellites | CPU Time | GPU Time | Speedup | Throughput |
+|------------|----------|----------|---------|------------|
+| 10         | 1.99 ms  | 5.06 ms  | 0.40x   | CPU better |
+| 40         | 7.68 ms  | 5.37 ms  | 1.43x   | GPU better |
+| 100        | 19.32 ms | 6.89 ms  | 2.80x   | GPU better |
+| 1,000      | 191.05 ms| 57.40 ms | 3.33x   | 4.54M props/sec |
+
+For detailed crossover analysis across different time steps, orbital periods, and satellite counts, 
+see [tests/GPU_CROSSOVER_ANALYSIS.md](tests/GPU_CROSSOVER_ANALYSIS.md).
+
+### Running Benchmarks
+
 ```bash
-cargo bench --features cuda --bench gpu_propagation
+# CPU vs GPU comparison (7-day stress test)
+cargo test --features cuda --release benchmark_cpu_vs_gpu -- --nocapture
+
+# Crossover point analysis
+cargo test --features cuda --release test_gpu_crossover_analysis -- --nocapture
 ```
 
 ## Implementation Status
@@ -123,17 +162,18 @@ cargo bench --features cuda --bench gpu_propagation
 ### Completed Components
 
 ✅ SGP4 initialization kernel with derived constants  
-✅ SGP4 batch propagation kernel (near-earth satellites)  
+✅ SGP4 batch propagation kernel (near-earth and deep-space satellites)  
+✅ Deep space propagation bug fix (dpper baseline periodics)  
 ✅ CUDA device management and kernel loading  
 ✅ Automatic backend selection based on problem size  
 ✅ Constellation batch propagation methods  
 ✅ Unit tests for backend selection  
 ✅ Performance benchmarks (CPU vs GPU)  
+✅ Comprehensive crossover point analysis  
 ✅ Build system integration (PTX compilation)  
 
 ### TODO
 
-- [ ] Deep space satellite support (period > 225 min)
 - [ ] Full TLE → GPU data structure conversion
 - [ ] Integration tests with real satellite data
 - [ ] Python bindings for GPU features
