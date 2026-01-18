@@ -1,7 +1,7 @@
 //! CUDA SGP4 batch propagator implementation
 
 use super::device::{CudaDevice, CudaError};
-use cudarc::driver::{CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 
 // Include the PTX at compile time
 const SGP4_INIT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/sgp4_init.ptx"));
@@ -116,23 +116,30 @@ pub struct CudaSgp4Propagator {
     /// Cached output buffer for repeated propagations with same dimensions
     cached_states_gpu: Option<CudaSlice<Sgp4StateGpu>>,
     cached_n_results: usize,
-    #[allow(dead_code)]
-    kernels_loaded: bool,
+    /// Cached kernel functions to avoid lookup overhead
+    init_kernel: CudaFunction,
+    propagate_kernel: CudaFunction,
 }
 
 impl CudaSgp4Propagator {
     /// Create a new CUDA SGP4 propagator
     pub fn new() -> Result<Self, CudaError> {
         let device = CudaDevice::new()?;
+        let dev = device.device();
         
         // Load PTX modules
-        device.device()
-            .load_ptx(SGP4_INIT_PTX.into(), "sgp4_init", &["sgp4_init_kernel"])
+        dev.load_ptx(SGP4_INIT_PTX.into(), "sgp4_init", &["sgp4_init_kernel"])
             .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
         
-        device.device()
-            .load_ptx(SGP4_BATCH_PTX.into(), "sgp4_batch", &["sgp4_propagate_kernel"])
+        dev.load_ptx(SGP4_BATCH_PTX.into(), "sgp4_batch", &["sgp4_propagate_kernel"])
             .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+        
+        // Cache kernel functions for faster access
+        let init_kernel = dev.get_func("sgp4_init", "sgp4_init_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
+        
+        let propagate_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
         
         Ok(Self { 
             device,
@@ -143,7 +150,8 @@ impl CudaSgp4Propagator {
             cached_n_times: 0,
             cached_states_gpu: None,
             cached_n_results: 0,
-            kernels_loaded: true,
+            init_kernel,
+            propagate_kernel,
         })
     }
     
@@ -175,10 +183,7 @@ impl CudaSgp4Propagator {
         let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(self.n_satellites)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
         
-        // Run initialization kernel
-        let init_kernel = dev.get_func("sgp4_init", "sgp4_init_kernel")
-            .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
-        
+        // Use cached init kernel
         let block_size = 256u32;
         let grid_size = (self.n_satellites as u32 + block_size - 1) / block_size;
         
@@ -190,7 +195,7 @@ impl CudaSgp4Propagator {
         
         // Launch: sgp4_init_kernel(TleData* tle_in, Sgp4Params* params_out, int n_satellites)
         unsafe {
-            init_kernel.launch(cfg, (&tle_gpu, &params_gpu, self.n_satellites as i32))
+            self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, self.n_satellites as i32))
                 .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
         
@@ -246,10 +251,6 @@ impl CudaSgp4Propagator {
         }
         let states_gpu = self.cached_states_gpu.as_ref().unwrap();
         
-        // Get propagation kernel
-        let prop_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_kernel")
-            .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
-        
         // Launch config: 2D grid (satellites x times)
         // Use 16x16 = 256 threads per block - balanced for various batch sizes
         let block_x = 16u32;
@@ -263,9 +264,9 @@ impl CudaSgp4Propagator {
             shared_mem_bytes: 0,
         };
         
-        // Launch: sgp4_propagate_kernel(params, jd_times, states, n_sats, n_times)
+        // Launch with cached kernel function
         unsafe {
-            prop_kernel.launch(
+            self.propagate_kernel.clone().launch(
                 cfg, 
                 (params_gpu, times_gpu, states_gpu, self.n_satellites as i32, n_times as i32)
             ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
