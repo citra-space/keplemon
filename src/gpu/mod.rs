@@ -9,12 +9,15 @@ pub mod cuda_sgp4;
 #[cfg(feature = "cuda")]
 pub mod device;
 
-#[cfg(feature = "cuda")]
-pub mod memory;
-
 // Re-export main types when CUDA is enabled
 #[cfg(feature = "cuda")]
-pub use cuda_sgp4::CudaSgp4Propagator;
+pub use cuda_sgp4::{
+    CudaSgp4Propagator,
+    SoAArrays,
+    Sgp4StateGpu,
+    Sgp4ParamsGpu,
+    TleDataGpu,
+};
 
 #[cfg(feature = "cuda")]
-pub use device::CudaDevice;
+pub use device::{CudaDevice, CudaError};

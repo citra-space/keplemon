@@ -416,3 +416,88 @@ extern "C" __global__ void sgp4_propagate_kernel(
     
     sgp4_propagate_single(p, tsince, state, sat_idx, time_idx);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SoA (STRUCT OF ARRAYS) PROPAGATION KERNEL
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Optimizations vs the AoS kernel:
+// 1. Shared memory caching for jd_times - all threads in a block share time values
+// 2. SoA output layout - coalesced writes with time-major ordering
+// 3. Reduced global memory transactions per warp
+//
+// Memory layout: state_x[time_idx * n_sats + sat_idx] (time-major)
+// This ensures adjacent threads (adjacent sat_idx) write to adjacent addresses
+
+// Maximum number of times that can be cached in shared memory per block
+// 256 doubles * 8 bytes = 2KB shared memory for times
+#define MAX_TIMES_SHARED 256
+
+extern "C" __global__ void sgp4_propagate_soa_kernel(
+    const Sgp4Params* __restrict__ params,      // [n_sats] satellite parameters
+    const double* __restrict__ jd_times,         // [n_times] Julian Dates
+    double* __restrict__ state_x,                // [n_sats * n_times] output X positions
+    double* __restrict__ state_y,                // [n_sats * n_times] output Y positions
+    double* __restrict__ state_z,                // [n_sats * n_times] output Z positions
+    double* __restrict__ state_vx,               // [n_sats * n_times] output X velocities
+    double* __restrict__ state_vy,               // [n_sats * n_times] output Y velocities
+    double* __restrict__ state_vz,               // [n_sats * n_times] output Z velocities
+    int* __restrict__ state_error,               // [n_sats * n_times] error codes
+    int n_sats,
+    int n_times
+) {
+    // Shared memory for time values - reduces global memory reads
+    // Each block caches up to MAX_TIMES_SHARED time values
+    __shared__ double shared_times[MAX_TIMES_SHARED];
+    
+    int sat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int time_idx = blockIdx.y * blockDim.y + threadIdx.y;
+    
+    // Linear thread index within block for shared memory loading
+    int thread_id = threadIdx.y * blockDim.x + threadIdx.x;
+    int block_size = blockDim.x * blockDim.y;
+    
+    // Cooperatively load time values into shared memory
+    // Only load times that this block's y-range will access
+    int time_block_start = blockIdx.y * blockDim.y;
+    int time_block_end = min(time_block_start + (int)blockDim.y, n_times);
+    int times_to_load = time_block_end - time_block_start;
+    
+    // Each thread helps load time values
+    for (int i = thread_id; i < times_to_load && i < MAX_TIMES_SHARED; i += block_size) {
+        int global_time_idx = time_block_start + i;
+        if (global_time_idx < n_times) {
+            shared_times[i] = jd_times[global_time_idx];
+        }
+    }
+    __syncthreads();
+    
+    // Bounds check after shared memory load
+    if (sat_idx >= n_sats || time_idx >= n_times) return;
+    
+    // Create a local copy of params for this thread
+    // Deep space propagation modifies atime/xli/xni, so each thread needs its own copy
+    Sgp4Params p = params[sat_idx];
+    
+    // Get time from shared memory (local index within block's time range)
+    int local_time_idx = time_idx - time_block_start;
+    double jd = shared_times[local_time_idx];
+    double tsince = (jd - p.epoch_jd) * MINUTES_PER_DAY;
+    
+    // Use the same propagation function as the AoS kernel for correctness
+    Sgp4State state;
+    sgp4_propagate_single(p, tsince, state, sat_idx, time_idx);
+    
+    // Write output with time-major ordering for coalesced access
+    // Adjacent satellites (sat_idx, sat_idx+1) write to adjacent memory addresses
+    // This is optimal because blockDim.x threads have adjacent sat_idx values
+    int out_idx = time_idx * n_sats + sat_idx;
+    
+    state_x[out_idx] = state.x;
+    state_y[out_idx] = state.y;
+    state_z[out_idx] = state.z;
+    state_vx[out_idx] = state.vx;
+    state_vy[out_idx] = state.vy;
+    state_vz[out_idx] = state.vz;
+    state_error[out_idx] = state.error_code;
+}

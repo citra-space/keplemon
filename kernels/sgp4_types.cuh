@@ -152,4 +152,22 @@ struct Sgp4State {
     int _padding;          // Alignment padding to 8-byte boundary
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STRUCT OF ARRAYS (SoA) LAYOUT FOR OPTIMIZED MEMORY COALESCING
+// ═══════════════════════════════════════════════════════════════════════════
+
+// SoA output state for coalesced memory writes
+// Each pointer points to an array of [n_sats * n_times] elements
+// Layout uses time-major ordering: states_x[time_idx * n_sats + sat_idx]
+// This ensures adjacent threads write to adjacent memory addresses
+struct Sgp4StateSoA {
+    double* x;          // [n_sats * n_times] Position X (km)
+    double* y;          // [n_sats * n_times] Position Y (km)
+    double* z;          // [n_sats * n_times] Position Z (km)
+    double* vx;         // [n_sats * n_times] Velocity X (km/s)
+    double* vy;         // [n_sats * n_times] Velocity Y (km/s)
+    double* vz;         // [n_sats * n_times] Velocity Z (km/s)
+    int* error_code;    // [n_sats * n_times] Error codes
+};
+
 #endif // SGP4_TYPES_CUH

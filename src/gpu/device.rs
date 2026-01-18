@@ -70,6 +70,7 @@ pub enum CudaError {
     AllocationFailed(String),
     KernelLaunch(String),
     Synchronization(String),
+    InvalidParameter(String),
     NotInitialized,
 }
 
@@ -82,6 +83,7 @@ impl std::fmt::Display for CudaError {
             CudaError::AllocationFailed(msg) => write!(f, "GPU memory allocation failed: {}", msg),
             CudaError::KernelLaunch(msg) => write!(f, "Kernel launch failed: {}", msg),
             CudaError::Synchronization(msg) => write!(f, "Device synchronization failed: {}", msg),
+            CudaError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
             CudaError::NotInitialized => write!(f, "Propagator not initialized with satellite data"),
         }
     }

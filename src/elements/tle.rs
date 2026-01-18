@@ -653,6 +653,83 @@ impl TLE {
     pub fn get_cartesian_state(&self) -> CartesianState {
         self.keplerian_state.into()
     }
+    
+    // ========================================================================
+    // Batch Propagation Methods (GPU-accelerated when available)
+    // ========================================================================
+    
+    /// Propagate multiple TLEs to multiple epochs
+    /// 
+    /// This method uses the BatchPropagator with automatic CPU/GPU selection.
+    /// GPU acceleration is used when beneficial based on problem size.
+    /// 
+    /// # Arguments
+    /// * `tles` - Array of TLEs to propagate
+    /// * `epochs` - Array of epochs to propagate to
+    /// 
+    /// # Returns
+    /// 2D vector of states: `result[sat_idx][epoch_idx]`
+    /// 
+    /// # Example
+    /// ```no_run
+    /// use keplemon::elements::TLE;
+    /// use keplemon::time::Epoch;
+    /// 
+    /// let tles = vec![/* ... */];
+    /// let epochs = vec![/* ... */];
+    /// let states = TLE::propagate_batch(&tles, &epochs).unwrap();
+    /// ```
+    pub fn propagate_batch(
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<Vec<Vec<CartesianState>>, String> {
+        use crate::propagation::BatchPropagator;
+        
+        let propagator = BatchPropagator::new();
+        propagator.propagate_batch(tles, epochs)
+    }
+    
+    /// Propagate a single TLE to multiple epochs
+    /// 
+    /// This method automatically uses GPU if the number of epochs is large enough
+    /// to benefit from GPU acceleration.
+    /// 
+    /// # Arguments
+    /// * `epochs` - Array of epochs to propagate to
+    /// 
+    /// # Returns
+    /// Vector of states, one for each epoch
+    /// 
+    /// # Example
+    /// ```no_run
+    /// use keplemon::elements::TLE;
+    /// use keplemon::time::Epoch;
+    /// 
+    /// let tle = TLE::from_lines(/* ... */).unwrap();
+    /// let epochs = vec![/* ... */];
+    /// let states = tle.propagate_to_epochs(&epochs).unwrap();
+    /// ```
+    pub fn propagate_to_epochs(
+        &self,
+        epochs: &[Epoch],
+    ) -> Result<Vec<CartesianState>, String> {
+        use crate::propagation::BatchPropagator;
+        
+        if epochs.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        // For a single satellite, decide threshold based on number of epochs
+        // GPU becomes beneficial around 100+ epochs
+        let propagator = if epochs.len() >= 100 {
+            BatchPropagator::new().set_gpu_threshold(100)
+        } else {
+            BatchPropagator::new().set_gpu_threshold(usize::MAX) // Force CPU
+        };
+        
+        let results = propagator.propagate_batch(&[self.clone()], epochs)?;
+        Ok(results.into_iter().next().unwrap_or_default())
+    }
 }
 
 #[cfg(test)]

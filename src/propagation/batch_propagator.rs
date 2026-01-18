@@ -1,7 +1,9 @@
 //! Batch propagation with automatic CPU/GPU backend selection
 
 #[cfg(feature = "cuda")]
-use crate::gpu::CudaSgp4Propagator;
+use crate::gpu::{CudaSgp4Propagator, TleDataGpu};
+use crate::elements::{TLE, CartesianState};
+use crate::time::Epoch;
 
 /// Backend selection for batch propagation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,5 +202,128 @@ mod tests {
         
         let backend = propagator.select_backend(50, 50); // 2500 < 10000
         assert_eq!(backend, SelectedBackend::Cpu);
+    }
+}
+
+// ============================================================================
+// Batch Propagation Implementation
+// ============================================================================
+
+impl BatchPropagator {
+    /// Propagate multiple TLEs to multiple epochs
+    /// 
+    /// This method automatically selects CPU or GPU backend based on problem size.
+    /// 
+    /// # Arguments
+    /// * `tles` - Array of TLEs to propagate
+    /// * `epochs` - Array of epochs to propagate to
+    /// 
+    /// # Returns
+    /// 2D vector of states: `result[sat_idx][epoch_idx]`
+    pub fn propagate_batch(
+        &self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<Vec<Vec<CartesianState>>, String> {
+        if tles.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        if epochs.is_empty() {
+            return Ok(vec![Vec::new(); tles.len()]);
+        }
+        
+        let backend = self.select_backend(tles.len(), epochs.len());
+        
+        match backend {
+            #[cfg(feature = "cuda")]
+            SelectedBackend::Gpu => self.propagate_batch_gpu(tles, epochs),
+            
+            SelectedBackend::Cpu => self.propagate_batch_cpu(tles, epochs),
+        }
+    }
+    
+    /// CPU-based batch propagation using existing SGP4 implementation
+    fn propagate_batch_cpu(
+        &self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<Vec<Vec<CartesianState>>, String> {
+        tles.iter()
+            .map(|tle| {
+                epochs.iter()
+                    .map(|epoch| {
+                        tle.get_cartesian_state_at_epoch(*epoch)
+                            .map_err(|e| format!("CPU propagation failed: {}", e))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect()
+    }
+    
+    /// GPU-based batch propagation using CUDA SGP4
+    #[cfg(feature = "cuda")]
+    fn propagate_batch_gpu(
+        &self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<Vec<Vec<CartesianState>>, String> {
+        use crate::enums::ReferenceFrame;
+        use crate::elements::CartesianVector;
+        
+        // Initialize GPU propagator
+        let mut gpu_propagator = CudaSgp4Propagator::new()
+            .map_err(|e| format!("Failed to initialize CUDA: {}", e))?;
+        
+        // Convert TLEs to GPU format
+        let tle_data: Vec<TleDataGpu> = tles.iter()
+            .map(|tle| TleDataGpu::from(tle))
+            .collect();
+        
+        // Initialize satellites on GPU
+        gpu_propagator.init_satellites(&tle_data)
+            .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
+        
+        // Convert epochs to Julian Dates
+        let jd_times: Vec<f64> = epochs.iter()
+            .map(|epoch| TleDataGpu::jd_from_ds50(epoch.days_since_1950))
+            .collect();
+        
+        // Propagate on GPU
+        let gpu_states = gpu_propagator.propagate(&jd_times)
+            .map_err(|e| format!("GPU propagation failed: {}", e))?;
+        
+        // Convert GPU states back to CartesianState format
+        // GPU returns flattened array: [sat0_t0, sat0_t1, ..., sat1_t0, sat1_t1, ...]
+        let n_epochs = epochs.len();
+        let results: Vec<Vec<CartesianState>> = tles.iter()
+            .enumerate()
+            .map(|(sat_idx, _tle)| {
+                epochs.iter()
+                    .enumerate()
+                    .map(|(time_idx, epoch)| {
+                        let state_idx = sat_idx * n_epochs + time_idx;
+                        let gpu_state = &gpu_states[state_idx];
+                        
+                        // Check for propagation errors
+                        if gpu_state.error_code != 0 {
+                            return Err(format!(
+                                "Satellite {} at epoch {}: error code {}",
+                                sat_idx, time_idx, gpu_state.error_code
+                            ));
+                        }
+                        
+                        Ok(CartesianState::new(
+                            *epoch,
+                            CartesianVector::new(gpu_state.x, gpu_state.y, gpu_state.z),
+                            CartesianVector::new(gpu_state.vx, gpu_state.vy, gpu_state.vz),
+                            ReferenceFrame::TEME,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        Ok(results)
     }
 }

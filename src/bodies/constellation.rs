@@ -376,6 +376,8 @@ impl Constellation {
         epochs: &[Epoch],
         backend: Option<PropagationBackend>,
     ) -> HashMap<String, Vec<Option<CartesianState>>> {
+        use crate::elements::TLE;
+        
         let backend = backend.unwrap_or(PropagationBackend::Auto);
         let propagator = BatchPropagator::new().set_backend(backend);
         
@@ -384,14 +386,43 @@ impl Constellation {
         
         let selected = propagator.select_backend(n_sats, n_times);
         
+        // Try batch GPU propagation if selected
         #[cfg(feature = "cuda")]
         if matches!(selected, crate::propagation::SelectedBackend::Gpu) {
             log::info!(
                 "Using GPU batch propagation for {} satellites × {} epochs",
                 n_sats, n_times
             );
-            // GPU path would go here
-            // For now, fall through to CPU
+            
+            // Collect TLEs from satellites
+            let tles: Vec<TLE> = self.satellites
+                .values()
+                .map(|sat| TLE::from(sat.clone()))
+                .collect();
+            
+            // If we successfully got TLEs for all satellites, use batch propagation
+            if tles.len() == n_sats {
+                match propagator.propagate_batch(&tles, epochs) {
+                    Ok(batch_results) => {
+                        // Map results back to satellite IDs
+                        let sat_ids: Vec<String> = self.satellites.keys().cloned().collect();
+                        return sat_ids.iter()
+                            .zip(batch_results.into_iter())
+                            .map(|(sat_id, states)| {
+                                (sat_id.clone(), states.into_iter().map(Some).collect())
+                            })
+                            .collect();
+                    }
+                    Err(e) => {
+                        log::warn!("GPU batch propagation failed: {}, falling back to CPU", e);
+                    }
+                }
+            } else {
+                log::warn!(
+                    "Not all satellites have TLEs ({}/{}), falling back to serial propagation",
+                    tles.len(), n_sats
+                );
+            }
         }
         
         // CPU path: propagate each satellite independently

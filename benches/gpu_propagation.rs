@@ -5,72 +5,195 @@
 #![cfg(feature = "cuda")]
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use keplemon::bodies::Constellation;
-use keplemon::catalogs::TLECatalog;
-use keplemon::time::{Epoch, TimeSpan};
-use keplemon::propagation::PropagationBackend;
 
-fn bench_constellation_propagation(c: &mut Criterion) {
-    // Load a test TLE catalog
+#[cfg(feature = "cuda")]
+use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+use keplemon::catalogs::TLECatalog;
+
+/// Generate synthetic test TLE data for benchmarking
+#[cfg(feature = "cuda")]
+fn generate_test_tles(n: usize) -> Vec<TleDataGpu> {
+    // ISS-like TLE as base
+    let base = TleDataGpu {
+        epoch_jd: 2460500.5,
+        inclination: 51.6416,
+        raan: 247.4627,
+        eccentricity: 0.0006703,
+        arg_perigee: 130.5360,
+        mean_anomaly: 325.0288,
+        mean_motion: 15.72125391,
+        bstar: 0.00013882,
+        ndot: 0.0,
+        nddot: 0.0,
+    };
+    
+    (0..n).map(|i| {
+        let mut tle = base;
+        // Vary orbital elements to create distinct satellites
+        tle.mean_anomaly = (i as f64 * 3.6) % 360.0;
+        tle.raan = (i as f64 * 1.5) % 360.0;
+        tle.inclination = 45.0 + (i as f64 * 0.01) % 45.0;
+        tle
+    }).collect()
+}
+
+/// Load TLEs from file and convert to GPU format
+#[cfg(feature = "cuda")]
+fn load_tles_from_catalog(path: &str) -> Result<Vec<TleDataGpu>, String> {
+    let catalog = TLECatalog::from_tle_file(path)?;
+    Ok(catalog.values().map(TleDataGpu::from).collect())
+}
+
+/// Benchmark comparing AoS vs SoA GPU kernel implementations
+/// 
+/// This directly benchmarks the CUDA kernels to measure the performance
+/// improvement from Struct of Arrays memory layout optimization.
+#[cfg(feature = "cuda")]
+fn bench_aos_vs_soa_kernel(c: &mut Criterion) {
+    // Load test TLEs
     let tle_path = "tests/2025-04-15-celestrak.3le";
     
     if !std::path::Path::new(tle_path).exists() {
-        eprintln!("Test TLE file not found, skipping benchmark");
+        eprintln!("Test TLE file not found, skipping AoS vs SoA benchmark");
         return;
     }
     
-    let catalog = TLECatalog::from_3le_file(tle_path.to_string())
+    let tle_data = load_tles_from_catalog(tle_path)
         .expect("Failed to load TLE catalog");
     
-    let constellation = Constellation::from(catalog);
-    let n_sats = constellation.get_satellites().len();
+    let n_sats = tle_data.len();
     
-    let start = Epoch::now();
-    let end = start + TimeSpan::from_hours(24.0);
+    // Create propagator and initialize
+    let mut propagator = CudaSgp4Propagator::new()
+        .expect("Failed to create CUDA propagator");
     
-    let mut group = c.benchmark_group("constellation_propagation");
+    propagator.init_satellites(&tle_data)
+        .expect("Failed to initialize satellites");
     
-    // Benchmark different time step counts
-    for n_steps in [10, 50, 100].iter() {
-        let step = TimeSpan::from_hours(24.0 / (*n_steps as f64));
+    // Generate test times (Julian Dates)
+    let base_jd = 2460500.5; // Some reference date
+    
+    let mut group = c.benchmark_group("aos_vs_soa_kernel");
+    group.sample_size(50); // Reduce sample size for faster benchmarks
+    
+    // Test various time counts
+    for n_times in [10, 50, 100, 500].iter() {
+        let jd_times: Vec<f64> = (0..*n_times)
+            .map(|i| base_jd + (i as f64) * 0.01) // ~15 min intervals
+            .collect();
         
-        // CPU benchmark
+        let label = format!("{}sats_{}times", n_sats, n_times);
+        
+        // Benchmark AoS kernel (original)
         group.bench_with_input(
-            BenchmarkId::new("CPU", format!("{}sats_{}steps", n_sats, n_steps)),
-            n_steps,
-            |b, _| {
+            BenchmarkId::new("AoS", &label),
+            &jd_times,
+            |b, times| {
                 b.iter(|| {
-                    constellation.get_batch_ephemeris(
-                        black_box(start),
-                        black_box(end),
-                        black_box(step),
-                        Some(PropagationBackend::Cpu),
-                    )
+                    propagator.propagate(black_box(times))
+                        .expect("AoS propagation failed")
                 });
             },
         );
         
-        // GPU benchmark (if available)
-        if Constellation::is_gpu_available() {
-            group.bench_with_input(
-                BenchmarkId::new("GPU", format!("{}sats_{}steps", n_sats, n_steps)),
-                n_steps,
-                |b, _| {
-                    b.iter(|| {
-                        constellation.get_batch_ephemeris(
-                            black_box(start),
-                            black_box(end),
-                            black_box(step),
-                            Some(PropagationBackend::Gpu),
-                        )
-                    });
-                },
-            );
-        }
+        // Benchmark SoA kernel (optimized)
+        group.bench_with_input(
+            BenchmarkId::new("SoA", &label),
+            &jd_times,
+            |b, times| {
+                b.iter(|| {
+                    propagator.propagate_soa(black_box(times))
+                        .expect("SoA propagation failed")
+                });
+            },
+        );
+        
+        // Benchmark SoA with direct array output (no conversion)
+        group.bench_with_input(
+            BenchmarkId::new("SoA_arrays", &label),
+            &jd_times,
+            |b, times| {
+                b.iter(|| {
+                    propagator.propagate_soa_arrays(black_box(times))
+                        .expect("SoA arrays propagation failed")
+                });
+            },
+        );
     }
     
     group.finish();
 }
 
-criterion_group!(benches, bench_constellation_propagation);
+/// Benchmark SoA kernel scaling with satellite count
+#[cfg(feature = "cuda")]
+fn bench_soa_scaling(c: &mut Criterion) {
+    let tle_path = "tests/2025-04-15-celestrak.3le";
+    
+    if !std::path::Path::new(tle_path).exists() {
+        eprintln!("Test TLE file not found, skipping scaling benchmark");
+        return;
+    }
+    
+    let all_tles = load_tles_from_catalog(tle_path)
+        .expect("Failed to load TLE catalog");
+    
+    let base_jd = 2460500.5;
+    let n_times = 100;
+    let jd_times: Vec<f64> = (0..n_times)
+        .map(|i| base_jd + (i as f64) * 0.01)
+        .collect();
+    
+    let mut group = c.benchmark_group("soa_scaling");
+    group.sample_size(30);
+    
+    // Test with different satellite counts
+    for n_sats in [100, 500, 1000, 2000, 5000].iter() {
+        if *n_sats > all_tles.len() {
+            continue;
+        }
+        
+        let tle_subset: Vec<TleDataGpu> = all_tles[..*n_sats].to_vec();
+        
+        let mut propagator = CudaSgp4Propagator::new()
+            .expect("Failed to create CUDA propagator");
+        propagator.init_satellites(&tle_subset)
+            .expect("Failed to initialize satellites");
+        
+        group.bench_with_input(
+            BenchmarkId::new("SoA", format!("{}sats", n_sats)),
+            &jd_times,
+            |b, times| {
+                b.iter(|| {
+                    propagator.propagate_soa_arrays(black_box(times))
+                        .expect("SoA propagation failed")
+                });
+            },
+        );
+        
+        group.bench_with_input(
+            BenchmarkId::new("AoS", format!("{}sats", n_sats)),
+            &jd_times,
+            |b, times| {
+                b.iter(|| {
+                    propagator.propagate(black_box(times))
+                        .expect("AoS propagation failed")
+                });
+            },
+        );
+    }
+    
+    group.finish();
+}
+
+#[cfg(feature = "cuda")]
+criterion_group!(benches, bench_aos_vs_soa_kernel, bench_soa_scaling);
+
+#[cfg(not(feature = "cuda"))]
+fn bench_placeholder(_c: &mut Criterion) {
+    eprintln!("CUDA feature not enabled, no GPU benchmarks available");
+}
+
+#[cfg(not(feature = "cuda"))]
+criterion_group!(benches, bench_placeholder);
+
 criterion_main!(benches);

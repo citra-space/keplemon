@@ -41,6 +41,16 @@ impl TLECatalog {
         self.map.len()
     }
 
+    /// Returns an iterator over all TLEs in the catalog
+    pub fn values(&self) -> impl Iterator<Item = &TLE> {
+        self.map.values()
+    }
+
+    /// Returns all TLEs as a Vec
+    pub fn get_all(&self) -> Vec<TLE> {
+        self.map.values().cloned().collect()
+    }
+
     pub fn from_tle_file(file_path: &str) -> Result<TLECatalog, String> {
         let mut catalog = TLECatalog::default();
         let file = File::open(file_path).expect("Unable to open file");
