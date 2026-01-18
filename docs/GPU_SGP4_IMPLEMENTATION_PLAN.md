@@ -37,6 +37,7 @@ The keplemon repository has been set up as a git submodule in the ngsx project:
 | **Phase 2: Rust Bindings** | ✅ Complete | `cudarc` v0.12 integration, PTX embedding via `build.rs` |
 | **Phase 3: Accuracy Validation** | ✅ Complete | Sub-10m position accuracy vs CPU reference |
 | **Phase 4: Performance Optimization** | ✅ Complete | 154M propagations/sec peak throughput |
+| **Phase 5: Deep Space (SDP4)** | ✅ Complete | Full SDP4 support for GEO/MEO/HEO satellites |
 
 ### Key Metrics Achieved
 
@@ -56,6 +57,7 @@ keplemon/
 ├── kernels/
 │   ├── sgp4_constants.cuh        # WGS-72 constants (J2, J3, J4, XKE, RE)
 │   ├── sgp4_types.cuh            # Aligned struct definitions + SoA types
+│   ├── sgp4_deepspace.cuh        # ✅ SDP4 deep space functions (626 lines)
 │   ├── sgp4_init.cu              # TLE → SGP4 params initialization
 │   └── sgp4_batch.cu             # Batch propagation kernel (AoS + SoA)
 ├── src/
@@ -87,6 +89,7 @@ keplemon/
     ├── test_soa_kernel.rs        # SoA vs AoS equivalence tests
     ├── quick_soa_timing.rs       # Quick performance comparison
     ├── test_batch_api.rs         # ✅ High-level API integration tests (Jan 17, 2026)
+    ├── test_deep_space_gpu.rs    # ✅ Deep space (SDP4) accuracy tests
     └── benchmark_gpu.rs          # Performance benchmarks
 ```
 
@@ -191,14 +194,14 @@ let states_map = constellation.get_states_at_epochs(&epochs, Some(PropagationBac
 
 | Task | Priority | Status |
 |------|----------|--------|
-| Deep-space satellites (SDP4) | Medium | ❌ Not started |
+| **Deep-space satellites (SDP4)** | High | ✅ **Complete** (Jan 17, 2026) |
 | **High-level `BatchPropagator` API** | High | ✅ **Complete** (Jan 17, 2026) |
 | **`Constellation` wrapper** | Medium | ✅ **Complete** (Jan 17, 2026) |
 | **Python bindings (PyO3)** | High | ✅ **Complete** (Jan 17, 2026) |
-| Multi-GPU support | Low | ❌ Not started |
 | CI/CD with CUDA testing | Medium | ❌ Not started |
+| Fast-math intrinsics | Low | ❌ Not started |
+| Multi-GPU support | Low | ❌ Not started |
 | SoA memory optimization | Low | ✅ Investigated — No benefit (compute-bound) |
-| Fast-math intrinsics | Medium | ❌ Not started |
 
 ### Python Bindings Implementation — January 17, 2026
 
@@ -1398,8 +1401,9 @@ cargo test --features cuda
 | Phase 3: High-Level API | 1 week | BatchPropagator, Constellation, TLE extensions | ✅ Complete (Jan 17, 2026) |
 | Phase 4: Python Bindings | 1 week | PyO3 wrappers, Python API | ✅ **Complete** (Jan 17, 2026) |
 | Phase 5: Build & Test | 1 week | CI/CD, benchmarks, documentation | 🔄 Partial (benchmarks + tests done) |
-| Phase 6: Integration | 1 week | Merge to main, release coordination | ⏳ Not started |
-| **Total** | **6-8 weeks** | GPU-accelerated keplemon as optional feature | **~95% Complete** |
+| Phase 6: Deep Space (SDP4) | 1 week | GEO/MEO/HEO satellite support | ✅ Complete (Jan 17, 2026) |
+| Phase 7: Integration | 1 week | Merge to main, release coordination | ⏳ Not started |
+| **Total** | **7-9 weeks** | GPU-accelerated keplemon as optional feature | **~98% Complete** |
 
 ---
 
@@ -1417,7 +1421,7 @@ cargo test --features cuda
 
 1. **Deep space resonance**: Should we support deep space satellites (period > 225 min)?
    - Adds complexity but needed for GEO/HEO
-   - **Decision:** Deferred. Current implementation skips deep-space satellites with `is_deep_space` flag. SDP4 can be added later.
+   - **Decision:** ✅ **Implemented** (commit d0d5781, Jan 17, 2026). Full SDP4 support with 626-line sgp4_deepspace.cuh implementing dscom, dsinit, dpper, dspace functions. Tested with GEO, MEO, and HEO satellites with <25km accuracy.
    
 2. **Precision**: f32 vs f64?
    - f64 for accuracy, but f32 is 2x faster on consumer GPUs
@@ -1439,6 +1443,10 @@ cargo test --features cuda
 
 | Commit | Description |
 |--------|-------------|
+| `340e923` | Phase 4: Add Python bindings for batch GPU propagation |
+| `cdc2263` | Phase 3: Add high-level Rust API for batch propagation |
+| `d0d5781` | feat(cuda): Implement SDP4 deep space propagator (626 lines) |
+| `980febb` | Fix deep space SGP4 CUDA bug: Remove incorrect dpper initialization |
 | `68c7329` | perf(cuda): cache kernel functions to avoid lookup overhead |
 | `6f89663` | perf(cuda): optimize GPU SGP4 with buffer reuse and fused sincos |
 | `db56149` | fix(cuda): use J3/J2 ratio for long-period periodics (aycof, xlcof) |
