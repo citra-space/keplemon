@@ -8,7 +8,7 @@
 
 // Debug output disabled for production performance
 // Set to 1 only for debugging single satellite issues
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 
 // Helper macro for fused sincos (CUDA provides sincos for double precision)
 #define SINCOS(angle, sinvar, cosvar) sincos((angle), &(sinvar), &(cosvar))
