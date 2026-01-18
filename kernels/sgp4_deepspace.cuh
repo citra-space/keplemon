@@ -399,7 +399,9 @@ __device__ void dpper(
     double zf = zm + 2.0 * ZES * sin(zm);
     double sinzf = sin(zf);
     double f2 = 0.5 * sinzf * sinzf - 0.25;
-    double f3 = -0.5 * sinzf * cos(zf);
+    double coszf = cos(zf);
+    double f3 = -0.5 * sinzf * coszf;
+
     double ses = p.se2 * f2 + p.se3 * f3;
     double sis = p.si2 * f2 + p.si3 * f3;
     double sls = p.sl2 * f2 + p.sl3 * f3 + p.sl4 * sinzf;
@@ -413,7 +415,9 @@ __device__ void dpper(
     zf = zm + 2.0 * ZEL * sin(zm);
     sinzf = sin(zf);
     f2 = 0.5 * sinzf * sinzf - 0.25;
-    f3 = -0.5 * sinzf * cos(zf);
+    coszf = cos(zf);
+    f3 = -0.5 * sinzf * coszf;
+
     double sel = p.ee2 * f2 + p.e3 * f3;
     double sil = p.xi2 * f2 + p.xi3 * f3;
     double sll = p.xl2 * f2 + p.xl3 * f3 + p.xl4 * sinzf;
@@ -495,6 +499,16 @@ __device__ void dpper(
             mp = mp + pl;
             argpp = xls - mp - cosip * nodep;
         }
+    }
+
+    // Debug output: Print final dpper output values
+    if (debug && !init) {
+        printf("\n=== DPPER OUTPUT (GPU) ===\n");
+        printf("ep (em):      %.16f\n", ep);
+        printf("inclp (inclm): %.16f rad\n", inclp);
+        printf("nodep (nodem): %.16f rad\n", nodep);
+        printf("argpp (argpm): %.16f rad\n", argpp);
+        printf("mp (mm):      %.16f rad\n", mp);
     }
 }
 

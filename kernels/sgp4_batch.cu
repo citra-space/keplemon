@@ -6,9 +6,9 @@
 #include "sgp4_deepspace.cuh"
 #include <stdio.h>
 
-// Debug output disabled for production performance
-// Set to 1 only for debugging single satellite issues
-#define DEBUG_PRINT 0
+// Debug output enabled for dpper comparison
+// Set to 0 for production performance
+#define DEBUG_PRINT 1
 
 // Helper macro for fused sincos (CUDA provides sincos for double precision)
 #define SINCOS(angle, sinvar, cosvar) sincos((angle), &(sinvar), &(cosvar))
@@ -212,17 +212,27 @@ __device__ void sgp4_propagate_single(
     
     double sinargpm, cosargpm;
     SINCOS(argpm, sinargpm, cosargpm);
-    
+
     double axnl = em * cosargpm;
     double temp = 1.0 / (am * (1.0 - em * em));
     double aynl = em * sinargpm + temp * aycof_eff;
     double xl = mm + argpm + xnode + temp * xlcof_eff * axnl;
-    
+
     if (debug) {
         printf("\n--- Long Period Periodics ---\n");
-        printf("axnl:    %.10f\n", axnl);
-        printf("aynl:    %.10f\n", aynl);
-        printf("xl:      %.10f rad\n", xl);
+        printf("em:         %.16f\n", em);
+        printf("am:         %.16f ER\n", am);
+        printf("argpm:      %.16f rad\n", argpm);
+        printf("sinargpm:   %.16f\n", sinargpm);
+        printf("cosargpm:   %.16f\n", cosargpm);
+        printf("aycof_eff:  %.16e\n", aycof_eff);
+        printf("xlcof_eff:  %.16e\n", xlcof_eff);
+        printf("temp:       %.16f\n", temp);
+        printf("em*sinargpm: %.16f\n", em * sinargpm);
+        printf("temp*aycof:  %.16f\n", temp * aycof_eff);
+        printf("axnl:       %.16f\n", axnl);
+        printf("aynl:       %.16f\n", aynl);
+        printf("xl:         %.16f rad\n", xl);
     }
     
     // ═════════════════════════════════════════════════════════════
