@@ -388,7 +388,8 @@ __device__ void dsinit(
 __device__ void dpper(
     double inclo, bool init, double t,
     double& ep, double& inclp, double& nodep, double& argpp, double& mp,
-    Sgp4Params& p  // Non-const: need to store baseline periodics when init=true
+    Sgp4Params& p,  // Non-const: need to store baseline periodics when init=true
+    bool debug = false  // Add debug parameter
 ) {
     // Calculate time-dependent variables
     double zm = p.zmos + ZNS * t;
@@ -424,6 +425,18 @@ __device__ void dpper(
     double pl = sls + sll;
     double pgh = sghs + sghl;
     double ph = shs + shll;
+    
+    if (debug && !init) {
+        printf("\n--- DPPER Debug (t=%.2f) ---\n", t);
+        printf("Solar: zm=%.10f, zf=%.10f\n", p.zmos + ZNS * t, p.zmos + ZNS * t + 2.0 * ZES * sin(p.zmos + ZNS * t));
+        printf("  sis = si2*f2 + si3*f3 = %.15e\n", sis);
+        printf("  si2=%.15e, si3=%.15e\n", p.si2, p.si3);
+        printf("Lunar: zm=%.10f, zf=%.10f\n", p.zmol + ZNL * t, p.zmol + ZNL * t + 2.0 * ZEL * sin(p.zmol + ZNL * t));
+        printf("  sil = xi2*f2 + xi3*f3 = %.15e\n", sil);
+        printf("  xi2=%.15e, xi3=%.15e\n", p.xi2, p.xi3);
+        printf("pinc = sis + sil = %.15e rad (%.10f deg)\n", pinc, pinc * RAD2DEG);
+        printf("Baseline: peo=%.15e, pinco=%.15e\n", p.peo, p.pinco);
+    }
     
     if (init) {
         // Store baseline periodic values at epoch for later subtraction

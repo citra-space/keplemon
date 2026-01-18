@@ -4,11 +4,13 @@ This document tracks the investigation into the 12-22 km position errors between
 
 ## Summary
 
-- **Current Status**: CUDA deep space shows 5-22 km errors vs CPU
+- **Current Status**: ✅ **FIXED!** CUDA deep space now matches CPU to within 40 meters
 - **Reference Propagator**: SAAL v1.3.3 (matches python-sgp4 to < 0.01 km)
-- **Error Pattern**: Constant at t=0 (~18 km) → bug is in **propagation step**, not initialization
+- **Previous Error**: 5-22 km position errors
+- **Current Error**: < 0.04 km (40 meters) - **99.82% improvement!**
+- **Root Cause**: CUDA was incorrectly calling `dpper(init=true)` during initialization, storing non-zero baseline periodics that were then subtracted during propagation
+- **Solution**: Removed the `dpper` call from initialization - baseline periodics must remain 0 (as set by `dscom`)
 - **Gravity Model**: WGS-72 (both CUDA and python-sgp4)
-- **Error Traced To**: Argument of latitude (`su`) differs by 0.048° — root cause still unknown
 - **Last Updated**: January 17, 2026
 
 ---
@@ -186,14 +188,31 @@ if (p.is_deep_space) {
 
 **Key Observation**: Non-resonant satellites (irez=0) have the highest errors, especially GPS/MEO orbits.
 
-### Latest Test Results (January 17, 2026)
+### Latest Test Results (January 17, 2026) - ✅ FIXED!
 
 ```
 === Deep Space Accuracy Summary ===
 Successful comparisons: 49
-Max position error: 22.2240 km (GPS BIIR-2 (PRN 13))
-Max velocity error: 0.002898 km/s (2.898 m/s)
+Max position error: 0.0390 km (39 meters) - LAGEOS 1
+Max velocity error: 0.000013 km/s (13 mm/s)
 ```
+
+**Before fix**:
+- GPS BIIR-2: 22.2 km error
+- All satellites: 5-22 km errors
+
+**After fix**:
+- GPS BIIR-2: 0.032 km error (32 meters)
+- All satellites: < 40 meters error
+- **99.82% improvement!**
+
+| Satellite | Error Before | Error After | Improvement |
+|-----------|--------------|-------------|-------------|
+| GPS BIIR-2 | 22.2 km | 0.032 km | 694x better |
+| NAVSTAR 62 | 19.0 km | 0.029 km | 655x better |
+| GLONASS-M | 14.3 km | 0.031 km | 461x better |
+| LES-5 (GEO) | 7.4 km | 0.001 km | 7400x better |
+| LAGEOS 1 | 1.8 km | 0.039 km | 46x better |
 
 | Satellite | t=0h | t=1h | t=6h | t=12h | t=24h | t=168h |
 |-----------|------|------|------|-------|-------|--------|
@@ -469,26 +488,40 @@ For non-resonant satellites, after dspace:
 
 4. ✅ ~~**Check if error is in orbital elements or Cartesian conversion**~~ - Confirmed error is in orbital element `su`, not coordinate conversion
 
-5. 🔍 **NEW: Trace sinu/cosu calculation inputs** - Since `su = atan2(sinu, cosu)` formula matches, the inputs must differ:
-   ```
-   sinu = am / rl * (sineo1 - aynl - axnl * temp)
-   cosu = am / rl * (coseo1 - axnl + aynl * temp)
-   ```
-   Need to compare each input variable between CUDA and python-sgp4:
-   - [ ] `sineo1` - sin of eccentric anomaly
-   - [ ] `coseo1` - cos of eccentric anomaly  
-   - [ ] `axnl` - e * cos(argp) with long period corrections
-   - [ ] `aynl` - e * sin(argp) with long period corrections
-   - [ ] `temp` = esine / (1 + betal)
-   - [ ] `am` - semi-major axis
-   - [ ] `rl` - radius (am * (1 - ecose))
+5. ✅ **Trace sinu/cosu calculation inputs** - **DONE: Found root cause!**
+   
+   Traced at t=10 min for GPS BIIR-2:
+   
+   | Variable | CUDA | python-sgp4 | Difference | Status |
+   |----------|------|-------------|------------|--------|
+   | axnl | -0.0068062372 | -0.006814517956 | ~0.000008 | ⚠️ |
+   | aynl | 0.0105312806 | 0.010542703088 | **0.0001142** | ❌ |
+   | su | 0.0655017551 | 0.066324603991 | **0.0008228** | ❌ |
+   | su (degrees) | 3.753° | 3.801° | **0.048°** | ❌ |
+   
+   **Root cause identified**: `aynl` differs because it depends on `aycof_eff`, which depends on `sinip`, which depends on `inclm` (the dpper-modified inclination).
 
-6. 🔍 **NEW: Check if axnl/aynl calculation differs** - These are the long period periodic terms:
+6. ✅ **FIXED: dpper baseline periodics bug** - **ROOT CAUSE FOUND AND FIXED!**
+   
+   **The Bug**: CUDA initialization was calling `dpper(p.inclo, true, 0.0, ...)` which calculated and stored baseline periodic values:
    ```
-   axnl = em * cos(argpm)
-   aynl = em * sin(argpm) + temp * aycof
+   p.peo = 1.352704098e-05
+   p.pinco = 3.640465578e-04  ← This should be 0!
+   p.plo = ...
    ```
-   The `argpm` value after dpper should be checked.
+   
+   During propagation, `dpper` subtracts these baselines:
+   ```cuda
+   pinc = pinc - p.pinco;  // 3.64e-4 - 3.64e-4 ≈ 4.4e-8 (almost nothing!)
+   inclp = inclp + pinc;   // Only adds tiny correction
+   ```
+   
+   **The Fix**: Removed the `dpper(init=true)` call from initialization. Baseline periodics must remain at 0 (as set by `dscom`), matching python-sgp4's behavior.
+   
+   **Result**: 
+   - Position error: **22.2 km → 0.039 km (39 meters)** ✅
+   - **99.82% error reduction!**
+   - All deep space satellites now within **40 meters** accuracy
 
 ---
 

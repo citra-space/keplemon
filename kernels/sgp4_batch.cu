@@ -164,7 +164,7 @@ __device__ void sgp4_propagate_single(
     // For deep space, apply lunar-solar periodics (DPPER)
     double xnode = nodem;
     if (p.is_deep_space) {
-        dpper(p.inclo, false, tsince, em, inclm, nodem, argpm, mm, p);
+        dpper(p.inclo, false, tsince, em, inclm, nodem, argpm, mm, p, debug);
         xnode = nodem;
         
         if (debug) {

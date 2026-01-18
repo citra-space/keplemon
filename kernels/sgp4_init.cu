@@ -288,15 +288,10 @@ __device__ void sgp4_init_deepspace(const TleData& tle, Sgp4Params& p,
         nm, nodem, p
     );
     
-    // Apply initial DPPER perturbations
-    double ep = p.ecco;
-    double inclp = p.inclo;
-    double nodep = p.nodeo;
-    double argpp = p.argpo;
-    double mp = p.mo;
-    
-    // This call with init=true stores baseline periodic values (peo, pinco, plo, pgho, pho)
-    dpper(p.inclo, true, 0.0, ep, inclp, nodep, argpp, mp, p);
+    // Note: python-sgp4 does NOT call dpper during initialization.
+    // The baseline periodics (peo, pinco, plo, pgho, pho) remain at 0
+    // as set by dscom. This means dpper will not subtract any baseline
+    // during propagation, which matches the Vallado algorithm.
     
     // Initialize resonance tracking
     p.atime = 0.0;
