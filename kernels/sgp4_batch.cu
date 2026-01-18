@@ -1,13 +1,16 @@
 // SGP4 Batch Propagation Kernel
 // Main propagation kernel based on Vallado's SGP4 algorithm
-// DEBUG VERSION - prints intermediate values for first satellite at t=0
 
 #include "sgp4_types.cuh"
 #include "sgp4_constants.cuh"
 #include <stdio.h>
 
-// Enable debug output for first satellite only
-#define DEBUG_PRINT 1
+// Debug output disabled for production performance
+// Set to 1 only for debugging single satellite issues
+#define DEBUG_PRINT 0
+
+// Helper macro for fused sincos (CUDA provides sincos for double precision)
+#define SINCOS(angle, sinvar, cosvar) sincos((angle), &(sinvar), &(cosvar))
 
 // Device function for single satellite propagation
 __device__ void sgp4_propagate_single(
@@ -148,12 +151,15 @@ __device__ void sgp4_propagate_single(
     // LONG PERIOD PERIODICS
     // ═════════════════════════════════════════════════════════════
     
-    double sinip = sin(inclm);
-    double cosip = cos(inclm);
+    double sinip, cosip;
+    SINCOS(inclm, sinip, cosip);
     
-    double axnl = em * cos(argpm);
+    double sinargpm, cosargpm;
+    SINCOS(argpm, sinargpm, cosargpm);
+    
+    double axnl = em * cosargpm;
     double temp = 1.0 / (am * (1.0 - em * em));
-    double aynl = em * sin(argpm) + temp * p.aycof;
+    double aynl = em * sinargpm + temp * p.aycof;
     double xl = mm + argpm + xnode + temp * p.xlcof * axnl;
     
     if (debug) {
@@ -174,8 +180,8 @@ __device__ void sgp4_propagate_single(
     
     // Newton-Raphson iteration for eccentric anomaly
     while (fabs(tem5) >= 1.0e-12 && ktr <= 10) {
-        double sineo1 = sin(eo1);
-        double coseo1 = cos(eo1);
+        double sineo1, coseo1;
+        SINCOS(eo1, sineo1, coseo1);
         tem5 = 1.0 - coseo1 * axnl - sineo1 * aynl;
         tem5 = (u - aynl * coseo1 + axnl * sineo1 - eo1) / tem5;
         
@@ -196,8 +202,8 @@ __device__ void sgp4_propagate_single(
     // SHORT PERIOD PERIODICS
     // ═════════════════════════════════════════════════════════════
     
-    double sineo1 = sin(eo1);
-    double coseo1 = cos(eo1);
+    double sineo1, coseo1;
+    SINCOS(eo1, sineo1, coseo1);
     
     double ecose = axnl * coseo1 + aynl * sineo1;
     double esine = axnl * sineo1 - aynl * coseo1;
@@ -257,12 +263,12 @@ __device__ void sgp4_propagate_single(
     // ORIENTATION VECTORS
     // ═════════════════════════════════════════════════════════════
     
-    double sinsu = sin(su);
-    double cossu = cos(su);
-    double snod = sin(xnode_new);
-    double cnod = cos(xnode_new);
-    double sini = sin(xinc);
-    double cosi = cos(xinc);
+    double sinsu, cossu;
+    SINCOS(su, sinsu, cossu);
+    double snod, cnod;
+    SINCOS(xnode_new, snod, cnod);
+    double sini, cosi;
+    SINCOS(xinc, sini, cosi);
     
     double xmx = -snod * cosi;
     double xmy = cnod * cosi;
@@ -285,9 +291,10 @@ __device__ void sgp4_propagate_single(
     // POSITION AND VELOCITY (km and km/s in TEME frame)
     // ═════════════════════════════════════════════════════════════
     
-    state.x = mrt * ux * RE;
-    state.y = mrt * uy * RE;
-    state.z = mrt * uz * RE;
+    double mrt_RE = mrt * RE;
+    state.x = mrt_RE * ux;
+    state.y = mrt_RE * uy;
+    state.z = mrt_RE * uz;
     state.vx = (mvt * ux + rvdot * vx) * VKMPERSEC;
     state.vy = (mvt * uy + rvdot * vy) * VKMPERSEC;
     state.vz = (mvt * uz + rvdot * vz) * VKMPERSEC;

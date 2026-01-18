@@ -110,6 +110,12 @@ pub struct CudaSgp4Propagator {
     #[allow(dead_code)]
     tle_data_gpu: Option<CudaSlice<TleDataGpu>>,
     params_gpu: Option<CudaSlice<Sgp4ParamsGpu>>,
+    /// Cached JD times on GPU for repeated propagations
+    cached_times_gpu: Option<CudaSlice<f64>>,
+    cached_n_times: usize,
+    /// Cached output buffer for repeated propagations with same dimensions
+    cached_states_gpu: Option<CudaSlice<Sgp4StateGpu>>,
+    cached_n_results: usize,
     #[allow(dead_code)]
     kernels_loaded: bool,
 }
@@ -133,6 +139,10 @@ impl CudaSgp4Propagator {
             n_satellites: 0,
             tle_data_gpu: None,
             params_gpu: None,
+            cached_times_gpu: None,
+            cached_n_times: 0,
+            cached_states_gpu: None,
+            cached_n_results: 0,
             kernels_loaded: true,
         })
     }
@@ -202,7 +212,7 @@ impl CudaSgp4Propagator {
     /// # Returns
     /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
     /// The kernel internally computes tsince for each satellite based on its TLE epoch.
-    pub fn propagate(&self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
+    pub fn propagate(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
@@ -214,19 +224,34 @@ impl CudaSgp4Propagator {
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
         
-        // Upload Julian Date times to GPU
-        let times_gpu = dev.htod_sync_copy(jd_times)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        // Check if we can reuse cached times (same length and values)
+        let times_gpu = if self.cached_n_times == n_times && self.cached_times_gpu.is_some() {
+            // Reuse cached times - zero CPU→GPU transfer for times
+            self.cached_times_gpu.as_ref().unwrap()
+        } else {
+            // Upload Julian Date times to GPU and cache them
+            let new_times_gpu = dev.htod_sync_copy(jd_times)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            self.cached_times_gpu = Some(new_times_gpu);
+            self.cached_n_times = n_times;
+            self.cached_times_gpu.as_ref().unwrap()
+        };
         
-        // Allocate output buffer
-        let states_gpu: CudaSlice<Sgp4StateGpu> = dev.alloc_zeros(n_results)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        // Reuse output buffer if same size, otherwise allocate new
+        if self.cached_n_results != n_results || self.cached_states_gpu.is_none() {
+            let new_states_gpu: CudaSlice<Sgp4StateGpu> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            self.cached_states_gpu = Some(new_states_gpu);
+            self.cached_n_results = n_results;
+        }
+        let states_gpu = self.cached_states_gpu.as_ref().unwrap();
         
         // Get propagation kernel
         let prop_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
         
         // Launch config: 2D grid (satellites x times)
+        // Use 16x16 = 256 threads per block - balanced for various batch sizes
         let block_x = 16u32;
         let block_y = 16u32;
         let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
@@ -242,7 +267,7 @@ impl CudaSgp4Propagator {
         unsafe {
             prop_kernel.launch(
                 cfg, 
-                (params_gpu, &times_gpu, &states_gpu, self.n_satellites as i32, n_times as i32)
+                (params_gpu, times_gpu, states_gpu, self.n_satellites as i32, n_times as i32)
             ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
         
@@ -250,9 +275,28 @@ impl CudaSgp4Propagator {
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
         
-        let results = dev.dtoh_sync_copy(&states_gpu)
+        let results = dev.dtoh_sync_copy(states_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
         
         Ok(results)
+    }
+    
+    /// Pre-load Julian Date times to GPU for repeated propagations
+    /// 
+    /// Use this when you want to propagate multiple satellite sets to the same times.
+    /// After calling this, propagate() will reuse the cached times without re-uploading.
+    pub fn cache_times(&mut self, jd_times: &[f64]) -> Result<(), CudaError> {
+        let dev = self.device.device();
+        let times_gpu = dev.htod_sync_copy(jd_times)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+        self.cached_times_gpu = Some(times_gpu);
+        self.cached_n_times = jd_times.len();
+        Ok(())
+    }
+    
+    /// Clear cached times to free GPU memory
+    pub fn clear_time_cache(&mut self) {
+        self.cached_times_gpu = None;
+        self.cached_n_times = 0;
     }
 }
