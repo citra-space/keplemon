@@ -202,6 +202,28 @@ __device__ void sgp4_init_single(const TleData& tle, Sgp4Params& p) {
         if (p.ecco > 1.0e-4) {
             p.xmcof = -X2O3 * coef * p.bstar / eeta;
         }
+
+        // Debug: print drag coefficients for ISS
+        #ifdef DEBUG_INIT
+        if (p.bstar > 2.0e-4) {  // ISS has bstar = 2.2013e-04
+            printf("\n=== INIT DEBUG: High-drag satellite ===\n");
+            printf("bstar:   %.16e\n", p.bstar);
+            printf("cc1:     %.16e\n", p.cc1);
+            printf("cc4:     %.16e\n", p.cc4);
+            printf("cc5:     %.16e\n", p.cc5);
+            printf("d2:      %.16e\n", p.d2);
+            printf("d3:      %.16e\n", p.d3);
+            printf("d4:      %.16e\n", p.d4);
+            printf("t2cof:   %.16e\n", p.t2cof);
+            printf("t3cof:   %.16e\n", p.t3cof);
+            printf("t4cof:   %.16e\n", p.t4cof);
+            printf("t5cof:   %.16e\n", p.t5cof);
+            printf("sinmao:  %.16f\n", p.sinmao);
+            printf("delmo:   %.16f\n", p.delmo);
+            printf("omgcof:  %.16e\n", p.omgcof);
+            printf("xmcof:   %.16e\n", p.xmcof);
+        }
+        #endif
         
         // Initialize deep space parameters to zero for near-earth
         p.irez = 0;

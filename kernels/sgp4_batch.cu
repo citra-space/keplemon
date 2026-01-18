@@ -57,6 +57,16 @@ __device__ void sgp4_propagate_single(
         printf("aycof:       %.10e\n", p.aycof);
         printf("delmo:       %.10f\n", p.delmo);
         printf("sinmao:      %.10f\n", p.sinmao);
+        printf("\n--- Drag Coefficients ---\n");
+        printf("d2:          %.16e\n", p.d2);
+        printf("d3:          %.16e\n", p.d3);
+        printf("d4:          %.16e\n", p.d4);
+        printf("t3cof:       %.16e\n", p.t3cof);
+        printf("t4cof:       %.16e\n", p.t4cof);
+        printf("t5cof:       %.16e\n", p.t5cof);
+        printf("xnodcf:      %.16e\n", p.xnodcf);
+        printf("omgcof:      %.16e\n", p.omgcof);
+        printf("xmcof:       %.16e\n", p.xmcof);
     }
     
     // Handle tsince = 0 case (propagation at epoch)
@@ -104,15 +114,33 @@ __device__ void sgp4_propagate_single(
         
         double t3 = t2 * tsince;
         double t4 = t3 * tsince;
+
+        if (debug) {
+            printf("\n--- Before drag updates ---\n");
+            printf("tempa(before): %.16f\n", tempa);
+            printf("tempe(before): %.16e\n", tempe);
+            printf("templ(before): %.16e\n", templ);
+            printf("sin(mm):       %.16f\n", sin(mm));
+            printf("mm:            %.16f rad\n", mm);
+        }
+
         tempa = tempa - p.d2 * t2 - p.d3 * t3 - p.d4 * t4;
         tempe = tempe + p.bstar * p.cc5 * (sin(mm) - p.sinmao);
         templ = templ + p.t3cof * t3 + t4 * (p.t4cof + tsince * p.t5cof);
         
         if (debug) {
-            printf("delomg:  %.10e\n", delomg);
-            printf("delm:    %.10e\n", delm);
-            printf("mm:      %.10f rad\n", mm);
-            printf("argpm:   %.10f rad\n", argpm);
+            printf("\n--- Near-Earth Secular Terms ---\n");
+            printf("delomg:  %.16e\n", delomg);
+            printf("delm:    %.16e\n", delm);
+            printf("temp:    %.16e\n", temp);
+            printf("mm:      %.16f rad\n", mm);
+            printf("argpm:   %.16f rad\n", argpm);
+            printf("nodem:   %.16f rad\n", nodem);
+            printf("t3:      %.16e\n", t3);
+            printf("t4:      %.16e\n", t4);
+            printf("tempa(final): %.16f\n", tempa);
+            printf("tempe(final): %.16e\n", tempe);
+            printf("templ(final): %.16e\n", templ);
         }
     } else {
         // ═══════════════════════════════════════════════════════════════
