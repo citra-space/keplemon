@@ -193,7 +193,7 @@ fn run_benchmark(n_satellites: usize, n_times: usize) {
              n_leo, (n_leo as f64 / n_satellites as f64) * 100.0,
              n_geo, (n_geo as f64 / n_satellites as f64) * 100.0);
     
-    // Generate time points (propagate over 24 hours at 1-hour intervals)
+    // Generate time points (propagate over 7 days at 1-hour intervals)
     let base_epoch = tles[0].get_keplerian_state().epoch;
     let times: Vec<Epoch> = (0..n_times)
         .map(|i| base_epoch + TimeSpan::from_hours(i as f64))
@@ -251,8 +251,8 @@ fn test_benchmark_cpu_vs_gpu() {
     println!("# Mixed LEO/GEO Satellite Propagation");
     println!("{}", "#".repeat(70));
     
-    // Test with 24 time points (1 day at hourly intervals)
-    let n_times = 24;
+    // Test with 168 time points (7 days at hourly intervals)
+    let n_times = 168;
     
     // Benchmark different satellite counts
     let satellite_counts = vec![10, 20, 40, 80, 160, 1000];
