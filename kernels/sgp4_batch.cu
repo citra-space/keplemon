@@ -8,7 +8,7 @@
 
 // Debug output disabled for production performance
 // Set to 1 only for debugging single satellite issues
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 1
 
 // Helper macro for fused sincos (CUDA provides sincos for double precision)
 #define SINCOS(angle, sinvar, cosvar) sincos((angle), &(sinvar), &(cosvar))
@@ -197,13 +197,26 @@ __device__ void sgp4_propagate_single(
     double sinip, cosip;
     SINCOS(inclm, sinip, cosip);
     
+    // For deep space satellites, recalculate aycof and xlcof using
+    // the dpper-modified inclination (matching python-sgp4 behavior)
+    double aycof_eff = p.aycof;
+    double xlcof_eff = p.xlcof;
+    if (p.is_deep_space) {
+        aycof_eff = -0.5 * J3OJ2 * sinip;
+        if (fabs(cosip + 1.0) > 1.5e-12) {
+            xlcof_eff = -0.25 * J3OJ2 * sinip * (3.0 + 5.0 * cosip) / (1.0 + cosip);
+        } else {
+            xlcof_eff = -0.25 * J3OJ2 * sinip * (3.0 + 5.0 * cosip) / 1.5e-12;
+        }
+    }
+    
     double sinargpm, cosargpm;
     SINCOS(argpm, sinargpm, cosargpm);
     
     double axnl = em * cosargpm;
     double temp = 1.0 / (am * (1.0 - em * em));
-    double aynl = em * sinargpm + temp * p.aycof;
-    double xl = mm + argpm + xnode + temp * p.xlcof * axnl;
+    double aynl = em * sinargpm + temp * aycof_eff;
+    double xl = mm + argpm + xnode + temp * xlcof_eff * axnl;
     
     if (debug) {
         printf("\n--- Long Period Periodics ---\n");
@@ -269,12 +282,37 @@ __device__ void sgp4_propagate_single(
     double cosu = am / rl * (coseo1 - axnl + aynl * temp);
     double su = atan2(sinu, cosu);
     
+    if (debug) {
+        printf("\n--- Argument of Latitude ---\n");
+        printf("sineo1:  %.10f\n", sineo1);
+        printf("coseo1:  %.10f\n", coseo1);
+        printf("ecose:   %.10f\n", ecose);
+        printf("esine:   %.10f\n", esine);
+        printf("betal:   %.10f\n", betal);
+        printf("temp(esine/1+b): %.10f\n", temp);
+        printf("sinu:    %.10f\n", sinu);
+        printf("cosu:    %.10f\n", cosu);
+        printf("su:      %.10f rad\n", su);
+    }
+    
     double sin2u = (cosu + cosu) * sinu;
     double cos2u = 1.0 - 2.0 * sinu * sinu;
     
     temp = 1.0 / pl;
     double temp1 = 0.5 * J2 * temp;
     double temp2 = temp1 * temp;
+    
+    // For deep space satellites, recalculate con41, x1mth2, x7thm1 
+    // using the dpper-modified inclination (matching python-sgp4 behavior)
+    double con41_eff = p.con41;
+    double x1mth2_eff = p.x1mth2;
+    double x7thm1_eff = p.x7thm1;
+    if (p.is_deep_space) {
+        double cosisq = cosip * cosip;
+        con41_eff = 3.0 * cosisq - 1.0;
+        x1mth2_eff = 1.0 - cosisq;
+        x7thm1_eff = 7.0 * cosisq - 1.0;
+    }
     
     if (debug) {
         printf("\n--- Short Period Periodics ---\n");
@@ -287,13 +325,13 @@ __device__ void sgp4_propagate_single(
     }
     
     // Update short period periodics
-    double mrt = rl * (1.0 - 1.5 * temp2 * betal * p.con41) + 
-                 0.5 * temp1 * p.x1mth2 * cos2u;
-    su = su - 0.25 * temp2 * p.x7thm1 * sin2u;
+    double mrt = rl * (1.0 - 1.5 * temp2 * betal * con41_eff) + 
+                 0.5 * temp1 * x1mth2_eff * cos2u;
+    su = su - 0.25 * temp2 * x7thm1_eff * sin2u;
     double xnode_new = xnode + 1.5 * temp2 * cosip * sin2u;
     double xinc = inclm + 1.5 * temp2 * cosip * sinip * cos2u;
-    double mvt = rdotl - nm * temp1 * p.x1mth2 * sin2u / XKE;
-    double rvdot = rvdotl + nm * temp1 * (p.x1mth2 * cos2u + 1.5 * p.con41) / XKE;
+    double mvt = rdotl - nm * temp1 * x1mth2_eff * sin2u / XKE;
+    double rvdot = rvdotl + nm * temp1 * (x1mth2_eff * cos2u + 1.5 * con41_eff) / XKE;
     
     if (debug) {
         printf("mrt:     %.10f ER (%.6f km)\n", mrt, mrt * RE);

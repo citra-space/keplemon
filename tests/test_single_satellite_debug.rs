@@ -10,12 +10,21 @@ use keplemon::bodies::Satellite;
 use keplemon::time::TimeSpan;
 use keplemon::gpu::{CudaSgp4Propagator, cuda_sgp4::TleDataGpu};
 
-/// ISS TLE - well-known LEO satellite
-const ISS_LINE1: &str = "1 25544U 98067A   25105.52083333  .00012345  00000+0  22013-3 0  9991";
-const ISS_LINE2: &str = "2 25544  51.6456 339.5765 0003456  35.8734  85.9834 15.48919755123456";
+/// GPS BIIR-2 (PRN 13) - MEO satellite, irez=0
+const GPS_LINE1: &str = "1 24876U 97035A   25105.50000000 -.00000012  00000+0  00000+0 0  9993";
+const GPS_LINE2: &str = "2 24876  55.4567 234.5678 0123456 123.4567 236.5432  2.00565123456789";
 
 /// Julian Date offset for 1950
-const JD_1950: f64 = 2433282.5;
+// SAAL's days_since_1950 uses Dec 31, 1949 00:00 UTC (= Jan 0.0, 1950) as reference
+const JD_1950: f64 = 2433281.5;
+
+/// Expected position from python-sgp4 at t=0
+const EXPECTED_R0: [f64; 3] = [-15755.8319681903, -21605.7998182739, -442.0644843516];
+const EXPECTED_V0: [f64; 3] = [1.7546720556, -1.2945433912, 3.1697267964];
+
+/// Expected position from python-sgp4 at t=+60 min
+const EXPECTED_R60: [f64; 3] = [-7630.0563042405, -23188.6522822135, 10516.3178013292];
+const EXPECTED_V60: [f64; 3] = [2.6594496291, 0.4405413522, 2.7781762634];
 
 #[test]
 fn test_single_satellite_debug() {
@@ -25,33 +34,33 @@ fn test_single_satellite_debug() {
         return;
     }
     
-    println!("\n=== Single Satellite Debug Test ===\n");
+    println!("\n=== Single Satellite Debug Test: GPS BIIR-2 ===\n");
     
-    // Parse ISS TLE
-    let tle = TLE::from_lines(ISS_LINE1, ISS_LINE2, None)
-        .expect("Failed to parse ISS TLE");
+    // Parse GPS BIIR-2 TLE
+    let tle = TLE::from_lines(GPS_LINE1, GPS_LINE2, None)
+        .expect("Failed to parse GPS TLE");
     
-    let satellite = Satellite::from(tle.clone());
+    let _satellite = Satellite::from(tle.clone());
     let kep = tle.get_keplerian_state();
     let epoch = kep.epoch;
     
-    println!("Satellite: ISS (ZARYA)");
+    println!("Satellite: GPS BIIR-2 (PRN 13) - Deep Space, irez=0");
     println!("TLE Epoch: days_since_1950 = {}", epoch.days_since_1950);
     println!("TLE Epoch JD: {}", epoch.days_since_1950 + JD_1950);
     println!();
     
     // Print TLE parameters
-    // NOTE: keplemon stores angles in DEGREES (as per TLE format)
+    // NOTE: keplemon stores angles in RADIANS
     println!("TLE Parameters:");
-    println!("  Inclination:     {:.4}°", kep.elements.inclination);
-    println!("  RAAN:            {:.4}°", kep.elements.raan);
+    println!("  Inclination:     {:.4}° ({:.10} rad)", kep.elements.inclination.to_degrees(), kep.elements.inclination);
+    println!("  RAAN:            {:.4}° ({:.10} rad)", kep.elements.raan.to_degrees(), kep.elements.raan);
     println!("  Eccentricity:    {:.7}", kep.elements.eccentricity);
-    println!("  Arg of Perigee:  {:.4}°", kep.elements.argument_of_perigee);
-    println!("  Mean Anomaly:    {:.4}°", kep.elements.mean_anomaly);
+    println!("  Arg of Perigee:  {:.4}° ({:.10} rad)", kep.elements.argument_of_perigee.to_degrees(), kep.elements.argument_of_perigee);
+    println!("  Mean Anomaly:    {:.4}° ({:.10} rad)", kep.elements.mean_anomaly.to_degrees(), kep.elements.mean_anomaly);
     println!("  Mean Motion:     {:.8} rev/day", tle.get_mean_motion());
     println!("  B*:              {:.10}", tle.get_b_star());
-    println!("  ndot:            {:.10}", tle.get_mean_motion_dot());
-    println!("  nddot:           {:.10}", tle.get_mean_motion_dot_dot());
+    println!("  ndot:            {:.10e}", tle.get_mean_motion_dot());
+    println!("  nddot:           {:.10e}", tle.get_mean_motion_dot_dot());
     println!();
     
     // ========================================================================

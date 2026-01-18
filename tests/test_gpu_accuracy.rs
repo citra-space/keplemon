@@ -202,7 +202,8 @@ fn test_cpu_vs_gpu_propagation_accuracy() {
     // JD2000 epoch = Jan 1, 2000 12:00 TT = 2451545.0 JD
     // Jan 1, 1950 00:00 UT = 2433282.5 JD  
     // So: JD = days_since_1950 + 2433282.5
-    const JD_1950: f64 = 2433282.5;
+    // SAAL's days_since_1950 uses Dec 31, 1949 00:00 UTC (= Jan 0.0, 1950) as reference
+    const JD_1950: f64 = 2433281.5;
     
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(|tle| {
         let kep = tle.get_keplerian_state();

@@ -361,4 +361,19 @@ impl CudaSgp4Propagator {
         self.cached_times_gpu = None;
         self.cached_n_times = 0;
     }
+    
+    /// Get initialized SGP4 parameters from GPU for debugging
+    /// 
+    /// This copies the initialized parameters back from GPU memory,
+    /// which includes all the computed secular rates, resonance terms, etc.
+    pub fn get_params_debug(&self) -> Result<Vec<Sgp4ParamsGpu>, CudaError> {
+        let params_gpu = self.params_gpu.as_ref()
+            .ok_or(CudaError::NotInitialized)?;
+        
+        let dev = self.device.device();
+        let params = dev.dtoh_sync_copy(params_gpu)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        
+        Ok(params)
+    }
 }

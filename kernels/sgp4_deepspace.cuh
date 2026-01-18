@@ -29,15 +29,8 @@ __device__ void dscom(
     double& nm, double& em, double& inclm, double& mm, double& argpm, double& nodem,
     Sgp4Params& p
 ) {
-    // Solar and lunar constants
-    const double zes = 0.01675;
-    const double zel = 0.05490;
-    const double c1ss = 2.9864797e-6;
-    const double c1l = 4.7968065e-7;
-    const double zsinis = 0.39785416;
-    const double zcosis = 0.91744867;
-    const double zcosgs = 0.1945905;
-    const double zsings = -0.98088458;
+    // Solar and lunar constants (from sgp4_constants.cuh)
+    // ZES, ZEL, C1SS, C1L, ZSINIS, ZCOSIS, ZCOSGS, ZSINGS
     
     // Local variables
     nm = np;
@@ -70,21 +63,21 @@ __device__ void dscom(
     double zsinhl = 0.089683511 * stem / zsinil;
     double zcoshl = sqrt(1.0 - zsinhl * zsinhl);
     gam = 5.8351514 + 0.0019443680 * day;
-    double zx = 0.39785416 * stem / zsinil;
-    double zy = zcoshl * ctem + 0.91744867 * zsinhl * stem;
+    double zx = ZSINIS * stem / zsinil;
+    double zy = zcoshl * ctem + ZCOSIS * zsinhl * stem;
     zx = atan2(zx, zy);
     zx = gam + zx - xnodce;
     double zcosgl = cos(zx);
     double zsingl = sin(zx);
     
-    // Solar terms
-    double zcosg = zcosgs;
-    double zsing = zsings;
-    double zcosi = zcosis;
-    double zsini = zsinis;
+    // Solar terms - use constants from header
+    double zcosg = ZCOSGS;
+    double zsing = ZSINGS;
+    double zcosi = ZCOSIS;
+    double zsini = ZSINIS;
     double zcosh = cnodm;
     double zsinh = snodm;
-    double cc = c1ss;
+    double cc = C1SS;
     double xnoi = 1.0 / nm;
     
     for (int lsflg = 1; lsflg <= 2; lsflg++) {
@@ -163,7 +156,7 @@ __device__ void dscom(
             zsini = zsinil;
             zcosh = zcoshl * cnodm + zsinhl * snodm;
             zsinh = snodm * zcoshl - cnodm * zsinhl;
-            cc = c1l;
+            cc = C1L;  // Use lunar coefficient from header
         }
     }
     
@@ -468,13 +461,15 @@ __device__ void dpper(
             double dbet = -ph * sinop + pinc * cosip * cosop;
             alfdp = alfdp + dalf;
             betdp = betdp + dbet;
-            nodep = fmod(nodep, TWOPI);
-            if (nodep < 0.0) {
-                nodep = nodep + TWOPI;
+            // Use python-sgp4 style signed modulo: preserve sign for negative values
+            // nodep % twopi if nodep >= 0.0 else -(-nodep % twopi)
+            if (nodep >= 0.0) {
+                nodep = fmod(nodep, TWOPI);
+            } else {
+                nodep = -fmod(-nodep, TWOPI);
             }
-            double xls = mp + argpp + cosip * nodep;
-            double dls = pl + pgh - pinc * nodep * sinip;
-            xls = xls + dls;
+            // Match python-sgp4 formula exactly: xls = mp + argpp + pl + pgh + (cosip - pinc * sinip) * nodep
+            double xls = mp + argpp + pl + pgh + (cosip - pinc * sinip) * nodep;
             double xnoh = nodep;
             nodep = atan2(alfdp, betdp);
             if (fabs(xnoh - nodep) > PI) {
@@ -499,17 +494,13 @@ __device__ void dspace(
     double& em, double& argpm, double& inclm, double& mm, double& nm, double& nodem,
     Sgp4Params& p
 ) {
+    // Resonance phase constants (fixed values from Spacetrack Report #3)
     const double fasx2 = 0.13130908;
     const double fasx4 = 2.8843198;
     const double fasx6 = 0.37448087;
-    const double g22 = 5.7686396;
-    const double g32 = 0.95240898;
-    const double g44 = 1.8014998;
-    const double g52 = 1.0508330;
-    const double g54 = 4.4108898;
-    const double stepp = 720.0;
-    const double stepn = -720.0;
-    const double step2 = 259200.0;
+    
+    // Use header constants for G-values and step sizes
+    // G22, G32, G44, G52, G54, STEP, STEPN, STEP2 from sgp4_constants.cuh
     
     double delt, xni, xli, atime;
     double ft = 0.0;
@@ -534,9 +525,9 @@ __device__ void dspace(
         
         // Determine step direction
         if (t > 0.0) {
-            delt = stepp;
+            delt = STEP;
         } else {
-            delt = stepn;
+            delt = STEPN;
         }
         
         atime = p.atime;
@@ -556,47 +547,47 @@ __device__ void dspace(
                         3.0 * p.del3 * cos(3.0 * (xli - fasx6));
                 xnddt = xnddt * xldot;
                 
-                if (fabs(t - atime) < stepp) {
+                if (fabs(t - atime) < STEP) {
                     ft = t - atime;
                     break;
                 }
-                xli = xli + xldot * delt + xndt * step2;
-                xni = xni + xndt * delt + xnddt * step2;
+                xli = xli + xldot * delt + xndt * STEP2;
+                xni = xni + xndt * delt + xnddt * STEP2;
                 atime = atime + delt;
             } else {
                 // Half-day resonance
                 double xomi = p.argpo + p.argpdot * atime;
                 double x2omi = xomi + xomi;
                 double x2li = xli + xli;
-                xndt = p.d2201 * sin(x2omi + xli - g22) +
-                       p.d2211 * sin(xli - g22) +
-                       p.d3210 * sin(xomi + xli - g32) +
-                       p.d3222 * sin(-xomi + xli - g32) +
-                       p.d4410 * sin(x2omi + x2li - g44) +
-                       p.d4422 * sin(x2li - g44) +
-                       p.d5220 * sin(xomi + xli - g52) +
-                       p.d5232 * sin(-xomi + xli - g52) +
-                       p.d5421 * sin(xomi + x2li - g54) +
-                       p.d5433 * sin(-xomi + x2li - g54);
+                xndt = p.d2201 * sin(x2omi + xli - G22) +
+                       p.d2211 * sin(xli - G22) +
+                       p.d3210 * sin(xomi + xli - G32) +
+                       p.d3222 * sin(-xomi + xli - G32) +
+                       p.d4410 * sin(x2omi + x2li - G44) +
+                       p.d4422 * sin(x2li - G44) +
+                       p.d5220 * sin(xomi + xli - G52) +
+                       p.d5232 * sin(-xomi + xli - G52) +
+                       p.d5421 * sin(xomi + x2li - G54) +
+                       p.d5433 * sin(-xomi + x2li - G54);
                 xldot = xni + p.xfact;
-                xnddt = p.d2201 * cos(x2omi + xli - g22) +
-                        p.d2211 * cos(xli - g22) +
-                        p.d3210 * cos(xomi + xli - g32) +
-                        p.d3222 * cos(-xomi + xli - g32) +
-                        p.d5220 * cos(xomi + xli - g52) +
-                        p.d5232 * cos(-xomi + xli - g52) +
-                        2.0 * (p.d4410 * cos(x2omi + x2li - g44) +
-                               p.d4422 * cos(x2li - g44) +
-                               p.d5421 * cos(xomi + x2li - g54) +
-                               p.d5433 * cos(-xomi + x2li - g54));
+                xnddt = p.d2201 * cos(x2omi + xli - G22) +
+                        p.d2211 * cos(xli - G22) +
+                        p.d3210 * cos(xomi + xli - G32) +
+                        p.d3222 * cos(-xomi + xli - G32) +
+                        p.d5220 * cos(xomi + xli - G52) +
+                        p.d5232 * cos(-xomi + xli - G52) +
+                        2.0 * (p.d4410 * cos(x2omi + x2li - G44) +
+                               p.d4422 * cos(x2li - G44) +
+                               p.d5421 * cos(xomi + x2li - G54) +
+                               p.d5433 * cos(-xomi + x2li - G54));
                 xnddt = xnddt * xldot;
                 
-                if (fabs(t - atime) < stepp) {
+                if (fabs(t - atime) < STEP) {
                     ft = t - atime;
                     break;
                 }
-                xli = xli + xldot * delt + xndt * step2;
-                xni = xni + xndt * delt + xnddt * step2;
+                xli = xli + xldot * delt + xndt * STEP2;
+                xni = xni + xndt * delt + xnddt * STEP2;
                 atime = atime + delt;
             }
         }

@@ -166,7 +166,8 @@ fn test_deep_space_gpu_vs_cpu_accuracy() {
     // ========================================================================
     println!("GPU: Preparing batch propagation...");
     
-    const JD_1950: f64 = 2433282.5;
+    // SAAL's days_since_1950 uses Dec 31, 1949 00:00 UTC (= Jan 0.0, 1950) as reference
+    const JD_1950: f64 = 2433281.5;
     
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(|tle| {
         let kep = tle.get_keplerian_state();
@@ -336,4 +337,121 @@ fn test_deep_space_satellite_classification() {
     }
     
     println!("\n✓ All satellites correctly classified as deep space");
+}
+
+/// Test to compare CUDA-computed secular rates with expected python-sgp4 values
+/// for GPS BIIR-2 (non-resonant MEO satellite with irez=0)
+#[test]
+fn test_deep_space_secular_rates() {
+    if !CudaSgp4Propagator::is_cuda_available() {
+        eprintln!("CUDA not available, skipping secular rates test");
+        return;
+    }
+    
+    println!("\n=== Deep Space Secular Rates Comparison (GPS BIIR-2) ===\n");
+    
+    // GPS BIIR-2 TLE
+    let line1 = "1 24876U 97035A   25105.50000000 -.00000012  00000+0  00000+0 0  9993";
+    let line2 = "2 24876  55.4567 234.5678 0123456 123.4567 236.5432  2.00565123456789";
+    
+    let tle = TLE::from_lines(line1, line2, None).expect("Failed to parse TLE");
+    let kep = tle.get_keplerian_state();
+    
+    // Expected values from python-sgp4 (computed in debugging)
+    let expected_dedt = -9.940528760485461e-10_f64;
+    let expected_didt = -4.110889562021315e-09_f64;
+    let expected_dmdt = -4.994053195900235e-10_f64;
+    let expected_domdt = 2.621064683245228e-08_f64;
+    let expected_dnodt = -1.194592399418398e-08_f64;
+    let expected_zmos = 1.7549044924_f64;
+    let expected_zmol = 3.5467933339_f64;
+    
+    // Initialize GPU with this satellite
+    // SAAL's days_since_1950 uses Dec 31, 1949 00:00 UTC (= Jan 0.0, 1950) as reference
+    const JD_1950: f64 = 2433281.5;
+    println!("DEBUG: kep.epoch.days_since_1950 = {:.10}", kep.epoch.days_since_1950);
+    println!("DEBUG: JD_1950 = {:.1}", JD_1950);
+    println!("DEBUG: computed epoch_jd = {:.10}", kep.epoch.days_since_1950 + JD_1950);
+    println!("DEBUG: expected epoch_jd = 2460781.0 (from python-sgp4)");
+    let tle_gpu = TleDataGpu {
+        epoch_jd: kep.epoch.days_since_1950 + JD_1950,
+        inclination: kep.elements.inclination,
+        raan: kep.elements.raan,
+        eccentricity: kep.elements.eccentricity,
+        arg_perigee: kep.elements.argument_of_perigee,
+        mean_anomaly: kep.elements.mean_anomaly,
+        mean_motion: tle.get_mean_motion(),
+        bstar: tle.get_b_star(),
+        ndot: tle.get_mean_motion_dot(),
+        nddot: tle.get_mean_motion_dot_dot(),
+    };
+    
+    let mut propagator = CudaSgp4Propagator::new().expect("Failed to create propagator");
+    propagator.init_satellites(&[tle_gpu]).expect("Failed to init satellites");
+    
+    // Get initialized params from GPU
+    let params = propagator.get_params_debug().expect("Failed to get params");
+    let p = &params[0];
+    
+    // Expected no_unkozai from python-sgp4/manual calculation
+    let expected_no_unkozai: f64 = 0.008751318925887;
+    
+    println!("Input parameters:");
+    println!("  epoch_jd: {:.10}", p.epoch_jd);
+    println!("  inclo: {:.10} rad ({:.4} deg)", p.inclo, p.inclo.to_degrees());
+    println!("  ecco: {:.10}", p.ecco);
+    println!("  no_kozai: {:.15}", p.no_kozai);
+    println!("  no_unkozai: CUDA={:.15}, expected={:.15}, diff={:.2e}", 
+        p.no_unkozai, expected_no_unkozai, (p.no_unkozai - expected_no_unkozai).abs());
+    println!("  is_deep_space: {}", p.is_deep_space);
+    println!("  irez: {}", p.irez);
+    
+    println!("\nMean anomalies:");
+    println!("  zmos: CUDA={:.10}, expected={:.10}, diff={:.2e}", 
+        p.zmos, expected_zmos, (p.zmos - expected_zmos).abs());
+    println!("  zmol: CUDA={:.10}, expected={:.10}, diff={:.2e}", 
+        p.zmol, expected_zmol, (p.zmol - expected_zmol).abs());
+    
+    println!("\nSecular rates (CRITICAL):");
+    println!("  dedt:  CUDA={:+.15e}, expected={:+.15e}, diff={:.2e}", 
+        p.dedt, expected_dedt, (p.dedt - expected_dedt).abs());
+    println!("  didt:  CUDA={:+.15e}, expected={:+.15e}, diff={:.2e}", 
+        p.didt, expected_didt, (p.didt - expected_didt).abs());
+    println!("  dmdt:  CUDA={:+.15e}, expected={:+.15e}, diff={:.2e}", 
+        p.dmdt, expected_dmdt, (p.dmdt - expected_dmdt).abs());
+    println!("  domdt: CUDA={:+.15e}, expected={:+.15e}, diff={:.2e}", 
+        p.domdt, expected_domdt, (p.domdt - expected_domdt).abs());
+    println!("  dnodt: CUDA={:+.15e}, expected={:+.15e}, diff={:.2e}", 
+        p.dnodt, expected_dnodt, (p.dnodt - expected_dnodt).abs());
+    
+    // Check tolerances
+    let tol = 1e-15;
+    let mut all_ok = true;
+    
+    if (p.dedt - expected_dedt).abs() > tol {
+        println!("\n✗ dedt mismatch!");
+        all_ok = false;
+    }
+    if (p.didt - expected_didt).abs() > tol {
+        println!("\n✗ didt mismatch!");
+        all_ok = false;
+    }
+    if (p.dmdt - expected_dmdt).abs() > tol {
+        println!("\n✗ dmdt mismatch!");
+        all_ok = false;
+    }
+    if (p.domdt - expected_domdt).abs() > tol {
+        println!("\n✗ domdt mismatch!");
+        all_ok = false;
+    }
+    if (p.dnodt - expected_dnodt).abs() > tol {
+        println!("\n✗ dnodt mismatch!");
+        all_ok = false;
+    }
+    
+    if all_ok {
+        println!("\n✓ All secular rates match python-sgp4!");
+    } else {
+        println!("\n✗ Secular rate mismatch detected - this may be the source of the error");
+    }
 }

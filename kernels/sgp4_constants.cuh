@@ -1,71 +1,167 @@
-// SGP4 Constants Header
-// Based on Vallado's SGP4 implementation with WGS-72 gravity model
-// (matches AFSPC/saal library for compatibility)
+// ═══════════════════════════════════════════════════════════════════════════════════
+// SGP4 Constants Header - WGS-72 Gravity Model
+// ═══════════════════════════════════════════════════════════════════════════════════
+//
+// This file contains ALL physical constants used by the CUDA SGP4 propagator.
+// Constants are from the WGS-72 (World Geodetic System 1972) gravity model,
+// which matches the AFSPC (Air Force Space Command) implementation and the
+// python-sgp4 library's default configuration.
+//
+// IMPORTANT: Do NOT mix WGS-72 and WGS-84 constants. The SGP4 algorithm was
+// developed and tuned for WGS-72. Using WGS-84 constants will produce incorrect
+// results that don't match reference implementations.
+//
+// WGS-72 vs WGS-84 key differences:
+//   Constant     WGS-72              WGS-84
+//   ─────────────────────────────────────────────────────
+//   RE (km)      6378.135            6378.137
+//   J2           0.001082616         0.00108262998905
+//   J3          -0.00000253881      -0.00000253215306
+//   mu (km³/s²)  398600.8            398600.5
+//
+// References:
+//   - Hoots & Roehrich, "Spacetrack Report No. 3" (1980)
+//   - Vallado et al., "Revisiting Spacetrack Report #3" AIAA 2006-6753
+//   - python-sgp4: https://github.com/brandon-rhodes/python-sgp4
+//
+// ═══════════════════════════════════════════════════════════════════════════════════
 
 #ifndef SGP4_CONSTANTS_CUH
 #define SGP4_CONSTANTS_CUH
 
-// Mathematical constants
+// ═══════════════════════════════════════════════════════════════════════════════════
+// MATHEMATICAL CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
 #define PI 3.14159265358979323846
 #define TWOPI (2.0 * PI)
 #define DEG2RAD (PI / 180.0)
 #define RAD2DEG (180.0 / PI)
-
-// WGS-72 Physical constants (matches AFSPC implementation)
-#define XKE 0.0743669161331734132      // sqrt(GM) in (er^3/2 / min) for WGS-72
-#define TUMIN 13.44683969695931        // 1.0 / XKE
 #define X2O3 (2.0 / 3.0)
 
-// WGS-72 Earth constants
-#define RE 6378.135                    // Earth equatorial radius (km) - WGS-72
-#define J2 0.001082616                 // J2 harmonic (WGS-72)
-#define J3 -0.00000253881              // J3 harmonic (WGS-72)
-#define J4 -0.00000165597              // J4 harmonic (WGS-72)
-#define J3OJ2 (J3 / J2)                // J3/J2 ratio for long period terms
+// ═══════════════════════════════════════════════════════════════════════════════════
+// WGS-72 EARTH GRAVITY MODEL CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+// These values MUST match python-sgp4's 'wgs72' constants exactly.
+// Source: sgp4.earth_gravity.wgs72
 
-// Derived velocity constant: converts internal velocity units to km/s
-// VKMPERSEC = XKE * RE / 60 = sqrt(GM_er3/min2) * km/er / (s/min)
-#define VKMPERSEC 7.905365719014155    // km/s per velocity unit
+// Earth equatorial radius (km)
+#define RE 6378.135
 
-// Time constants
+// Gravitational parameter mu = GM (km³/s²)
+// Note: Not directly used in SGP4 but documented for reference
+#define MU 398600.8
+
+// XKE = sqrt(mu) in canonical units: (Earth radii)^(3/2) / minute
+// Computed as: 60.0 / sqrt(RE^3 / MU)
+// This is THE fundamental constant for mean motion calculations
+#define XKE 0.0743669161331734132
+
+// TUMIN = 1.0 / XKE (minutes per time unit)
+#define TUMIN 13.44683969695931
+
+// Zonal harmonic coefficients (unnormalized) - WGS-72 values from python-sgp4
+// These MUST match exactly for agreement with reference implementations
+#define J2  0.00108262998905          // Second zonal harmonic (WGS-72)
+#define J3 -0.00000253215306          // Third zonal harmonic (WGS-72)
+#define J4 -0.00000165597             // Fourth zonal harmonic
+
+// Derived ratio for long-period periodics
+// J3OJ2 = J3 / J2 ≈ -0.00233889
+#define J3OJ2 (J3 / J2)
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// DERIVED CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Velocity conversion: internal units to km/s
+// VKMPERSEC = XKE * RE / 60
+#define VKMPERSEC 7.905365719014155
+
+// Time conversion
 #define MINUTES_PER_DAY 1440.0
 
-// Thresholds
-#define DEEP_SPACE_PERIOD_MIN 225.0    // minutes (period above which deep space is used)
+// ═══════════════════════════════════════════════════════════════════════════════════
+// SGP4 ALGORITHM THRESHOLDS
+// ═══════════════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DEEP SPACE CONSTANTS (Lunar/Solar perturbations)
-// ═══════════════════════════════════════════════════════════════════════════
+// Period threshold for deep space vs near-earth propagation
+// Satellites with period > 225 minutes use deep space (SDP4)
+#define DEEP_SPACE_PERIOD_MIN 225.0
 
-// Moon constants
-#define ZNS 1.19459e-5                 // Mean motion of sun (rad/min)
-#define C1SS 2.9864797e-6              // Solar secular coefficient
-#define ZES 0.01675                    // Solar eccentricity
-#define ZNL 1.5835218e-4               // Mean motion of moon (rad/min)
-#define C1L 0.00015835218              // Lunar secular coefficient
-#define ZEL 0.05490                    // Lunar eccentricity
+// Small number threshold for divide-by-zero protection
+#define SMALL 1.5e-12
 
-// Resonance constants
+// ═══════════════════════════════════════════════════════════════════════════════════
+// LUNAR-SOLAR PERTURBATION CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+// Constants for third-body (Moon and Sun) perturbations in deep space propagation
+
+// Solar constants
+#define ZNS 1.19459e-5                // Solar mean motion (rad/min)
+#define C1SS 2.9864797e-6             // Solar secular coefficient
+#define ZES 0.01675                   // Solar orbital eccentricity
+
+// Lunar constants
+#define ZNL 1.5835218e-4              // Lunar mean motion (rad/min)
+#define C1L 4.7968065e-7              // Lunar secular coefficient
+#define ZEL 0.05490                   // Lunar orbital eccentricity
+
+// Orbital orientation constants (radians)
+#define ZSINIS 0.39785416             // sin(obliquity of ecliptic)
+#define ZCOSIS 0.91744867             // cos(obliquity of ecliptic)
+#define ZCOSGS 0.1945905              // cos(argument of perigee of Sun)
+#define ZSINGS -0.98088458            // sin(argument of perigee of Sun)
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// RESONANCE CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════════
+// Constants for geosynchronous and semi-synchronous resonance terms
+
+// Root terms for resonance calculations
 #define ROOT22 1.7891679e-6
 #define ROOT32 3.7393792e-7
 #define ROOT44 7.3636953e-9
 #define ROOT52 1.1428639e-7
 #define ROOT54 2.1765803e-9
+
+// G-coefficients for resonance
 #define G22 5.7686396
 #define G32 0.95240898
 #define G44 1.8014998
 #define G52 1.0508330
 #define G54 4.4108898
+
+// Q-coefficients for resonance
 #define Q22 1.7891679e-6
 #define Q31 2.1460748e-6
 #define Q33 2.2123015e-7
 
-// Thresholds for resonance
-#define RPTIM 4.37526908801129966e-3   // Solar rate (rad/min)
-#define STEP 720.0                     // Step size for resonance integration
-#define STEP2 259200.0                 // 180 days in minutes
+// ═══════════════════════════════════════════════════════════════════════════════════
+// RESONANCE INTEGRATION CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════════════
 
-// Deep space inclination limits
-#define INCLM_LIM 5.2359877e-2         // ~3 degrees in radians
+// Earth rotation rate (rad/min) = 2*pi / (sidereal day in minutes)
+// Also known as the "theta dot" term
+#define RPTIM 4.37526908801129966e-3
+
+// Integration step sizes (minutes)
+#define STEP 720.0                    // 12 hours
+#define STEPN (-720.0)                // -12 hours (backwards)
+#define STEP2 259200.0                // 180 days in minutes
+
+// Resonance thresholds for mean motion
+#define RESON_1DAY_LOW  0.0034906585  // ~0.5 rev/day lower bound
+#define RESON_1DAY_HIGH 0.0052359877  // ~0.75 rev/day upper bound
+#define RESON_HALF_LOW  8.26e-3       // ~1.9 rev/day lower bound
+#define RESON_HALF_HIGH 9.24e-3       // ~2.1 rev/day upper bound
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// INCLINATION THRESHOLDS
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+// Near-polar inclination limit (~3 degrees)
+// Used to avoid singularities in Lyddane modifications
+#define INCLM_LIM 5.2359877e-2
 
 #endif // SGP4_CONSTANTS_CUH
