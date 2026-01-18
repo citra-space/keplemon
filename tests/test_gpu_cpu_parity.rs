@@ -176,10 +176,9 @@ fn test_gpu_cpu_parity_all_regimes() {
     let mut success = 0;
     let mut failures = 0;
 
-    // Tolerance: 10 m position, 15 mm/s velocity
-    // SGP4 has inherent limitations; GPU matching CPU within these tolerances is acceptable
-    // Deep space satellites typically achieve < 1m, near-earth may have slightly higher variance
-    let pos_tol = 0.010; // km (10 meters)
+    // Tolerance: 1 m position, 15 mm/s velocity
+    // After WGS-72 constant fixes, both deep-space and near-earth should achieve < 1m accuracy
+    let pos_tol = 0.001; // km (1 meter)
     let vel_tol = 0.000015; // km/s (15 mm/s)
 
     for (sat_idx, name) in names.iter().enumerate() {
@@ -223,6 +222,15 @@ fn test_gpu_cpu_parity_all_regimes() {
                     pos_err * 1000.0,
                     vel_err * 1e6
                 );
+                // Print detailed positions for ISS at t=24h
+                if sat_idx == 0 && time_idx == 4 {
+                    println!("    CPU: r=({:14.6}, {:14.6}, {:14.6}) km",
+                        cpu.position[0], cpu.position[1], cpu.position[2]);
+                    println!("    GPU: r=({:14.6}, {:14.6}, {:14.6}) km",
+                        gpu_state.x, gpu_state.y, gpu_state.z);
+                    println!("    diff=({:14.6}, {:14.6}, {:14.6}) km",
+                        dx, dy, dz);
+                }
             }
 
             success += 1;

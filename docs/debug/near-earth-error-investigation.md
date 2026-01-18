@@ -1,7 +1,8 @@
 # Near-Earth 8m Error Investigation
 
-**Status**: Open
+**Status**: Mostly Fixed - 1.6m remaining error
 **Date**: 2026-01-18
+**Update**: 2026-01-18 - Fixed major bugs, reduced error from 8.567m to 1.649m
 **Satellite**: ISS (ZARYA) and other near-earth satellites
 **Error**: 8.5m position error at t=24h propagation
 
@@ -198,6 +199,40 @@ Expected result:
 1. `kernels/sgp4_batch.cu` - Add coefficient recalculation for near-earth
 2. `kernels/sgp4_init.cu` - Verify drag coefficient calculations (if needed)
 3. `tests/test_gpu_cpu_parity.rs` - Add more detailed error reporting
+
+## Fixes Applied
+
+### Fix 1: Missing RAAN Quadratic Term (MAJOR)
+**Location**: `kernels/sgp4_batch.cu:95`
+**Issue**: The calculation of `nodem` was missing the `xnodcf * t2` quadratic term
+```cuda
+// BEFORE (incorrect):
+double nodem = nodedf;
+
+// AFTER (correct):
+double nodem = nodedf + p.xnodcf * t2;
+```
+**Impact**: Reduced error from 8.567m to 1.649m (80% reduction!)
+
+### Fix 2: Wrong Variable in Mean Motion Update (minor)
+**Location**: `kernels/sgp4_batch.cu:162`
+**Issue**: Used updated `nm` instead of original `no_unkozai`
+```cuda
+// BEFORE (incorrect):
+mm = mm + nm * templ;
+
+// AFTER (correct):
+mm = mm + p.no_unkozai * templ;
+```
+**Impact**: Small reduction (~0.07m)
+
+### Remaining Error: 1.649m
+The error has been reduced from 8.567m to 1.649m for ISS at t=24h. The remaining 1.6m error may be due to:
+- Numerical precision differences in floating-point calculations
+- Other subtle algorithmic differences yet to be identified
+- Acceptable tolerance for near-earth satellites with significant atmospheric drag
+
+Further investigation needed to identify and fix the remaining error.
 
 ## References
 

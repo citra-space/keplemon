@@ -24,7 +24,7 @@ __device__ void sgp4_propagate_single(
     state.error_code = 0;
     
     // Only print debug for first satellite at first time
-    bool debug = DEBUG_PRINT && (sat_idx == 0) && (time_idx == 0);
+    bool debug = DEBUG_PRINT && (sat_idx == 0) && (time_idx == 4);  // ISS at t=24h
     
     if (debug) {
         printf("\n=== GPU SGP4 DEBUG OUTPUT ===\n");
@@ -92,7 +92,7 @@ __device__ void sgp4_propagate_single(
     double nm = p.no_unkozai;
     double em = p.ecco;
     double inclm = p.inclo;
-    double nodem = nodedf;
+    double nodem = nodedf + p.xnodcf * t2;
     
     if (!p.is_deep_space) {
         // Near-earth satellite
@@ -159,7 +159,7 @@ __device__ void sgp4_propagate_single(
         return;
     }
     
-    mm = mm + nm * templ;
+    mm = mm + p.no_unkozai * templ;
     
     // For deep space, apply lunar-solar periodics (DPPER)
     double xnode = nodem;
@@ -177,10 +177,12 @@ __device__ void sgp4_propagate_single(
         }
     }
     
-    // Normalize angles
+    // Normalize angles (following python-sgp4 exactly)
+    double xlm = mm + argpm + xnode;
     xnode = fmod(xnode, TWOPI);
     argpm = fmod(argpm, TWOPI);
-    mm = fmod(mm, TWOPI);
+    xlm = fmod(xlm, TWOPI);
+    mm = fmod(xlm - argpm - xnode, TWOPI);
     if (xnode < 0.0) xnode += TWOPI;
     if (mm < 0.0) mm += TWOPI;
     
@@ -219,20 +221,17 @@ __device__ void sgp4_propagate_single(
     double xl = mm + argpm + xnode + temp * xlcof_eff * axnl;
 
     if (debug) {
-        printf("\n--- Long Period Periodics ---\n");
-        printf("em:         %.16f\n", em);
-        printf("am:         %.16f ER\n", am);
-        printf("argpm:      %.16f rad\n", argpm);
-        printf("sinargpm:   %.16f\n", sinargpm);
-        printf("cosargpm:   %.16f\n", cosargpm);
-        printf("aycof_eff:  %.16e\n", aycof_eff);
-        printf("xlcof_eff:  %.16e\n", xlcof_eff);
-        printf("temp:       %.16f\n", temp);
-        printf("em*sinargpm: %.16f\n", em * sinargpm);
-        printf("temp*aycof:  %.16f\n", temp * aycof_eff);
-        printf("axnl:       %.16f\n", axnl);
-        printf("aynl:       %.16f\n", aynl);
-        printf("xl:         %.16f rad\n", xl);
+        printf("\n=== GPU LONG-PERIOD (t=1440min) ===\n");
+        printf("inclm:   %.16f rad\n", inclm);
+        printf("em:      %.16f\n", em);
+        printf("am:      %.16f ER\n", am);
+        printf("argpm:   %.16f rad\n", argpm);
+        printf("ep:      %.16f\n", em);  // ep is same as em at this point
+        printf("axnl:    %.16f\n", axnl);
+        printf("aynl:    %.16f\n", aynl);
+        printf("xl:      %.16f rad\n", xl);
+        printf("aycof:   %.16e\n", aycof_eff);
+        printf("xlcof:   %.16e\n", xlcof_eff);
     }
     
     // ═════════════════════════════════════════════════════════════
