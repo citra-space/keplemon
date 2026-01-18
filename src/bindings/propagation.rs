@@ -1,11 +1,13 @@
 mod force_properties;
 mod inertial_propagator;
 mod sgp4_output;
+mod batch_propagator;
 
 use crate::propagation::{b_star_to_drag_coefficient, drag_coefficient_to_b_star};
 pub use force_properties::PyForceProperties;
 pub use inertial_propagator::PyInertialPropagator;
 pub use sgp4_output::PySGP4Output;
+pub use batch_propagator::{PyBatchPropagator, PyPropagationBackend};
 
 use pyo3::prelude::*;
 use pyo3::py_run;
@@ -25,6 +27,8 @@ pub fn register_propagation(parent_module: &Bound<'_, PyModule>) -> PyResult<()>
     propagation.add_class::<PyForceProperties>()?;
     propagation.add_class::<PyInertialPropagator>()?;
     propagation.add_class::<PySGP4Output>()?;
+    propagation.add_class::<PyBatchPropagator>()?;
+    propagation.add_class::<PyPropagationBackend>()?;
     propagation.add_function(wrap_pyfunction!(b_star_to_drag_coefficient_py, &propagation)?)?;
     propagation.add_function(wrap_pyfunction!(drag_coefficient_to_b_star_py, &propagation)?)?;
     py_run!(

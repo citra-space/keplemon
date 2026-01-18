@@ -148,4 +148,71 @@ impl PyTLE {
     fn get_cartesian_state(&self) -> PyCartesianState {
         PyCartesianState::from(self.inner.get_cartesian_state())
     }
+
+    /// Propagate multiple TLEs to multiple epochs using batch propagation
+    /// 
+    /// GPU acceleration is used automatically when beneficial based on problem size.
+    /// 
+    /// # Arguments
+    /// * `tles` - List of TLEs to propagate
+    /// * `epochs` - List of epochs to propagate to
+    /// 
+    /// # Returns
+    /// 2D list of states: result[sat_idx][epoch_idx]
+    #[staticmethod]
+    #[pyo3(signature = (tles, epochs))]
+    pub fn propagate_batch(
+        py: Python<'_>,
+        tles: Vec<PyTLE>,
+        epochs: Vec<PyEpoch>,
+    ) -> PyResult<Vec<Vec<PyCartesianState>>> {
+        let tles: Vec<TLE> = tles.into_iter().map(|tle| tle.into()).collect();
+        let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
+        
+        py.allow_threads(|| {
+            TLE::propagate_batch(&tles, &epochs)
+                .map(|results| {
+                    results
+                        .into_iter()
+                        .map(|sat_states| {
+                            sat_states
+                                .into_iter()
+                                .map(PyCartesianState::from)
+                                .collect()
+                        })
+                        .collect()
+                })
+                .map_err(|e| PyValueError::new_err(e))
+        })
+    }
+
+    /// Propagate a single TLE to multiple epochs
+    /// 
+    /// Automatically uses GPU if the number of epochs is large enough.
+    /// 
+    /// # Arguments
+    /// * `epochs` - List of epochs to propagate to
+    /// 
+    /// # Returns
+    /// List of states, one for each epoch
+    #[pyo3(signature = (epochs))]
+    pub fn propagate_to_epochs(
+        &self,
+        py: Python<'_>,
+        epochs: Vec<PyEpoch>,
+    ) -> PyResult<Vec<PyCartesianState>> {
+        let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
+        
+        py.allow_threads(|| {
+            self.inner
+                .propagate_to_epochs(&epochs)
+                .map(|states| {
+                    states
+                        .into_iter()
+                        .map(PyCartesianState::from)
+                        .collect()
+                })
+                .map_err(|e| PyValueError::new_err(e))
+        })
+    }
 }

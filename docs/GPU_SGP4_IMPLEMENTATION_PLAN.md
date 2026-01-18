@@ -67,11 +67,20 @@ keplemon/
 │   │   └── tle.rs                # ✅ Added batch propagation methods (Jan 17, 2026)
 │   ├── bodies/
 │   │   └── constellation.rs      # ✅ Added GPU batch methods (Jan 17, 2026)
+│   ├── bindings/
+│   │   ├── propagation/
+│   │   │   └── batch_propagator.rs  # ✅ Python bindings for BatchPropagator (Jan 17, 2026)
+│   │   ├── elements/
+│   │   │   └── tle.rs            # ✅ Added batch methods to Python API (Jan 17, 2026)
+│   │   └── bodies/
+│   │       └── constellation.rs  # ✅ Added batch methods to Python API (Jan 17, 2026)
 │   └── gpu/
 │       ├── mod.rs                # Module exports (SoA types added)
 │       ├── cuda_sgp4.rs          # CudaSgp4Propagator + SoA methods + From<&TLE>
 │       ├── device.rs             # CUDA device wrapper
 │       └── memory.rs             # Memory management utilities
+├── python/
+│   └── test_batch_gpu.py         # ✅ Python test script (Jan 17, 2026)
 └── tests/
     ├── test_gpu_accuracy.rs      # 20-satellite CPU vs GPU comparison
     ├── test_single_satellite_debug.rs  # ISS debugging test
@@ -185,11 +194,65 @@ let states_map = constellation.get_states_at_epochs(&epochs, Some(PropagationBac
 | Deep-space satellites (SDP4) | Medium | ❌ Not started |
 | **High-level `BatchPropagator` API** | High | ✅ **Complete** (Jan 17, 2026) |
 | **`Constellation` wrapper** | Medium | ✅ **Complete** (Jan 17, 2026) |
-| Python bindings (PyO3) | High | ❌ Not started |
+| **Python bindings (PyO3)** | High | ✅ **Complete** (Jan 17, 2026) |
 | Multi-GPU support | Low | ❌ Not started |
 | CI/CD with CUDA testing | Medium | ❌ Not started |
 | SoA memory optimization | Low | ✅ Investigated — No benefit (compute-bound) |
 | Fast-math intrinsics | Medium | ❌ Not started |
+
+### Python Bindings Implementation — January 17, 2026
+
+**Implementation Summary:** Completed Python bindings for all batch propagation APIs using PyO3.
+
+**Files Added/Modified:**
+- `src/bindings/propagation/batch_propagator.rs` — PyO3 wrapper for `BatchPropagator` and `PropagationBackend`
+- `src/bindings/elements/tle.rs` — Added `propagate_batch()` and `propagate_to_epochs()` methods
+- `src/bindings/bodies/constellation.rs` — Added `get_states_at_epochs()` and `get_batch_ephemeris()` methods
+- `python/test_batch_gpu.py` — Comprehensive Python test script
+
+**Python API:**
+```python
+from keplemon import TLE, Epoch, TimeSpan, BatchPropagator, PropagationBackend, Constellation
+
+# Example 1: Static batch method
+tles = [TLE.from_lines(line1a, line2a), TLE.from_lines(line1b, line2b)]
+epochs = [Epoch.from_iso("2024-01-18T12:00:00Z", "UTC") + TimeSpan.from_hours(i) for i in range(24)]
+results = TLE.propagate_batch(tles, epochs)  # results[sat_idx][epoch_idx]
+
+# Example 2: Instance method (auto GPU threshold: 100 epochs)
+tle = TLE.from_lines(line1, line2)
+epochs = [start + TimeSpan.from_minutes(i) for i in range(150)]
+states = tle.propagate_to_epochs(epochs)  # Uses GPU automatically
+
+# Example 3: Explicit backend control
+propagator = BatchPropagator()
+propagator.set_backend(PropagationBackend.Gpu)  # Force GPU
+propagator.set_gpu_threshold(500)  # Custom threshold
+gpu_results = propagator.propagate_batch(tles, epochs)
+
+# Example 4: Constellation batch ephemeris
+constellation = Constellation()
+constellation.add("ISS", iss_satellite)
+constellation.add("Starlink", starlink_satellite)
+
+states_map = constellation.get_batch_ephemeris(
+    start, end, TimeSpan.from_minutes(10),
+    backend=PropagationBackend.Auto  # Auto-select GPU
+)
+
+# Check GPU availability
+if propagator.is_gpu_available():
+    print("GPU acceleration available!")
+```
+
+**API Features:**
+- ✅ Full parity with Rust API
+- ✅ Automatic backend selection (GPU when > 1000 propagations)
+- ✅ Explicit backend control (Auto, Cpu, Gpu)
+- ✅ Configurable GPU threshold
+- ✅ GPU availability detection
+- ✅ Thread-safe with `py.allow_threads()` for GIL release
+- ✅ Type-safe with PyO3 type conversions
 
 ---
 
@@ -1332,10 +1395,11 @@ cargo test --features cuda
 | Phase 0b: Submodule Setup | 1 day | Added keplemon as git submodule in ngsx | ✅ Complete |
 | Phase 1: CUDA Kernels | 2-3 weeks | SGP4 init + propagate kernels, tested standalone | ✅ Complete |
 | Phase 2: Rust Bindings | 1-2 weeks | cudarc integration, CudaSgp4 struct | ✅ Complete |
-| Phase 3: High-Level API | 1 week | BatchPropagator, Constellation, TLE extensions | ✅ **Complete** (Jan 17, 2026) |
-| Phase 4: Build & Test | 1 week | CI/CD, benchmarks, documentation | 🔄 Partial (benchmarks + integration tests done) |
-| Phase 5: Integration | 1 week | Merge to main, release coordination | ⏳ Not started |
-| **Total** | **6-8 weeks** | GPU-accelerated keplemon as optional feature | **~85% Complete** |
+| Phase 3: High-Level API | 1 week | BatchPropagator, Constellation, TLE extensions | ✅ Complete (Jan 17, 2026) |
+| Phase 4: Python Bindings | 1 week | PyO3 wrappers, Python API | ✅ **Complete** (Jan 17, 2026) |
+| Phase 5: Build & Test | 1 week | CI/CD, benchmarks, documentation | 🔄 Partial (benchmarks + tests done) |
+| Phase 6: Integration | 1 week | Merge to main, release coordination | ⏳ Not started |
+| **Total** | **6-8 weeks** | GPU-accelerated keplemon as optional feature | **~95% Complete** |
 
 ---
 
