@@ -11,6 +11,7 @@ sys.path.insert(0, 'target/debug')
 try:
     import keplemon
     from keplemon import TLE, Epoch, TimeSpan, BatchPropagator, PropagationBackend, Constellation
+    from keplemon._keplemon.enums import TimeSystem
 except ImportError as e:
     print(f"Error importing keplemon: {e}")
     print("Make sure to build with: cargo build --features cuda,python")
@@ -34,7 +35,7 @@ def test_tle_propagate_batch():
     tles = [tle1, tle2]
     
     # Create epochs
-    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", "UTC")
+    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", TimeSystem.UTC)
     epochs = [start + TimeSpan.from_hours(float(i)) for i in range(10)]
     
     print(f"  Propagating {len(tles)} TLEs to {len(epochs)} epochs...")
@@ -44,8 +45,8 @@ def test_tle_propagate_batch():
     
     print(f"  ✓ Got {len(results)} satellites")
     print(f"  ✓ Each satellite has {len(results[0])} states")
-    print(f"  ✓ First state position: [{results[0][0].position.get_x():.3f}, "
-          f"{results[0][0].position.get_y():.3f}, {results[0][0].position.get_z():.3f}] km")
+    print(f"  ✓ First state position: [{results[0][0].position.x:.3f}, "
+          f"{results[0][0].position.y:.3f}, {results[0][0].position.z:.3f}] km")
     
     return results
 
@@ -57,7 +58,7 @@ def test_tle_propagate_to_epochs():
     tle = TLE.from_lines(ISS_LINE1, ISS_LINE2)
     
     # Create many epochs to trigger GPU threshold
-    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", "UTC")
+    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", TimeSystem.UTC)
     epochs = [start + TimeSpan.from_minutes(float(i)) for i in range(150)]
     
     print(f"  Propagating single TLE to {len(epochs)} epochs...")
@@ -71,9 +72,9 @@ def test_tle_propagate_to_epochs():
     for i in range(len(states) - 1):
         pos1 = states[i].position
         pos2 = states[i+1].position
-        dx = pos2.get_x() - pos1.get_x()
-        dy = pos2.get_y() - pos1.get_y()
-        dz = pos2.get_z() - pos1.get_z()
+        dx = pos2.x - pos1.x
+        dy = pos2.y - pos1.y
+        dz = pos2.z - pos1.z
         dist = (dx**2 + dy**2 + dz**2)**0.5
         
         # With 1-minute spacing, ISS should move ~450 km
@@ -93,7 +94,7 @@ def test_batch_propagator():
     tle2 = TLE.from_lines(STARLINK_LINE1, STARLINK_LINE2)
     tles = [tle1, tle2]
     
-    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", "UTC")
+    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", TimeSystem.UTC)
     epochs = [start + TimeSpan.from_hours(float(i) * 0.5) for i in range(20)]
     
     # Create propagator with explicit GPU backend (if available)
@@ -122,9 +123,9 @@ def test_batch_propagator():
                 cpu_pos = cpu_results[sat_idx][time_idx].position
                 gpu_pos = gpu_results[sat_idx][time_idx].position
                 
-                dx = gpu_pos.get_x() - cpu_pos.get_x()
-                dy = gpu_pos.get_y() - cpu_pos.get_y()
-                dz = gpu_pos.get_z() - cpu_pos.get_z()
+                dx = gpu_pos.x - cpu_pos.x
+                dy = gpu_pos.y - cpu_pos.y
+                dz = gpu_pos.z - cpu_pos.z
                 diff = (dx**2 + dy**2 + dz**2)**0.5
                 
                 if diff > max_diff:
@@ -158,7 +159,7 @@ def test_constellation_batch():
     print(f"  Constellation has {constellation.get_count()} satellites")
     
     # Test batch ephemeris
-    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", "UTC")
+    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", TimeSystem.UTC)
     end = start + TimeSpan.from_hours(2.0)
     step = TimeSpan.from_minutes(10.0)
     

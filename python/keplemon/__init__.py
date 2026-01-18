@@ -26,8 +26,19 @@ from keplemon._keplemon import (  # type: ignore
     set_thread_count,
 )
 
+from keplemon._keplemon.elements import TLE
+from keplemon._keplemon.time import Epoch, TimeSpan
+from keplemon._keplemon.bodies import Satellite, Constellation
+from keplemon._keplemon.propagation import BatchPropagator, PropagationBackend
 
 __all__ = [
     "get_thread_count",
     "set_thread_count",
+    "TLE",
+    "Epoch",
+    "TimeSpan",
+    "Satellite",
+    "Constellation",
+    "BatchPropagator",
+    "PropagationBackend",
 ]
