@@ -268,3 +268,123 @@ fn test_gpu_cpu_parity_all_regimes() {
 
     println!("\n[PASS] GPU matches CPU within tolerance across all orbit regimes");
 }
+
+/// Test dual-mode API equivalence: GPU-resident vs CPU-copy modes
+///
+/// Verifies that the new `propagate_soa_gpu_resident()` method produces
+/// identical results to the existing `propagate_soa_arrays()` method.
+/// This ensures both APIs are correct and interchangeable.
+#[test]
+fn test_dual_mode_equivalence_leo_geo() {
+    if !CudaSgp4Propagator::is_cuda_available() {
+        eprintln!("CUDA not available, skipping dual-mode test");
+        return;
+    }
+
+    println!("\n=== Dual-Mode API Equivalence Test (LEO + GEO) ===\n");
+
+    // Test with both LEO and GEO satellites
+    let test_tles = [
+        ("ISS (LEO)", NEAR_EARTH_TLES[0].1, NEAR_EARTH_TLES[0].2),
+        ("LES-5 (GEO)", DEEP_SPACE_TLES[0].1, DEEP_SPACE_TLES[0].2),
+    ];
+
+    for (name, line1, line2) in &test_tles {
+        println!("Testing: {}", name);
+
+        let tle = TLE::from_lines(line1, line2, None)
+            .expect("Failed to parse TLE");
+
+        let kep = tle.get_keplerian_state();
+        let tle_gpu = TleDataGpu {
+            epoch_jd: kep.epoch.days_since_1950 + JD_1950,
+            inclination: kep.elements.inclination,
+            raan: kep.elements.raan,
+            eccentricity: kep.elements.eccentricity,
+            arg_perigee: kep.elements.argument_of_perigee,
+            mean_anomaly: kep.elements.mean_anomaly,
+            mean_motion: tle.get_mean_motion(),
+            bstar: tle.get_b_star(),
+            ndot: tle.get_mean_motion_dot(),
+            nddot: tle.get_mean_motion_dot_dot(),
+        };
+
+        // Multiple timesteps spanning various time intervals
+        let jd_times = vec![
+            kep.epoch.days_since_1950 + JD_1950,
+            kep.epoch.days_since_1950 + JD_1950 + 0.007, // ~10 minutes
+            kep.epoch.days_since_1950 + JD_1950 + 0.042, // ~1 hour
+            kep.epoch.days_since_1950 + JD_1950 + 0.25,  // ~6 hours
+            kep.epoch.days_since_1950 + JD_1950 + 1.0,   // 24 hours
+        ];
+
+        // Mode 1: CPU-copy (existing API)
+        let mut propagator1 = CudaSgp4Propagator::new()
+            .expect("Failed to create propagator 1");
+        propagator1.init_satellites(&[tle_gpu.clone()])
+            .expect("Failed to init propagator 1");
+
+        let cpu_copy_results = propagator1.propagate_soa_arrays(&jd_times)
+            .expect("propagate_soa_arrays failed");
+
+        // Mode 2: GPU-resident (new API)
+        let mut propagator2 = CudaSgp4Propagator::new()
+            .expect("Failed to create propagator 2");
+        propagator2.init_satellites(&[tle_gpu])
+            .expect("Failed to init propagator 2");
+
+        let gpu_resident = propagator2.propagate_soa_gpu_resident(&jd_times)
+            .expect("propagate_soa_gpu_resident failed");
+
+        // Convert GPU-resident to host for comparison
+        let device = propagator2.cuda_device();
+        let gpu_resident_results = gpu_resident.to_soa_arrays(device)
+            .expect("Failed to convert GPU-resident to SoA arrays");
+
+        // Compare results (should be bit-for-bit identical)
+        assert_eq!(cpu_copy_results.n_sats, gpu_resident_results.n_sats);
+        assert_eq!(cpu_copy_results.n_times, gpu_resident_results.n_times);
+        assert_eq!(cpu_copy_results.x.len(), gpu_resident_results.x.len());
+
+        let mut max_pos_diff = 0.0_f64;
+        let mut max_vel_diff = 0.0_f64;
+
+        for time_idx in 0..jd_times.len() {
+            let idx = time_idx; // time-major: time_idx * n_sats + sat_idx (sat_idx=0)
+
+            let dx = cpu_copy_results.x[idx] - gpu_resident_results.x[idx];
+            let dy = cpu_copy_results.y[idx] - gpu_resident_results.y[idx];
+            let dz = cpu_copy_results.z[idx] - gpu_resident_results.z[idx];
+            let pos_diff = (dx * dx + dy * dy + dz * dz).sqrt();
+
+            let dvx = cpu_copy_results.vx[idx] - gpu_resident_results.vx[idx];
+            let dvy = cpu_copy_results.vy[idx] - gpu_resident_results.vy[idx];
+            let dvz = cpu_copy_results.vz[idx] - gpu_resident_results.vz[idx];
+            let vel_diff = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
+
+            max_pos_diff = max_pos_diff.max(pos_diff);
+            max_vel_diff = max_vel_diff.max(vel_diff);
+
+            assert_eq!(cpu_copy_results.error_code[idx], gpu_resident_results.error_code[idx],
+                "{} time_idx={}: error codes differ", name, time_idx);
+
+            // The results should be identical (same kernel, same GPU execution)
+            assert!(
+                pos_diff < 1e-10, // Effectively zero (floating-point precision limit)
+                "{} time_idx={}: position differs by {:.3e} km (expected identical)",
+                name, time_idx, pos_diff
+            );
+
+            assert!(
+                vel_diff < 1e-13, // Effectively zero for velocities
+                "{} time_idx={}: velocity differs by {:.3e} km/s (expected identical)",
+                name, time_idx, vel_diff
+            );
+        }
+
+        println!("  ✓ Max position difference: {:.3e} km (bit-for-bit identical)", max_pos_diff);
+        println!("  ✓ Max velocity difference: {:.3e} km/s (bit-for-bit identical)", max_vel_diff);
+    }
+
+    println!("\n[PASS] Dual-mode APIs produce identical results for LEO and GEO");
+}

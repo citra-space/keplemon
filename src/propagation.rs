@@ -8,5 +8,9 @@ pub use inertial_propagator::InertialPropagator;
 pub use sgp4_output::SGP4Output;
 pub use batch_propagator::{BatchPropagator, BatchPropagatorConfig, PropagationBackend, SelectedBackend};
 
+// Re-export GPU types for GPU-resident propagation workflows
+#[cfg(feature = "cuda")]
+pub use crate::gpu::{Sgp4StateSoABuffers, CudaSgp4Propagator};
+
 pub const FINITE_DIFFERENCE_EPSILON: f64 = 1e-10;
 pub const FINITE_DIFFERENCE_STEP_SECONDS: f64 = 10.0;

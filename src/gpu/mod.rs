@@ -14,6 +14,7 @@ pub mod device;
 pub use cuda_sgp4::{
     CudaSgp4Propagator,
     SoAArrays,
+    Sgp4StateSoABuffers,
     Sgp4StateGpu,
     Sgp4ParamsGpu,
     TleDataGpu,

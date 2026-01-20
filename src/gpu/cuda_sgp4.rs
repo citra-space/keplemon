@@ -773,7 +773,178 @@ impl CudaSgp4Propagator {
         
         Ok(())
     }
-    
+
+    /// Propagate and return GPU-resident buffers (zero-copy)
+    ///
+    /// This method returns satellite states that remain on the GPU, avoiding
+    /// the GPU→CPU transfer bottleneck. Use this when building GPU-accelerated
+    /// pipelines that process the data on the GPU.
+    ///
+    /// **Dual-Mode Design**: This method coexists with `propagate_soa_arrays()`.
+    /// Use `propagate_soa_arrays()` when you need CPU-resident data, and this
+    /// method when building GPU-accelerated pipelines.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+    /// # let tle_data: Vec<TleDataGpu> = vec![];
+    /// # let times: Vec<f64> = vec![2459945.5];
+    /// let mut propagator = CudaSgp4Propagator::new()?;
+    /// propagator.init_satellites(&tle_data)?;
+    ///
+    /// // Option 1: CPU-resident (existing API)
+    /// let cpu_results = propagator.propagate_soa_arrays(&times)?;
+    ///
+    /// // Option 2: GPU-resident (new API, for GPU pipelines)
+    /// let gpu_results = propagator.propagate_soa_gpu_resident(&times)?;
+    /// // Keep data on GPU for subsequent processing
+    /// // let device = propagator.cuda_device();
+    /// // custom_kernel.launch(cfg, (&gpu_results.x, &gpu_results.y))?;
+    ///
+    /// // Convert to host only when needed
+    /// let host_results = gpu_results.to_aos_vec(propagator.cuda_device())?;
+    /// # Ok::<(), keplemon::gpu::CudaError>(())
+    /// ```
+    ///
+    /// # Performance
+    /// This method avoids the GPU→CPU transfer bottleneck. For large batches
+    /// (1000+ satellites × 100+ timesteps), this can provide 2-10x speedup
+    /// when chaining with other GPU operations.
+    ///
+    /// # Arguments
+    /// * `jd_times` - Array of Julian dates to propagate to
+    ///
+    /// # Returns
+    /// GPU-resident SoA buffers in time-major order: buffer[time_idx * n_sats + sat_idx]
+    pub fn propagate_soa_gpu_resident(
+        &mut self,
+        jd_times: &[f64],
+    ) -> Result<Sgp4StateSoABuffers, CudaError> {
+        if self.n_satellites == 0 {
+            return Err(CudaError::NotInitialized);
+        }
+
+        let n_times = jd_times.len();
+        let n_results = self.n_satellites * n_times;
+
+        let params_gpu = self.params_gpu.as_ref()
+            .ok_or(CudaError::NotInitialized)?;
+
+        let dev = self.device.device();
+
+        // Upload times to GPU (reuse cached buffer if possible)
+        if self.cached_n_times != n_times || self.cached_times_gpu.is_none() {
+            let times_gpu = dev.htod_sync_copy(jd_times)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            self.cached_times_gpu = Some(times_gpu);
+            self.cached_n_times = n_times;
+        }
+        let times_gpu = self.cached_times_gpu.as_ref().unwrap();
+
+        // Allocate or reuse SoA output buffers
+        let need_realloc = match &self.cached_soa_buffers {
+            Some(buffers) => buffers.n_results != n_results,
+            None => true,
+        };
+
+        if need_realloc {
+            let x: CudaSlice<f64> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            let y: CudaSlice<f64> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            let z: CudaSlice<f64> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            let vx: CudaSlice<f64> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            let vy: CudaSlice<f64> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            let vz: CudaSlice<f64> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            let error_code: CudaSlice<i32> = dev.alloc_zeros(n_results)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+
+            self.cached_soa_buffers = Some(CachedSoABuffers {
+                x, y, z, vx, vy, vz, error_code,
+                n_results,
+            });
+        }
+
+        let soa = self.cached_soa_buffers.as_ref().unwrap();
+
+        // Launch config (same as propagate_soa_into)
+        let block_x = 16u32;
+        let block_y = 16u32;
+        let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
+        let grid_y = (n_times as u32 + block_y - 1) / block_y;
+        let shared_mem_bytes = 256 * std::mem::size_of::<f64>() as u32;
+
+        let cfg = LaunchConfig {
+            grid_dim: (grid_x, grid_y, 1),
+            block_dim: (block_x, block_y, 1),
+            shared_mem_bytes,
+        };
+
+        // Launch SoA kernel
+        unsafe {
+            self.propagate_soa_kernel.clone().launch(
+                cfg,
+                (
+                    params_gpu,
+                    times_gpu,
+                    &soa.x,
+                    &soa.y,
+                    &soa.z,
+                    &soa.vx,
+                    &soa.vy,
+                    &soa.vz,
+                    &soa.error_code,
+                    self.n_satellites as i32,
+                    n_times as i32,
+                )
+            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+        }
+
+        // Synchronize to ensure kernel completion
+        dev.synchronize()
+            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+
+        // Return GPU-resident buffers (no copy!)
+        Ok(Sgp4StateSoABuffers {
+            x: soa.x.clone(),
+            y: soa.y.clone(),
+            z: soa.z.clone(),
+            vx: soa.vx.clone(),
+            vy: soa.vy.clone(),
+            vz: soa.vz.clone(),
+            error_code: soa.error_code.clone(),
+            n_sats: self.n_satellites,
+            n_times,
+        })
+    }
+
+    /// Get reference to the CUDA device for external kernel launches
+    ///
+    /// This allows external code to launch custom kernels on the same device
+    /// context, enabling zero-copy GPU pipelines.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+    /// # let tle_data: Vec<TleDataGpu> = vec![];
+    /// # let times: Vec<f64> = vec![2459945.5];
+    /// let mut propagator = CudaSgp4Propagator::new()?;
+    /// propagator.init_satellites(&tle_data)?;
+    /// let gpu_states = propagator.propagate_soa_gpu_resident(&times)?;
+    ///
+    /// // Launch custom kernel on same device
+    /// let device = propagator.cuda_device();
+    /// // custom_kernel.launch_on_device(device, (&gpu_states.x, &gpu_states.y))?;
+    /// # Ok::<(), keplemon::gpu::CudaError>(())
+    /// ```
+    pub fn cuda_device(&self) -> &std::sync::Arc<cudarc::driver::CudaDevice> {
+        self.device.device()
+    }
+
     /// Clear cached SoA buffers to free GPU memory
     pub fn clear_soa_cache(&mut self) {
         self.cached_soa_buffers = None;

@@ -704,9 +704,11 @@ impl TLE {
     /// ```no_run
     /// use keplemon::elements::TLE;
     /// use keplemon::time::Epoch;
-    /// 
-    /// let tle = TLE::from_lines(/* ... */).unwrap();
-    /// let epochs = vec![/* ... */];
+    ///
+    /// # let line1 = "1 25544U 98067A   23001.00000000  .00016717  00000-0  10270-3 0  9005";
+    /// # let line2 = "2 25544  51.6400 208.9163 0006317  69.9862  25.2906 15.54225995456456";
+    /// let tle = TLE::from_lines(line1, line2, None).unwrap();
+    /// # let epochs: Vec<Epoch> = vec![];
     /// let states = tle.propagate_to_epochs(&epochs).unwrap();
     /// ```
     pub fn propagate_to_epochs(

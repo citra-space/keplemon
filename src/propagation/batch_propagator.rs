@@ -326,4 +326,101 @@ impl BatchPropagator {
         
         Ok(results)
     }
+
+    /// Propagate and return GPU-resident data (CUDA feature only)
+    ///
+    /// This method is only available with the `cuda` feature flag and when
+    /// GPU backend is selected. It returns data that remains on the GPU,
+    /// avoiding the GPU→CPU transfer bottleneck.
+    ///
+    /// **Dual-Mode Design**: This method coexists with `propagate_batch()`.
+    /// Use `propagate_batch()` when you need CPU-resident data, and this
+    /// method when building GPU-accelerated pipelines.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use keplemon::propagation::BatchPropagator;
+    /// # use keplemon::propagation::PropagationBackend;
+    /// # use keplemon::elements::TLE;
+    /// # use keplemon::time::Epoch;
+    /// # let tles: Vec<TLE> = vec![];
+    /// # let epochs: Vec<Epoch> = vec![];
+    /// let mut propagator = BatchPropagator::new()
+    ///     .set_backend(PropagationBackend::Gpu);
+    ///
+    /// // Option 1: CPU-resident (existing API)
+    /// let cpu_results = propagator.propagate_batch(&tles, &epochs)?;
+    ///
+    /// // Option 2: GPU-resident (new API, large-scale pipelines)
+    /// # #[cfg(feature = "cuda")]
+    /// {
+    ///     let gpu_results = propagator.propagate_batch_gpu_resident(&tles, &epochs)?;
+    ///     // Process on GPU...
+    /// }
+    /// # Ok::<(), String>(())
+    /// ```
+    ///
+    /// # Returns
+    /// `Ok(Sgp4StateSoABuffers)` with GPU-resident buffers, or `Err` if:
+    /// - GPU backend is not active
+    /// - CUDA feature is disabled
+    /// - GPU is not available
+    #[cfg(feature = "cuda")]
+    pub fn propagate_batch_gpu_resident(
+        &mut self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<crate::gpu::Sgp4StateSoABuffers, String> {
+        if tles.is_empty() {
+            return Err("Empty TLE array".to_string());
+        }
+
+        if epochs.is_empty() {
+            return Err("Empty epoch array".to_string());
+        }
+
+        let backend = self.select_backend(tles.len(), epochs.len());
+
+        match backend {
+            SelectedBackend::Gpu => {
+                self.propagate_batch_gpu_resident_impl(tles, epochs)
+            }
+            SelectedBackend::Cpu => {
+                Err("GPU-resident data only available with GPU backend. \
+                     Use propagate_batch() for CPU-resident results, or \
+                     set backend to GPU/Auto.".to_string())
+            }
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn propagate_batch_gpu_resident_impl(
+        &mut self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<crate::gpu::Sgp4StateSoABuffers, String> {
+        use crate::gpu::{CudaSgp4Propagator, TleDataGpu};
+
+        // Initialize GPU propagator
+        let mut gpu_propagator = CudaSgp4Propagator::new()
+            .map_err(|e| format!("Failed to initialize CUDA: {}", e))?;
+
+        // Convert TLEs to GPU format
+        let tle_data: Vec<TleDataGpu> = tles.iter()
+            .map(|tle| TleDataGpu::from(tle))
+            .collect();
+
+        // Initialize satellites on GPU
+        gpu_propagator.init_satellites(&tle_data)
+            .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
+
+        // Convert epochs to Julian Dates
+        let jd_times: Vec<f64> = epochs.iter()
+            .map(|epoch| TleDataGpu::jd_from_ds50(epoch.days_since_1950))
+            .collect();
+
+        // Propagate on GPU and return GPU-resident buffers
+        gpu_propagator.propagate_soa_gpu_resident(&jd_times)
+            .map_err(|e| format!("GPU propagation failed: {}", e))
+    }
 }
