@@ -6,7 +6,7 @@ use crate::elements::{
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
-use crate::events::{CloseApproach, HorizonAccessReport};
+use crate::events::{CloseApproach, HorizonAccessReport, ManeuverEvent, ProximityReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
@@ -360,6 +360,47 @@ impl Satellite {
             }
             None => None,
         }
+    }
+
+    pub fn get_proximity_report(
+        &mut self,
+        other: &mut Satellite,
+        start_epoch: Epoch,
+        end_epoch: Epoch,
+        distance_threshold: f64,
+    ) -> Option<ProximityReport> {
+        if self.keplerian_state.is_none() || other.keplerian_state.is_none() {
+            return None;
+        }
+
+        let ephemeris = self.get_ephemeris(start_epoch, end_epoch, TimeSpan::from_minutes(CONJUNCTION_STEP_MINUTES))?;
+        let other_ephemeris =
+            other.get_ephemeris(start_epoch, end_epoch, TimeSpan::from_minutes(CONJUNCTION_STEP_MINUTES))?;
+
+        let mut report = ProximityReport::new(start_epoch, end_epoch, distance_threshold);
+        if let Some(event) = ephemeris.get_proximity_event(&other_ephemeris, distance_threshold) {
+            report.set_events(vec![event]);
+        }
+        Some(report)
+    }
+
+    pub fn get_maneuver_event(
+        &mut self,
+        future_sat: &mut Satellite,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: f64,
+        velocity_threshold: f64,
+    ) -> Option<ManeuverEvent> {
+        if self.keplerian_state.is_none() || future_sat.keplerian_state.is_none() {
+            return None;
+        }
+
+        let ephemeris = self.get_ephemeris(start, end, TimeSpan::from_minutes(CONJUNCTION_STEP_MINUTES))?;
+        let future_ephemeris =
+            future_sat.get_ephemeris(start, end, TimeSpan::from_minutes(CONJUNCTION_STEP_MINUTES))?;
+
+        ephemeris.get_maneuver_event(&future_ephemeris, distance_threshold, velocity_threshold)
     }
 
     pub fn get_observatory_access_report(

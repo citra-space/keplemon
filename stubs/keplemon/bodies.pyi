@@ -14,7 +14,7 @@ from keplemon.elements import (
 )
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
-from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport
+from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
 
@@ -57,6 +57,49 @@ class Satellite:
         end: Epoch,
         distance_threshold: float,
     ) -> Optional[CloseApproach]: ...
+    def get_proximity_report(
+        self,
+        other: Satellite,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: float,
+    ) -> Optional[ProximityReport]:
+        """
+        Check if this satellite stays within a distance threshold of another satellite.
+
+        Args:
+            other: Satellite to compare against
+            start: UTC epoch of the start of the report
+            end: UTC epoch of the end of the report
+            distance_threshold: Maximum distance threshold in **_kilometers_**
+
+        Returns:
+            Proximity report with a single event if satellites stay within threshold,
+            or an empty report if the threshold is exceeded at any point
+        """
+        ...
+    def get_maneuver_event(
+        self,
+        future_sat: Satellite,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: float,
+        velocity_threshold: float,
+    ) -> Optional[ManeuverEvent]:
+        """
+        Detect a maneuver by comparing this satellite's state with a future state.
+
+        Args:
+            future_sat: Satellite with a future epoch state to compare against
+            start: UTC epoch of the start of the search window
+            end: UTC epoch of the end of the search window
+            distance_threshold: Distance threshold for matching in **_kilometers_**
+            velocity_threshold: Velocity threshold for maneuver detection in **_meters per second_**
+
+        Returns:
+            ManeuverEvent if a maneuver is detected, None otherwise
+        """
+        ...
     def get_ephemeris(
         self,
         start: Epoch,
@@ -204,6 +247,72 @@ class Constellation:
 
         Returns:
             Close approach report for the constellation vs. all other satellites
+        """
+        ...
+
+    def get_proximity_report_vs_one(
+        self,
+        other: Satellite,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: float,
+    ) -> ProximityReport:
+        """
+        Check which constellation satellites stay within a distance threshold of a given satellite.
+
+        Args:
+            other: Satellite to compare against
+            start: UTC epoch of the start of the report
+            end: UTC epoch of the end of the report
+            distance_threshold: Maximum distance threshold in **_kilometers_**
+
+        Returns:
+            Proximity report containing events for satellite pairs that stay within threshold
+        """
+        ...
+
+    def get_proximity_report_vs_many(
+        self,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: float,
+    ) -> ProximityReport:
+        """
+        Check which satellite pairs in the constellation stay within a distance threshold.
+
+        Args:
+            start: UTC epoch of the start of the report
+            end: UTC epoch of the end of the report
+            distance_threshold: Maximum distance threshold in **_kilometers_**
+
+        Returns:
+            Proximity report containing events for satellite pairs that stay within threshold
+        """
+        ...
+
+    def get_maneuver_events(
+        self,
+        future_sats: Constellation,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: float,
+        velocity_threshold: float,
+    ) -> ManeuverReport:
+        """
+        Detect maneuvers by comparing current satellite states with future states.
+
+        Matches satellites by ID between the two constellations and detects maneuvers
+        where the velocity difference exceeds the threshold.
+
+        Args:
+            future_sats: Constellation with future epoch states to compare against
+            start: UTC epoch of the start of the search window
+            end: UTC epoch of the end of the search window
+            distance_threshold: Distance threshold for matching in **_kilometers_**
+            velocity_threshold: Velocity threshold for maneuver detection in **_meters per second_**
+
+        Returns:
+            ManeuverReport containing all detected maneuvers
         """
         ...
 

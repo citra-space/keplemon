@@ -3,7 +3,7 @@ use crate::bindings::elements::{
     PyBoreToBodyAngles, PyCartesianState, PyEphemeris, PyGeodeticPosition, PyKeplerianState, PyOrbitPlotData,
     PyRelativeState, PyTLE,
 };
-use crate::bindings::events::{PyCloseApproach, PyHorizonAccessReport};
+use crate::bindings::events::{PyCloseApproach, PyHorizonAccessReport, PyManeuverEvent, PyProximityReport};
 use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
 use crate::bodies::{Observatory, Satellite};
@@ -228,6 +228,41 @@ impl PySatellite {
         self.inner
             .get_close_approach(other.inner_mut(), start_epoch, end_epoch, distance_threshold)
             .map(PyCloseApproach::from)
+    }
+
+    pub fn get_proximity_report(
+        &mut self,
+        py: Python<'_>,
+        other: &mut PySatellite,
+        start_epoch: PyEpoch,
+        end_epoch: PyEpoch,
+        distance_threshold: f64,
+    ) -> Option<PyProximityReport> {
+        let start_epoch: Epoch = start_epoch.into();
+        let end_epoch: Epoch = end_epoch.into();
+        py.allow_threads(|| {
+            self.inner
+                .get_proximity_report(other.inner_mut(), start_epoch, end_epoch, distance_threshold)
+                .map(PyProximityReport::from)
+        })
+    }
+
+    pub fn get_maneuver_event(
+        &mut self,
+        py: Python<'_>,
+        future_sat: &mut PySatellite,
+        start: PyEpoch,
+        end: PyEpoch,
+        distance_threshold: f64,
+        velocity_threshold: f64,
+    ) -> Option<PyManeuverEvent> {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        py.allow_threads(|| {
+            self.inner
+                .get_maneuver_event(future_sat.inner_mut(), start, end, distance_threshold, velocity_threshold)
+                .map(PyManeuverEvent::from)
+        })
     }
 
     pub fn get_observatory_access_report(

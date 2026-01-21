@@ -3,7 +3,7 @@ use crate::bodies::Observatory;
 use crate::catalogs::TLECatalog;
 use crate::configs;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
-use crate::events::{CloseApproachReport, HorizonAccessReport};
+use crate::events::{CloseApproachReport, HorizonAccessReport, ManeuverEvent, ManeuverReport, ProximityReport};
 use crate::time::{Epoch, TimeSpan};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -178,6 +178,96 @@ impl Constellation {
             })
             .collect();
         report.set_close_approaches(close_approaches);
+        report
+    }
+
+    pub fn get_proximity_report_vs_one(
+        &mut self,
+        sat: &mut Satellite,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: f64,
+    ) -> ProximityReport {
+        match sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES)) {
+            Some(ephemeris) => {
+                let candidate_ephem =
+                    self.get_ephemeris_list(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES));
+                let events = candidate_ephem
+                    .par_iter()
+                    .filter_map(|other_ephem| ephemeris.get_proximity_event(other_ephem, distance_threshold))
+                    .collect();
+                let mut report = ProximityReport::new(start, end, distance_threshold);
+                report.set_events(events);
+                report
+            }
+            None => ProximityReport::new(start, end, distance_threshold),
+        }
+    }
+
+    pub fn get_proximity_report_vs_many(
+        &mut self,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: f64,
+    ) -> ProximityReport {
+        let mut report = ProximityReport::new(start, end, distance_threshold);
+        let ephem_list: Vec<Ephemeris> =
+            self.get_ephemeris_list(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES));
+        let num = ephem_list.len();
+        let events = (0..num)
+            .into_par_iter()
+            .flat_map(|i| {
+                let pri_ephem = &ephem_list[i];
+                (i + 1..num)
+                    .into_par_iter()
+                    .filter_map(|j| {
+                        let sec_ephem = &ephem_list[j];
+                        pri_ephem.get_proximity_event(sec_ephem, distance_threshold)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        report.set_events(events);
+        report
+    }
+
+    pub fn get_maneuver_events(
+        &mut self,
+        future_sats: &mut Constellation,
+        start: Epoch,
+        end: Epoch,
+        distance_threshold: f64,
+        velocity_threshold: f64,
+    ) -> ManeuverReport {
+        let mut report = ManeuverReport::new(start, end, distance_threshold, velocity_threshold);
+
+        let current_ephem_map: HashMap<String, Ephemeris> = self
+            .satellites
+            .par_iter_mut()
+            .filter_map(|(id, sat)| {
+                sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES))
+                    .map(|e| (id.clone(), e))
+            })
+            .collect();
+
+        let future_ephem_map: HashMap<String, Ephemeris> = future_sats
+            .satellites
+            .par_iter_mut()
+            .filter_map(|(id, sat)| {
+                sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES))
+                    .map(|e| (id.clone(), e))
+            })
+            .collect();
+
+        let maneuvers: Vec<ManeuverEvent> = current_ephem_map
+            .par_iter()
+            .filter_map(|(id, current_ephem)| {
+                let future_ephem = future_ephem_map.get(id)?;
+                current_ephem.get_maneuver_event(future_ephem, distance_threshold, velocity_threshold)
+            })
+            .collect();
+
+        report.set_maneuvers(maneuvers);
         report
     }
 
