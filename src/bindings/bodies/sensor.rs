@@ -70,4 +70,24 @@ impl PySensor {
     pub fn set_angular_rate_noise(&mut self, angular_rate_noise: f64) {
         self.inner.angular_rate_noise = Some(angular_rate_noise);
     }
+
+    #[getter]
+    pub fn get_tdoa_noise(&self) -> Option<f64> {
+        self.inner.tdoa_noise
+    }
+
+    #[setter]
+    pub fn set_tdoa_noise(&mut self, tdoa_noise: f64) {
+        self.inner.tdoa_noise = Some(tdoa_noise);
+    }
+
+    #[getter]
+    pub fn get_fdoa_noise(&self) -> Option<f64> {
+        self.inner.fdoa_noise
+    }
+
+    #[setter]
+    pub fn set_fdoa_noise(&mut self, fdoa_noise: f64) {
+        self.inner.fdoa_noise = Some(fdoa_noise);
+    }
 }
