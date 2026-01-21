@@ -76,15 +76,27 @@ fn compile_cuda_kernels() {
     let cuda_path = env::var("CUDA_PATH")
         .or_else(|_| env::var("CUDA_HOME"))
         .unwrap_or_else(|_| "/usr/local/cuda".to_string());
-    
+
     let nvcc = PathBuf::from(&cuda_path).join("bin").join("nvcc");
-    
+
     // Check if nvcc exists
     if !nvcc.exists() && !Command::new("nvcc").arg("--version").output().is_ok() {
-        panic!(
-            "nvcc not found. Please install CUDA Toolkit or set CUDA_PATH environment variable. \
+        println!(
+            "cargo:warning=nvcc not found. CUDA kernels will not be compiled. \
+             CUDA features will be unavailable at runtime. \
+             To enable CUDA: install CUDA Toolkit or set CUDA_PATH environment variable. \
              Looked in: {}", nvcc.display()
         );
+        println!("cargo:warning=Skipping CUDA kernel compilation");
+
+        // Create empty stub PTX files so include_str! doesn't fail
+        let stub_ptx = "// CUDA kernels not compiled - nvcc not available\n";
+        fs::write(format!("{}/sgp4_init.ptx", out_dir), stub_ptx)
+            .expect("Failed to write stub sgp4_init.ptx");
+        fs::write(format!("{}/sgp4_batch.ptx", out_dir), stub_ptx)
+            .expect("Failed to write stub sgp4_batch.ptx");
+
+        return;
     }
     
     let nvcc_cmd = if nvcc.exists() {
