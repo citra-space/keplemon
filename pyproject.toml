@@ -36,6 +36,9 @@ bindings = "pyo3"
 features = ["python"]
 ignore-gitignore = true
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [build-system]
 requires = ["maturin"]
 build-backend = "maturin"
