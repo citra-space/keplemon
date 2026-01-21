@@ -4,8 +4,9 @@ use crate::configs::{
 };
 use crate::elements::{CartesianState, CartesianVector, HorizonState};
 use crate::enums::ReferenceFrame;
-use crate::events::{CloseApproach, HorizonAccess};
+use crate::events::{CloseApproach, HorizonAccess, ManeuverEvent, ProximityEvent};
 use crate::time::{Epoch, TimeSpan};
+use saal::satellite;
 use std::sync::Arc;
 use std::sync::RwLock;
 use uuid::Uuid;
@@ -316,6 +317,49 @@ impl Ephemeris {
         Some(accesses)
     }
 
+    pub fn get_maneuver_event(
+        &self,
+        future_ephem: &Ephemeris,
+        distance_threshold: f64,
+        velocity_threshold: f64,
+    ) -> Option<ManeuverEvent> {
+        let close_approach = self.get_close_approach(future_ephem, distance_threshold)?;
+        let epoch = close_approach.get_epoch();
+        let state_1 = future_ephem.get_state_at_epoch(epoch)?;
+        let state_2 = self.get_state_at_epoch(epoch)?;
+
+        let teme_1 = [
+            state_1.position[0],
+            state_1.position[1],
+            state_1.position[2],
+            state_1.velocity[0],
+            state_1.velocity[1],
+            state_1.velocity[2],
+        ];
+        let teme_2 = [
+            state_2.position[0],
+            state_2.position[1],
+            state_2.position[2],
+            state_2.velocity[0],
+            state_2.velocity[1],
+            state_2.velocity[2],
+        ];
+        let xa_delta = satellite::get_relative_array(&teme_2, &teme_1, epoch.days_since_1950, 1);
+        if xa_delta[satellite::XA_DELTA_VEL] * 1e3 < velocity_threshold {
+            return None;
+        }
+        let vel = [
+            xa_delta[satellite::XA_DELTA_VRADIAL],
+            xa_delta[satellite::XA_DELTA_VINTRCK],
+            xa_delta[satellite::XA_DELTA_VCRSSTRCK],
+        ];
+        Some(ManeuverEvent::new(
+            self.get_satellite_id(),
+            close_approach.get_epoch(),
+            CartesianVector::new(vel[0], vel[1], vel[2]) * 1e3,
+        ))
+    }
+
     pub fn get_close_approach(&self, other: &Ephemeris, distance_threshold: f64) -> Option<CloseApproach> {
         let (start_epoch, end_epoch) = self.get_epoch_range()?;
         let self_states = self.handle.states.read().ok()?;
@@ -383,6 +427,79 @@ impl Ephemeris {
         } else {
             None
         }
+    }
+
+    pub fn get_proximity_event(&self, other: &Ephemeris, distance_threshold: f64) -> Option<ProximityEvent> {
+        let (start_epoch, end_epoch) = self.get_epoch_range()?;
+        let self_states = self.handle.states.read().ok()?;
+        let other_states = other.handle.states.read().ok()?;
+        let self_grid = self.handle.uniform_grid.read().ok()?;
+        let other_grid = other.handle.uniform_grid.read().ok()?;
+        let self_id = self.get_satellite_id();
+        let other_id = other.get_satellite_id();
+
+        let mut current_epoch = start_epoch;
+        let step = TimeSpan::from_minutes(CONJUNCTION_STEP_MINUTES);
+
+        let mut global_min_distance = f64::MAX;
+        let mut global_max_distance = 0.0_f64;
+
+        // Check distance at start epoch
+        let state_1 = interpolate_state_with_grid(&self_states, start_epoch, &self_grid)?;
+        let state_2 = interpolate_state_with_grid(&other_states, start_epoch, &other_grid)?;
+        let start_distance = (state_1.position - state_2.position).get_magnitude();
+        global_min_distance = global_min_distance.min(start_distance);
+        global_max_distance = global_max_distance.max(start_distance);
+
+        // Check distance at end epoch
+        let state_1 = interpolate_state_with_grid(&self_states, end_epoch, &self_grid)?;
+        let state_2 = interpolate_state_with_grid(&other_states, end_epoch, &other_grid)?;
+        let end_distance = (state_1.position - state_2.position).get_magnitude();
+        global_min_distance = global_min_distance.min(end_distance);
+        global_max_distance = global_max_distance.max(end_distance);
+
+        // Early exit if boundary distances exceed threshold
+        if global_max_distance > distance_threshold {
+            return None;
+        }
+
+        while current_epoch <= end_epoch {
+            let state_1 = interpolate_state_with_grid(&self_states, current_epoch, &self_grid)?;
+            let state_2 = interpolate_state_with_grid(&other_states, current_epoch, &other_grid)?;
+
+            // Estimate the time of the extremum (could be min or max)
+            if let Some(t_extremum) = estimate_close_approach_epoch(&state_1, &state_2) {
+                let t_min = current_epoch;
+                let t_max = current_epoch + step;
+
+                // Only refine if the estimated extremum falls within this interval
+                if t_extremum >= t_min
+                    && t_extremum <= t_max
+                    && let Some(refined_distance) =
+                        refine_extremum_distance(&self_states, &other_states, &self_grid, &other_grid, t_extremum)
+                {
+                    global_min_distance = global_min_distance.min(refined_distance);
+                    global_max_distance = global_max_distance.max(refined_distance);
+
+                    // Early exit if max exceeds threshold
+                    if global_max_distance > distance_threshold {
+                        return None;
+                    }
+                }
+            }
+
+            current_epoch += step;
+        }
+
+        // All extrema are within threshold, return a single proximity event
+        Some(ProximityEvent::new(
+            self_id,
+            other_id,
+            start_epoch,
+            end_epoch,
+            global_min_distance,
+            global_max_distance,
+        ))
     }
 }
 
@@ -560,6 +677,37 @@ fn refine_close_approach(
     let range = (state_1.position - state_2.position).get_magnitude();
 
     Some(CloseApproach::new(ephem_1_satellite_id, ephem_2_satellite_id, t, range))
+}
+
+fn refine_extremum_distance(
+    ephem_1_states: &[CartesianState],
+    ephem_2_states: &[CartesianState],
+    ephem_1_grid: &UniformGrid,
+    ephem_2_grid: &UniformGrid,
+    t_guess: Epoch,
+) -> Option<f64> {
+    let mut t = t_guess;
+
+    for _ in 0..MAX_NEWTON_ITERATIONS {
+        let state_1 = interpolate_state_with_grid(ephem_1_states, t, ephem_1_grid)?;
+        let state_2 = interpolate_state_with_grid(ephem_2_states, t, ephem_2_grid)?;
+
+        let dr = state_1.position - state_2.position;
+        let dv = state_1.velocity - state_2.velocity;
+        let drdv = dr.dot(&dv);
+        let dvdv = dv.dot(&dv);
+
+        let dt = -drdv / dvdv;
+        t += TimeSpan::from_seconds(dt);
+
+        if dt.abs() < NEWTON_TOLERANCE {
+            break;
+        }
+    }
+
+    let state_1 = interpolate_state_with_grid(ephem_1_states, t, ephem_1_grid)?;
+    let state_2 = interpolate_state_with_grid(ephem_2_states, t, ephem_2_grid)?;
+    Some((state_1.position - state_2.position).get_magnitude())
 }
 
 pub fn construct_ephemeris_id(start: Epoch, end: Epoch, step: TimeSpan) -> String {

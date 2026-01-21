@@ -1,7 +1,7 @@
 use super::{PyObservatory, PySatellite};
 use crate::bindings::catalogs::PyTLECatalog;
 use crate::bindings::elements::{PyCartesianState, PyEphemeris, PyOrbitPlotData};
-use crate::bindings::events::{PyCloseApproachReport, PyHorizonAccessReport};
+use crate::bindings::events::{PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport};
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
 use crate::bodies::{Constellation, Satellite};
 use crate::catalogs::TLECatalog;
@@ -129,6 +129,55 @@ impl PyConstellation {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
         py.allow_threads(|| PyCloseApproachReport::from(self.inner.get_ca_report_vs_many(start, end, distance_threshold)))
+    }
+
+    pub fn get_proximity_report_vs_one(
+        &mut self,
+        py: Python<'_>,
+        sat: &mut PySatellite,
+        start: PyEpoch,
+        end: PyEpoch,
+        distance_threshold: f64,
+    ) -> PyProximityReport {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        py.allow_threads(|| {
+            PyProximityReport::from(
+                self.inner
+                    .get_proximity_report_vs_one(sat.inner_mut(), start, end, distance_threshold),
+            )
+        })
+    }
+
+    pub fn get_proximity_report_vs_many(
+        &mut self,
+        py: Python<'_>,
+        start: PyEpoch,
+        end: PyEpoch,
+        distance_threshold: f64,
+    ) -> PyProximityReport {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        py.allow_threads(|| PyProximityReport::from(self.inner.get_proximity_report_vs_many(start, end, distance_threshold)))
+    }
+
+    pub fn get_maneuver_events(
+        &mut self,
+        py: Python<'_>,
+        future_sats: &mut PyConstellation,
+        start: PyEpoch,
+        end: PyEpoch,
+        distance_threshold: f64,
+        velocity_threshold: f64,
+    ) -> PyManeuverReport {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        py.allow_threads(|| {
+            PyManeuverReport::from(
+                self.inner
+                    .get_maneuver_events(&mut future_sats.inner, start, end, distance_threshold, velocity_threshold),
+            )
+        })
     }
 
     pub fn get_ephemeris(

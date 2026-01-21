@@ -101,3 +101,86 @@ class HorizonAccessReport:
         min_elevation: float,
         min_duration: TimeSpan,
     ) -> None: ...
+
+class ProximityEvent:
+    """Represents a time period where two satellites remain within a distance threshold."""
+
+    primary_id: str
+    """Satellite ID of the primary body"""
+
+    secondary_id: str
+    """Satellite ID of the secondary body"""
+
+    start_epoch: Epoch
+    """UTC epoch of the start of the proximity event"""
+
+    end_epoch: Epoch
+    """UTC epoch of the end of the proximity event"""
+
+    minimum_distance: float
+    """Minimum distance between the two bodies during the event in **_kilometers_**"""
+
+    maximum_distance: float
+    """Maximum distance between the two bodies during the event in **_kilometers_**"""
+
+class ProximityReport:
+    """
+    Args:
+        start: Proximity screening start time
+        end: Proximity screening end time
+        distance_threshold: Distance threshold for proximity screening in **_kilometers_**
+    """
+
+    events: list[ProximityEvent]
+    """List of proximity events found during the screening"""
+
+    distance_threshold: float
+    """Distance threshold for proximity screening in **_kilometers_**"""
+
+    start: Epoch
+    """UTC epoch of the start of the proximity report"""
+
+    end: Epoch
+    """UTC epoch of the end of the proximity report"""
+
+    def __init__(self, start: Epoch, end: Epoch, distance_threshold: float) -> None: ...
+
+class ManeuverEvent:
+    """Represents a detected maneuver for a satellite."""
+
+    satellite_id: str
+    """Satellite ID of the maneuvering body"""
+
+    epoch: Epoch
+    """UTC epoch of the detected maneuver"""
+
+    delta_v: CartesianVector
+    """Delta-V vector in RIC (radial, in-track, cross-track) frame in **_meters per second_**"""
+
+class ManeuverReport:
+    """
+    Args:
+        start: Maneuver detection start time
+        end: Maneuver detection end time
+        distance_threshold: Distance threshold for matching in **_kilometers_**
+        velocity_threshold: Velocity threshold for maneuver detection in **_meters per second_**
+    """
+
+    maneuvers: list[ManeuverEvent]
+    """List of detected maneuvers"""
+
+    distance_threshold: float
+    """Distance threshold for matching in **_kilometers_**"""
+
+    velocity_threshold: float
+    """Velocity threshold for maneuver detection in **_meters per second_**"""
+
+    start: Epoch
+    """UTC epoch of the start of the maneuver report"""
+
+    end: Epoch
+    """UTC epoch of the end of the maneuver report"""
+
+    def __init__(
+        self, start: Epoch, end: Epoch, distance_threshold: float, velocity_threshold: float
+    ) -> None: ...
