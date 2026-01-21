@@ -1,8 +1,11 @@
 # flake8: noqa
 from __future__ import annotations
+from typing import Optional
+
 from keplemon.time import Epoch
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame
 from keplemon.events import CloseApproach
+from keplemon.bodies import Observatory
 
 class RelativeState:
     epoch: Epoch
@@ -15,6 +18,19 @@ class BoreToBodyAngles:
     earth_angle: float
     sun_angle: float
     moon_angle: float
+
+class OrbitPlotState:
+    epoch: Epoch
+    latitude: float
+    longitude: float
+    altitude: float
+    semi_major_axis: float
+    eccentricity: float
+    inclination: float
+    raan: float
+    radius: float
+    apogee_radius: float
+    perigee_radius: float
 
 class OrbitPlotData:
     satellite_id: str
@@ -60,12 +76,12 @@ class HorizonElements:
         el_rate: Elevation rate in **_degrees per second_**
     """
 
-    range: float | None
+    range: Optional[float]
     azimuth: float
     elevation: float
-    range_rate: float | None
-    azimuth_rate: float | None
-    elevation_rate: float | None
+    range_rate: Optional[float]
+    azimuth_rate: Optional[float]
+    elevation_rate: Optional[float]
 
     def __init__(
         self,
@@ -86,7 +102,7 @@ class HorizonState:
     elements: HorizonElements
     """Horizon elements of the state"""
 
-    range: float | None
+    range: Optional[float]
     """Range in **_kilometers_**"""
 
     azimuth: float
@@ -95,16 +111,18 @@ class HorizonState:
     elevation: float
     """Elevation in **_degrees_**"""
 
-    range_rate: float | None
+    range_rate: Optional[float]
     """Range rate in **_kilometers per second_**"""
 
-    azimuth_rate: float | None
+    azimuth_rate: Optional[float]
     """Azimuth rate in **_degrees per second_**"""
 
-    elevation_rate: float | None
+    elevation_rate: Optional[float]
     """Elevation rate in **_degrees per second_**"""
 
     def __init__(self, epoch: Epoch, elements: HorizonElements) -> None: ...
+    @classmethod
+    def from_topocentric_state(cls, state: TopocentricState, observer: Observatory) -> HorizonState: ...
 
 class KeplerianElements:
     """
@@ -133,6 +151,36 @@ class KeplerianElements:
         argument_of_perigee: float,
         mean_anomaly: float,
     ) -> None: ...
+
+class EquinoctialElements:
+    """
+    Args:
+        a_f: Equinoctial element a_f
+        a_g: Equinoctial element a_g
+        chi: Equinoctial element chi
+        psi: Equinoctial element psi
+        mean_longitude: Mean longitude in **_degrees_**
+        mean_motion: Mean motion in **_revolutions per day_**
+    """
+
+    a_f: float
+    a_g: float
+    chi: float
+    psi: float
+    mean_longitude: float
+    mean_motion: float
+
+    def __init__(
+        self,
+        a_f: float,
+        a_g: float,
+        chi: float,
+        psi: float,
+        mean_longitude: float,
+        mean_motion: float,
+    ) -> None: ...
+
+    def to_keplerian(self) -> KeplerianElements: ...
 
 class TLE:
 
@@ -193,8 +241,21 @@ class TLE:
     cartesian_state: CartesianState
     """TEME cartesian state of the TLE at epoch"""
 
+    semi_major_axis: float
+    """Average distance from the central body in **_kilometers_**
+    
+    !!! note
+        This is always calculated using Brouwer mean motion and will differ slightly from Kozai-computed SMA.
+    """
+
+    apoapsis: float
+    """Apoapsis radius in **_kilometers_**"""
+
+    periapsis: float
+    """Periapsis radius in **_kilometers_**"""
+
     @classmethod
-    def from_lines(cls, line_1: str, line_2: str, line_3: str | None = None) -> TLE:
+    def from_lines(cls, line_1: str, line_2: str, line_3: Optional[str] = None) -> TLE:
         """
         Create a TLE object using strings in 2 or 3 line format
         """
@@ -389,25 +450,25 @@ class Ephemeris:
 class TopocentricElements:
     """
     Args:
-        ra: TEME right ascension in **_degrees_**
-        dec: TEME declination in **_degrees_**
+        right_ascension: TEME right ascension in **_degrees_**
+        declination: TEME declination in **_degrees_**
     """
 
-    range: float | None
+    range: Optional[float]
     """Range in **_kilometers_**"""
 
     right_ascension: float
     declination: float
-    range_rate: float | None
+    range_rate: Optional[float]
     """Range rate in **_kilometers per second_**"""
 
-    right_ascension_rate: float | None
+    right_ascension_rate: Optional[float]
     """Right ascension rate in **_degrees per second**"""
 
-    declination_rate: float | None
+    declination_rate: Optional[float]
     """Declination rate in **_degrees per second**"""
 
-    def __init__(self, ra: float, dec: float) -> None: ...
+    def __init__(self, right_ascension: float, declination: float) -> None: ...
     @classmethod
     def from_j2000(cls, epoch: Epoch, ra: float, dec: float) -> TopocentricElements:
         """
@@ -415,5 +476,46 @@ class TopocentricElements:
             epoch: UTC epoch of the angles
             ra: J2000 right ascension in **_degrees_**
             dec: J2000 declination in **_degrees_**
+        """
+        ...
+
+class TopocentricState:
+    """
+    Args:
+        epoch: UTC epoch of the state
+        elements: TopocentricElements of the state
+    """
+
+    epoch: Epoch
+    """UTC epoch of the state"""
+
+    elements: TopocentricElements
+    """Topocentric elements of the state"""
+
+    range: Optional[float]
+    """Range in **_kilometers_**"""
+
+    right_ascension: float
+    """TEME right ascension in **_degrees_**"""
+
+    declination: float
+    """TEME declination in **_degrees_**"""
+
+    range_rate: Optional[float]
+    """Range rate in **_kilometers per second_**"""
+
+    right_ascension_rate: Optional[float]
+    """Right ascension rate in **_degrees per second**"""
+
+    declination_rate: Optional[float]
+    """Declination rate in **_degrees per second**"""
+
+    def __init__(self, epoch: Epoch, elements: TopocentricElements) -> None: ...
+    @classmethod
+    def from_horizon_state(cls, horizon_state: HorizonState, observer: Observatory) -> TopocentricState:
+        """
+        Args:
+            horizon_state: HorizonState of the target
+            observer: Position of the observer
         """
         ...

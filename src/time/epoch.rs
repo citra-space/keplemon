@@ -1,13 +1,10 @@
 use super::{TimeComponents, TimeSpan};
 use crate::configs::ZERO_TOLERANCE;
 use crate::enums::TimeSystem;
-use crate::saal::time_func_interface;
-use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use saal::time;
 use std::hash::Hash;
 use std::ops::{Add, AddAssign, Sub};
 
-#[pyclass]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Epoch {
     pub days_since_1950: f64,
@@ -78,44 +75,15 @@ impl Eq for Epoch {}
 
 impl Epoch {}
 
-#[pymethods]
 impl Epoch {
-    fn __eq__(&self, other: &Self) -> bool {
-        self.days_since_1950 == other.days_since_1950 && self.time_system == other.time_system
-    }
-
-    fn __add__(&self, span: &TimeSpan) -> Self {
-        Self {
-            days_since_1950: self.days_since_1950 + span.in_days(),
-            time_system: self.time_system,
-        }
-    }
-
-    fn __sub__<'py>(&self, other: &Bound<'py, PyAny>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        if let Ok(other_epoch) = other.extract::<Epoch>() {
-            let result = *self - other_epoch;
-            Ok(Py::new(py, result)?.into_bound(py).into_any())
-        } else if let Ok(other_span) = other.extract::<TimeSpan>() {
-            let result = *self - other_span;
-            Ok(Py::new(py, result)?.into_bound(py).into_any())
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "Unsupported operand type for -",
-            ))
-        }
-    }
-
-    #[getter]
-    pub fn days_since_1950(&self) -> f64 {
-        self.days_since_1950
-    }
-
-    #[getter]
-    pub fn time_system(&self) -> TimeSystem {
+    pub fn get_time_system(&self) -> TimeSystem {
         self.time_system
     }
 
-    #[staticmethod]
+    pub fn get_gst(&self) -> f64 {
+        time::get_fk5_greenwich_angle(self.to_system(TimeSystem::UT1).unwrap().days_since_1950)
+    }
+
     pub fn from_days_since_1950(days_since_1950: f64, time_system: TimeSystem) -> Self {
         Self {
             days_since_1950,
@@ -123,24 +91,21 @@ impl Epoch {
         }
     }
 
-    #[staticmethod]
     pub fn from_iso(iso: &str, time_system: TimeSystem) -> Self {
         let components = TimeComponents::from_iso(iso);
         Self::from_time_components(&components, time_system)
     }
 
-    #[staticmethod]
     pub fn from_dtg(dtg: &str, time_system: TimeSystem) -> Self {
-        let days_since_1950 = time_func_interface::dtg_to_ds50(dtg);
+        let days_since_1950 = time::dtg_to_ds50(dtg);
         Self {
             days_since_1950,
             time_system,
         }
     }
 
-    #[staticmethod]
     pub fn from_time_components(components: &TimeComponents, time_system: TimeSystem) -> Self {
-        let days_since_1950 = time_func_interface::ymd_components_to_ds50(
+        let days_since_1950 = time::ymd_components_to_ds50(
             components.year,
             components.month,
             components.day,
@@ -155,23 +120,23 @@ impl Epoch {
     }
 
     pub fn to_dtg_20(&self) -> String {
-        time_func_interface::ds50_to_dtg20(self.days_since_1950)
+        time::ds50_to_dtg20(self.days_since_1950)
     }
 
     pub fn to_dtg_19(&self) -> String {
-        time_func_interface::ds50_to_dtg19(self.days_since_1950)
+        time::ds50_to_dtg19(self.days_since_1950)
     }
 
     pub fn to_dtg_17(&self) -> String {
-        time_func_interface::ds50_to_dtg17(self.days_since_1950)
+        time::ds50_to_dtg17(self.days_since_1950)
     }
 
     pub fn to_dtg_15(&self) -> String {
-        time_func_interface::ds50_to_dtg15(self.days_since_1950)
+        time::ds50_to_dtg15(self.days_since_1950)
     }
 
     pub fn to_time_components(&self) -> TimeComponents {
-        let components = time_func_interface::ds50_to_ymd_components(self.days_since_1950);
+        let components = time::ds50_to_ymd_components(self.days_since_1950);
         TimeComponents {
             year: components.0,
             month: components.1,
@@ -182,17 +147,16 @@ impl Epoch {
         }
     }
 
-    #[getter]
     pub fn get_day_of_year(&self) -> f64 {
-        time_func_interface::ds50_to_year_doy(self.days_since_1950).1
+        time::ds50_to_year_doy(self.days_since_1950).1
     }
 
     pub fn to_fk4_greenwich_angle(&self) -> f64 {
-        time_func_interface::get_fk4_greenwich_angle(self.to_system(TimeSystem::UT1).unwrap().days_since_1950)
+        time::get_fk4_greenwich_angle(self.to_system(TimeSystem::UT1).unwrap().days_since_1950)
     }
 
     pub fn to_fk5_greenwich_angle(&self) -> f64 {
-        time_func_interface::get_fk5_greenwich_angle(self.to_system(TimeSystem::UT1).unwrap().days_since_1950)
+        time::get_fk5_greenwich_angle(self.to_system(TimeSystem::UT1).unwrap().days_since_1950)
     }
 
     fn __gt__(&self, other: &Self) -> bool {
@@ -219,18 +183,18 @@ impl Epoch {
         self.to_time_components().to_iso()
     }
 
-    pub fn to_system(&self, time_system: TimeSystem) -> PyResult<Self> {
+    pub fn to_system(&self, time_system: TimeSystem) -> Result<Self, String> {
         let days_since_1950 = match self.time_system {
             TimeSystem::TAI => match time_system {
-                TimeSystem::UTC => time_func_interface::ds50_tai_to_utc(self.days_since_1950),
-                TimeSystem::UT1 => time_func_interface::ds50_tai_to_ut1(self.days_since_1950),
+                TimeSystem::UTC => time::tai_to_utc(self.days_since_1950),
+                TimeSystem::UT1 => time::tai_to_ut1(self.days_since_1950),
                 TimeSystem::TAI => self.days_since_1950,
                 _ => -1.0,
             },
             TimeSystem::UTC => match time_system {
-                TimeSystem::TAI => time_func_interface::ds50_utc_to_tai(self.days_since_1950),
-                TimeSystem::UT1 => time_func_interface::ds50_utc_to_ut1(self.days_since_1950),
-                TimeSystem::TT => time_func_interface::ds50_utc_to_tt(self.days_since_1950),
+                TimeSystem::TAI => time::utc_to_tai(self.days_since_1950),
+                TimeSystem::UT1 => time::utc_to_ut1(self.days_since_1950),
+                TimeSystem::TT => time::utc_to_tt(self.days_since_1950),
                 TimeSystem::UTC => self.days_since_1950,
             },
             TimeSystem::TT => -1.0,
@@ -238,10 +202,10 @@ impl Epoch {
         };
 
         match days_since_1950 {
-            -1.0 => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "{} to {} conversion not supported",
+            -1.0 => Err(format!(
+                "Conversion from {:?} to {:?} not implemented",
                 self.time_system, time_system
-            ))),
+            )),
             _ => Ok(Self {
                 days_since_1950,
                 time_system,
@@ -284,42 +248,65 @@ mod tests {
 
     #[test]
     fn test_to_dtg_20() {
+        let _guard = crate::test_lock::lock_for_test();
         assert_eq!(dec_20_2012_000000().to_dtg_20(), "2012/355 0000 00.000");
         assert_eq!(oct_31_1989_044242().to_dtg_20(), "1989/304 0442 42.000");
     }
 
     #[test]
     fn test_to_dtg_19() {
+        let _guard = crate::test_lock::lock_for_test();
         assert_eq!(dec_20_2012_000000().to_dtg_19(), "2012Dec20000000.000");
         assert_eq!(oct_31_1989_044242().to_dtg_19(), "1989Oct31044242.000");
     }
 
     #[test]
     fn test_to_dtg_17() {
+        let _guard = crate::test_lock::lock_for_test();
         assert_eq!(dec_20_2012_000000().to_dtg_17(), "2012/355.00000000");
         assert_eq!(oct_31_1989_044242().to_dtg_17(), "1989/304.19631944");
     }
 
     #[test]
     fn test_to_dtg_15() {
+        let _guard = crate::test_lock::lock_for_test();
         assert_eq!(dec_20_2012_000000().to_dtg_15(), "12355000000.000");
         assert_eq!(oct_31_1989_044242().to_dtg_15(), "89304044242.000");
     }
 
     #[test]
     fn test_to_fk4_greenwich_angle() {
-        assert_eq!(dec_20_2012_000000().to_fk4_greenwich_angle(), 1.552997384400264);
-        assert_eq!(oct_31_1989_044242().to_fk4_greenwich_angle(), 1.9222952876364445);
+        let _guard = crate::test_lock::lock_for_test();
+        assert_abs_diff_eq!(
+            dec_20_2012_000000().to_fk4_greenwich_angle(),
+            1.5529973858442574,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            oct_31_1989_044242().to_fk4_greenwich_angle(),
+            1.9222952766001384,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
     fn test_to_fk5_greenwich_angle() {
-        assert_eq!(dec_20_2012_000000().to_fk5_greenwich_angle(), 1.5530038233754837);
-        assert_eq!(oct_31_1989_044242().to_fk5_greenwich_angle(), 1.922300295351576);
+        let _guard = crate::test_lock::lock_for_test();
+        assert_abs_diff_eq!(
+            dec_20_2012_000000().to_fk5_greenwich_angle(),
+            1.553003824819477,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            oct_31_1989_044242().to_fk5_greenwich_angle(),
+            1.92230028431527,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
     fn test_to_time_components() {
+        let _guard = crate::test_lock::lock_for_test();
         let time_components = dec_20_2012_000000().to_time_components();
         assert_eq!(time_components.year, 2012);
         assert_eq!(time_components.month, 12);
@@ -331,6 +318,7 @@ mod tests {
 
     #[test]
     fn test_to_system() {
+        let _guard = crate::test_lock::lock_for_test();
         let utc = dec_20_2012_000000();
         let tai = utc.to_system(TimeSystem::TAI).unwrap();
         let ut1 = utc.to_system(TimeSystem::UT1).unwrap();
@@ -340,7 +328,7 @@ mod tests {
         let utc_minus_ut1 = TimeSpan::from_days(utc.days_since_1950 - ut1.days_since_1950);
         let utc_minus_tt = TimeSpan::from_days(utc.days_since_1950 - tt.days_since_1950);
         assert_abs_diff_eq!(utc_minus_tai.in_seconds(), -35.0, epsilon = 1e-6);
-        assert_eq!(utc_minus_ut1.in_seconds(), -0.28466011863201857);
+        assert_abs_diff_eq!(utc_minus_ut1.in_seconds(), -0.2846799208782613, epsilon = 1e-6);
         assert_abs_diff_eq!(utc_minus_tt.in_seconds(), -67.184, epsilon = 1e-6);
     }
 }

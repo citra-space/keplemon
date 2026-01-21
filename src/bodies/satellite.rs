@@ -2,35 +2,78 @@ use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
     BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData,
-    OrbitPlotState, RelativeState, TLE,
+    OrbitPlotState, RelativeState, TLE, construct_ephemeris_id,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::ObservationType;
 use crate::events::{CloseApproach, HorizonAccessReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
-use crate::saal::{astro_func_interface, sat_state_interface};
 use crate::time::{Epoch, TimeSpan};
 use nalgebra::{DMatrix, DVector};
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
 use rayon::prelude::*;
+use saal::{astro, satellite};
 use uuid::Uuid;
 
-#[pyclass(subclass)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Satellite {
-    id: String,
-    norad_id: i32,
-    name: Option<String>,
+    pub id: String,
+    pub norad_id: i32,
+    pub name: Option<String>,
     force_properties: ForceProperties,
     keplerian_state: Option<KeplerianState>,
     inertial_propagator: Option<InertialPropagator>,
+    ephemeris_cache: Option<Ephemeris>,
+    pub ephemeris_id: Option<String>,
+}
+
+impl Default for Satellite {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Satellite> for TLE {
+    fn from(satellite: Satellite) -> TLE {
+        let state = satellite.get_keplerian_state().unwrap();
+        TLE::new(
+            satellite.id.clone(),
+            satellite.norad_id,
+            satellite.name.clone(),
+            Classification::Unclassified,
+            "".to_string(),
+            state,
+            satellite.force_properties,
+        )
+        .unwrap()
+    }
+}
+
+impl From<TLE> for Satellite {
+    fn from(tle: TLE) -> Self {
+        Self {
+            id: tle.satellite_id.clone(),
+            norad_id: tle.norad_id,
+            name: tle.get_name(),
+            force_properties: tle.get_force_properties(),
+            keplerian_state: Some(tle.get_keplerian_state()),
+            inertial_propagator: Some(InertialPropagator::from(tle)),
+            ephemeris_cache: None,
+            ephemeris_id: None,
+        }
+    }
 }
 
 impl Satellite {
     pub fn get_jacobian(&self, ob: &dyn ObservationType, use_drag: bool, use_srp: bool) -> Result<DMatrix<f64>, String> {
         match self.inertial_propagator {
             Some(ref propagator) => propagator.get_jacobian(ob, use_drag, use_srp),
+            None => Err("Inertial propagator is not set".to_string()),
+        }
+    }
+
+    pub fn build_perturbed_satellites(&self, use_drag: bool, use_srp: bool) -> Result<Vec<(Satellite, f64)>, String> {
+        match self.inertial_propagator {
+            Some(ref propagator) => propagator.build_perturbed_satellites(use_drag, use_srp),
             None => Err("Inertial propagator is not set".to_string()),
         }
     }
@@ -60,8 +103,21 @@ impl Satellite {
         match self.inertial_propagator {
             Some(ref propagator) => {
                 new_satellite.inertial_propagator = Some(propagator.new_with_delta_x(delta_x, use_drag, use_srp)?);
-                new_satellite.keplerian_state = Some(propagator.get_keplerian_state().unwrap());
-                new_satellite.force_properties = propagator.get_force_properties().unwrap();
+                // Get keplerian state and force properties from the new propagator
+                new_satellite.keplerian_state = Some(
+                    new_satellite
+                        .inertial_propagator
+                        .as_ref()
+                        .unwrap()
+                        .get_keplerian_state()
+                        .unwrap(),
+                );
+                new_satellite.force_properties = new_satellite
+                    .inertial_propagator
+                    .as_ref()
+                    .unwrap()
+                    .get_force_properties()
+                    .unwrap();
             }
             None => return Err("Inertial propagator is not set".to_string()),
         };
@@ -79,17 +135,38 @@ impl Satellite {
             None => Err("Inertial propagator is not set".to_string()),
         }
     }
-}
 
-impl Default for Satellite {
-    fn default() -> Self {
-        Self::new()
+    pub fn get_ephemeris(&mut self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
+        // exit early if we have a cached ephemeris that matches the request
+        if self.ephemeris_id == Some(construct_ephemeris_id(start_epoch, end_epoch, step)) {
+            return self.ephemeris_cache.clone();
+        }
+
+        match self.get_state_at_epoch(start_epoch) {
+            Some(state) => {
+                let ephemeris = Ephemeris::new(self.id.clone(), Some(self.norad_id), state).unwrap();
+                let diff = end_epoch - start_epoch;
+                let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
+                let dt = if step < max_step { step } else { max_step };
+                let mut next_epoch: Epoch = start_epoch + dt;
+                while next_epoch <= end_epoch {
+                    match self.get_state_at_epoch(next_epoch) {
+                        Some(state) => {
+                            ephemeris.add_state(state).unwrap();
+                            next_epoch += dt;
+                        }
+                        None => return None,
+                    }
+                }
+                self.ephemeris_cache = Some(ephemeris.clone());
+                self.ephemeris_id = Some(construct_ephemeris_id(start_epoch, end_epoch, step));
+                self.inertial_propagator.as_mut().unwrap().reload().ok()?;
+                Some(ephemeris)
+            }
+            None => None,
+        }
     }
-}
 
-#[pymethods]
-impl Satellite {
-    #[new]
     pub fn new() -> Self {
         Self {
             norad_id: DEFAULT_NORAD_ANALYST_ID,
@@ -98,6 +175,8 @@ impl Satellite {
             force_properties: ForceProperties::default(),
             keplerian_state: None,
             inertial_propagator: None,
+            ephemeris_cache: None,
+            ephemeris_id: None,
         }
     }
 
@@ -121,16 +200,16 @@ impl Satellite {
             state_2.velocity[1],
             state_2.velocity[2],
         ];
-        let xa_delta = sat_state_interface::get_relative_state(&teme_2, &teme_1, epoch.days_since_1950());
+        let xa_delta = satellite::get_relative_array(&teme_2, &teme_1, epoch.days_since_1950, 1);
         let pos = [
-            xa_delta[sat_state_interface::XA_DELTA_PRADIAL],
-            xa_delta[sat_state_interface::XA_DELTA_PINTRCK],
-            xa_delta[sat_state_interface::XA_DELTA_PCRSSTRCK],
+            xa_delta[satellite::XA_DELTA_PRADIAL],
+            xa_delta[satellite::XA_DELTA_PINTRCK],
+            xa_delta[satellite::XA_DELTA_PCRSSTRCK],
         ];
         let vel = [
-            xa_delta[sat_state_interface::XA_DELTA_VRADIAL],
-            xa_delta[sat_state_interface::XA_DELTA_VINTRCK],
-            xa_delta[sat_state_interface::XA_DELTA_VCRSSTRCK],
+            xa_delta[satellite::XA_DELTA_VRADIAL],
+            xa_delta[satellite::XA_DELTA_VINTRCK],
+            xa_delta[satellite::XA_DELTA_VCRSSTRCK],
         ];
         Some(RelativeState {
             epoch,
@@ -146,7 +225,7 @@ impl Satellite {
         let other_state = other.get_state_at_epoch(epoch)?;
         let self_to_other = other_state.position - self_state.position;
         let self_to_earth = self_state.position * -1.0;
-        let (sun, moon) = astro_func_interface::get_jpl_sun_and_moon_position(epoch.days_since_1950);
+        let (sun, moon) = astro::get_jpl_sun_and_moon_position(epoch.days_since_1950);
         let self_to_sun = CartesianVector::from(sun) - self_state.position;
         let self_to_moon = CartesianVector::from(moon) - self_state.position;
         let sun_angle = self_to_other.angle(&self_to_sun);
@@ -159,86 +238,24 @@ impl Satellite {
         ))
     }
 
-    #[getter]
     pub fn get_geodetic_position(&self) -> Option<GeodeticPosition> {
         match self.keplerian_state {
             Some(ref state) => {
-                let teme = state.to_cartesian().to_frame(ReferenceFrame::TEME).position;
-                let lla = astro_func_interface::time_teme_to_lla(state.get_epoch().days_since_1950, &teme.into());
+                let teme: CartesianState = state.into();
+                let teme = teme.to_frame(ReferenceFrame::TEME).position;
+                let lla = astro::time_teme_to_lla(state.epoch.days_since_1950, &teme.into());
                 Some(GeodeticPosition::new(lla[0], lla[1], lla[2]))
             }
             None => None,
         }
     }
 
-    pub fn to_tle(&self) -> PyResult<Option<TLE>> {
-        match self.get_keplerian_state() {
-            Some(state) => match TLE::new(
-                self.id.clone(),
-                self.norad_id,
-                self.name.clone(),
-                Classification::Unclassified,
-                "".to_string(),
-                state,
-                self.force_properties,
-            ) {
-                Ok(tle) => Ok(Some(tle)),
-                Err(e) => Err(PyErr::new::<PyValueError, _>(e.to_string())),
-            },
-            None => Ok(None),
-        }
-    }
-
-    #[staticmethod]
-    pub fn from_tle(tle: TLE) -> Self {
-        Self {
-            id: tle.get_id(),
-            norad_id: tle.get_norad_id(),
-            name: tle.get_name(),
-            force_properties: tle.get_force_properties(),
-            keplerian_state: Some(tle.get_keplerian_state()),
-            inertial_propagator: Some(InertialPropagator::from_tle(tle)),
-        }
-    }
-
-    #[getter]
-    pub fn get_id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[getter]
-    pub fn get_name(&self) -> Option<String> {
-        self.name.clone()
-    }
-
-    #[setter]
-    pub fn set_name(&mut self, name: Option<String>) {
-        self.name = name;
-    }
-
-    #[getter]
     pub fn get_periapsis(&self) -> Option<f64> {
         self.keplerian_state.as_ref().map(|state| state.get_periapsis())
     }
 
-    #[getter]
     pub fn get_apoapsis(&self) -> Option<f64> {
         self.keplerian_state.as_ref().map(|state| state.get_apoapsis())
-    }
-
-    #[setter]
-    pub fn set_id(&mut self, satellite_id: String) {
-        self.id = satellite_id;
-    }
-
-    #[getter]
-    pub fn get_norad_id(&self) -> i32 {
-        self.norad_id
-    }
-
-    #[setter]
-    pub fn set_norad_id(&mut self, norad_id: i32) {
-        self.norad_id = norad_id;
     }
 
     pub fn get_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
@@ -247,19 +264,10 @@ impl Satellite {
             .map(|propagator| propagator.get_cartesian_state_at_epoch(epoch))?
     }
 
-    #[pyo3(name = "step_to_epoch")]
-    pub fn py_step_to_epoch(&mut self, epoch: Epoch) -> PyResult<()> {
-        self.step_to_epoch(epoch)
-            .map_err(|e| PyErr::new::<PyValueError, _>(e.to_string()))
-    }
-
-    #[setter]
-    pub fn set_keplerian_state(&mut self, keplerian_state: KeplerianState) -> PyResult<()> {
+    pub fn set_keplerian_state(&mut self, keplerian_state: KeplerianState) -> Result<(), String> {
         self.keplerian_state = Some(keplerian_state);
         match keplerian_state.get_type() {
-            KeplerianType::Osculating => Err(PyErr::new::<PyValueError, _>(
-                "Osculating elements not implemented".to_string(),
-            )),
+            KeplerianType::Osculating => Err("Cannot set osculating elements directly; use TLE instead".to_string()),
             _ => {
                 let tle = TLE::new(
                     self.id.clone(),
@@ -271,72 +279,45 @@ impl Satellite {
                     self.force_properties,
                 )
                 .unwrap();
-                self.inertial_propagator = Some(InertialPropagator::from_tle(tle));
+                self.inertial_propagator = Some(InertialPropagator::from(tle));
                 Ok(())
             }
         }
     }
 
-    #[setter]
     pub fn set_force_properties(&mut self, force_properties: ForceProperties) {
         self.force_properties = force_properties;
-        if let Some(state) = self.get_keplerian_state() {
-            if state.get_type() != KeplerianType::Osculating {
-                let tle = TLE::new(
-                    self.id.clone(),
-                    self.norad_id,
-                    self.name.clone(),
-                    Classification::Unclassified,
-                    "".to_string(),
-                    state,
-                    force_properties,
-                )
-                .unwrap();
-                self.inertial_propagator = Some(InertialPropagator::from_tle(tle));
-            }
+        if let Some(state) = self.get_keplerian_state()
+            && state.get_type() != KeplerianType::Osculating
+        {
+            let tle = TLE::new(
+                self.id.clone(),
+                self.norad_id,
+                self.name.clone(),
+                Classification::Unclassified,
+                "".to_string(),
+                state,
+                force_properties,
+            )
+            .unwrap();
+            self.inertial_propagator = Some(InertialPropagator::from(tle));
         }
     }
 
-    #[getter]
     pub fn get_force_properties(&self) -> ForceProperties {
         self.force_properties
-    }
-
-    pub fn get_ephemeris(&self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
-        match self.get_state_at_epoch(start_epoch) {
-            Some(state) => {
-                let ephemeris = Ephemeris::new(self.id.clone(), Some(self.norad_id), state);
-                let diff = end_epoch - start_epoch;
-                let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
-                let dt = if step < max_step { step } else { max_step };
-                let mut next_epoch: Epoch = start_epoch + dt;
-                while next_epoch <= end_epoch {
-                    match self.get_state_at_epoch(next_epoch) {
-                        Some(state) => {
-                            ephemeris.add_state(state);
-                            next_epoch += dt;
-                        }
-                        None => {
-                            return None;
-                        }
-                    }
-                }
-                Some(ephemeris)
-            }
-            None => None,
-        }
     }
 
     pub fn get_plot_data(&self, start: Epoch, end: Epoch, step: TimeSpan) -> Option<OrbitPlotData> {
         match self.get_state_at_epoch(start) {
             Some(state) => {
                 let mut plot_data = OrbitPlotData::new(self.id.clone());
-                plot_data.add_state(OrbitPlotState::from_cartesian_state(&state));
+                plot_data.add_state(OrbitPlotState::from(state));
                 let mut next_epoch: Epoch = start + step;
                 while next_epoch <= end {
                     match self.get_state_at_epoch(next_epoch) {
                         Some(state) => {
-                            plot_data.add_state(OrbitPlotState::from_cartesian_state(&state));
+                            plot_data.add_state(OrbitPlotState::from(state));
                             next_epoch += step;
                         }
                         None => {
@@ -350,14 +331,13 @@ impl Satellite {
         }
     }
 
-    #[getter]
     pub fn get_keplerian_state(&self) -> Option<KeplerianState> {
         self.keplerian_state
     }
 
     pub fn get_close_approach(
-        &self,
-        other: &Satellite,
+        &mut self,
+        other: &mut Satellite,
         start_epoch: Epoch,
         end_epoch: Epoch,
         distance_threshold: f64,
@@ -383,7 +363,7 @@ impl Satellite {
     }
 
     pub fn get_observatory_access_report(
-        &self,
+        &mut self,
         observatories: Vec<Observatory>,
         start: Epoch,
         end: Epoch,
@@ -407,5 +387,172 @@ impl Satellite {
 
         report.set_accesses(accesses.into_iter().flatten().collect());
         Some(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Satellite;
+    use crate::bodies::Observatory;
+    use crate::elements::TLE;
+    use crate::enums::TimeSystem;
+    use crate::time::{Epoch, TimeSpan};
+    use approx::assert_abs_diff_eq;
+
+    fn make_satellite(line_1: &str, line_2: &str) -> Satellite {
+        let tle = TLE::from_lines(line_1, line_2, None).unwrap();
+        Satellite::from(tle)
+    }
+
+    #[test]
+    fn test_from_tle() {
+        let _guard = crate::test_lock::lock_for_test();
+        let sat_1 = make_satellite(
+            "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999",
+            "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660",
+        );
+        let sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+
+        assert_eq!(sat_1.norad_id, 25544);
+        let pos_2 = sat_2.get_geodetic_position().expect("missing geodetic position");
+        let _pos_3 = sat_3.get_geodetic_position().expect("missing geodetic position");
+        assert_abs_diff_eq!(pos_2.latitude, 0.3938497796549098, epsilon = 0.1);
+        assert_abs_diff_eq!(pos_2.longitude, 55.074384090833696, epsilon = 0.1);
+        assert_abs_diff_eq!(pos_2.altitude, 35808.08113476326, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_get_close_approach() {
+        let _guard = crate::test_lock::lock_for_test();
+        let mut sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let mut sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+        let start = Epoch::from_iso("2025-04-15T12:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2025-04-16T12:00:00.000000Z", TimeSystem::UTC);
+        let ca = sat_2
+            .get_close_approach(&mut sat_3, start, end, 25.0)
+            .expect("missing close approach");
+        assert_eq!(ca.get_epoch().to_iso(), "2025-04-15T12:32:28.532");
+        assert_abs_diff_eq!(ca.get_distance(), 6.088, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_get_relative_state_at_epoch() {
+        let _guard = crate::test_lock::lock_for_test();
+        let sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+        let epoch = Epoch::from_iso("2025-04-15T12:32:28.532000Z", TimeSystem::UTC);
+        let state = sat_2
+            .get_relative_state_at_epoch(&sat_3, epoch)
+            .expect("missing relative state");
+        assert_abs_diff_eq!(state.position.get_magnitude(), 6.088, epsilon = 0.1);
+        assert_abs_diff_eq!(state.position.get_x(), -3.166, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.position.get_y(), -5.2, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.position.get_z(), 0.0196, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.velocity.get_x(), 0.001, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.velocity.get_y(), -0.0003, epsilon = 1e-3);
+        assert_abs_diff_eq!(state.velocity.get_z(), -0.059, epsilon = 1e-3);
+    }
+
+    #[test]
+    fn test_get_body_angles_at_epoch() {
+        let _guard = crate::test_lock::lock_for_test();
+        let sat_2 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   1.0234  87.2060 0005091 220.8721 161.7206  1.00271635 50950",
+        );
+        let sat_3 = make_satellite(
+            "1 37605U 11022A   25105.58543138  .00000096  00000+0  00000+0 0  9990",
+            "2 37605   2.1234  87.2060 0006091 220.8721 161.7206  1.00271635 50950",
+        );
+        let epoch = Epoch::from_iso("2025-04-15T12:32:28.532000Z", TimeSystem::UTC);
+        let angles = sat_2
+            .get_body_angles_at_epoch(&sat_3, epoch)
+            .expect("missing body angles");
+        assert_abs_diff_eq!(angles.get_earth_angle(), 121.3, epsilon = 0.1);
+        assert_abs_diff_eq!(angles.get_sun_angle(), 121.0, epsilon = 0.1);
+        assert_abs_diff_eq!(angles.get_moon_angle(), 88.0, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_get_observatory_access_report() {
+        let _guard = crate::test_lock::lock_for_test();
+        let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+        let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+        let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();
+        let mut satellite = Satellite::from(tle);
+
+        let mut obs1 = Observatory::new(34.0, -118.0, 100.0);
+        obs1.name = Some("LA Observatory".to_string());
+        let mut obs2 = Observatory::new(51.5, -0.1, 50.0);
+        obs2.name = Some("London Observatory".to_string());
+        let mut obs3 = Observatory::new(-33.9, 18.4, 20.0);
+        obs3.name = Some("Cape Town Observatory".to_string());
+
+        let observatories = vec![obs1.clone(), obs2.clone(), obs3.clone()];
+        let start = Epoch::from_iso("2025-04-18T04:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2025-04-18T08:00:00.000000Z", TimeSystem::UTC);
+        let min_elevation = 10.0;
+        let min_duration = TimeSpan::from_minutes(1.0);
+
+        let report = satellite
+            .get_observatory_access_report(observatories, start, end, min_elevation, min_duration)
+            .expect("missing access report");
+
+        assert_eq!(report.get_start(), start);
+        assert_eq!(report.get_end(), end);
+        assert_abs_diff_eq!(report.get_elevation_threshold(), min_elevation, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            report.get_duration_threshold().in_minutes(),
+            min_duration.in_minutes(),
+            epsilon = 1e-6
+        );
+
+        let accesses = report.get_accesses();
+        assert_eq!(accesses.len(), 3);
+
+        let la_accesses: Vec<_> = accesses.iter().filter(|a| a.get_observatory_id() == obs1.id).collect();
+        let london_accesses: Vec<_> = accesses.iter().filter(|a| a.get_observatory_id() == obs2.id).collect();
+        let cape_town_accesses: Vec<_> = accesses.iter().filter(|a| a.get_observatory_id() == obs3.id).collect();
+
+        assert_eq!(la_accesses.len(), 1);
+        assert_eq!(london_accesses.len(), 0);
+        assert_eq!(cape_town_accesses.len(), 2);
+
+        for access in accesses {
+            let start_state = access.get_start();
+            let end_state = access.get_end();
+            assert!(
+                start_state.elements.elevation >= min_elevation
+                    || (start_state.elements.elevation - min_elevation).abs() <= 0.1
+            );
+            assert!(
+                end_state.elements.elevation >= min_elevation
+                    || (end_state.elements.elevation - min_elevation).abs() <= 0.1
+            );
+            let duration = end_state.epoch - start_state.epoch;
+            assert!(
+                duration.in_minutes() >= min_duration.in_minutes()
+                    || (duration.in_minutes() - min_duration.in_minutes()).abs() <= 0.1
+            );
+        }
     }
 }

@@ -1,39 +1,47 @@
+use super::CartesianState;
 use super::KeplerianElements;
-use super::{CartesianState, CartesianVector};
 use crate::enums::{KeplerianType, ReferenceFrame, TimeSystem};
-use crate::saal::{astro_func_interface, tle_interface};
 use crate::time::Epoch;
-use pyo3::prelude::*;
+use saal::{astro, tle};
 
-#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KeplerianState {
-    epoch: Epoch,
-    elements: KeplerianElements,
+    pub epoch: Epoch,
+    pub elements: KeplerianElements,
     frame: ReferenceFrame,
-    keplerian_type: KeplerianType,
+    pub keplerian_type: KeplerianType,
 }
 
-impl KeplerianState {
-    pub fn get_elements(&self) -> KeplerianElements {
-        self.elements
+impl From<&KeplerianState> for CartesianState {
+    fn from(kep_state: &KeplerianState) -> Self {
+        let xa_kep = kep_state.elements.get_xa_kep();
+        let posvel = astro::keplerian_to_cartesian(&xa_kep);
+        CartesianState::from((kep_state.epoch, posvel, kep_state.frame))
     }
+}
 
-    pub fn from_xa_tle(xa_tle: &[f64; tle_interface::XA_TLE_SIZE]) -> Self {
-        let epoch = Epoch::from_days_since_1950(xa_tle[tle_interface::XA_TLE_EPOCH], TimeSystem::UTC);
-        let keplerian_type = KeplerianType::try_from(xa_tle[tle_interface::XA_TLE_EPHTYPE]).unwrap();
-        let eccentricity = xa_tle[tle_interface::XA_TLE_ECCEN];
-        let inclination = xa_tle[tle_interface::XA_TLE_INCLI];
-        let raan = xa_tle[tle_interface::XA_TLE_NODE];
-        let argument_of_perigee = xa_tle[tle_interface::XA_TLE_OMEGA];
-        let mean_anomaly = xa_tle[tle_interface::XA_TLE_MNANOM];
+impl From<KeplerianState> for CartesianState {
+    fn from(kep_state: KeplerianState) -> Self {
+        CartesianState::from(&kep_state)
+    }
+}
+
+impl From<&[f64; tle::XA_TLE_SIZE]> for KeplerianState {
+    fn from(xa_tle: &[f64; tle::XA_TLE_SIZE]) -> Self {
+        let epoch = Epoch::from_days_since_1950(xa_tle[tle::XA_TLE_EPOCH], TimeSystem::UTC);
+        let keplerian_type = KeplerianType::try_from(xa_tle[tle::XA_TLE_EPHTYPE]).unwrap();
+        let eccentricity = xa_tle[tle::XA_TLE_ECCEN];
+        let inclination = xa_tle[tle::XA_TLE_INCLI];
+        let raan = xa_tle[tle::XA_TLE_NODE];
+        let argument_of_perigee = xa_tle[tle::XA_TLE_OMEGA];
+        let mean_anomaly = xa_tle[tle::XA_TLE_MNANOM];
         let mean_motion = match keplerian_type {
             KeplerianType::MeanKozaiGP => {
-                astro_func_interface::kozai_to_brouwer(eccentricity, inclination, xa_tle[tle_interface::XA_TLE_MNMOTN])
+                astro::kozai_to_brouwer(eccentricity, inclination, xa_tle[tle::XA_TLE_MNMOTN])
             }
-            _ => xa_tle[tle_interface::XA_TLE_MNMOTN],
+            _ => xa_tle[tle::XA_TLE_MNMOTN],
         };
-        let semi_major_axis = astro_func_interface::mean_motion_to_sma(mean_motion);
+        let semi_major_axis = astro::mean_motion_to_sma(mean_motion);
         let elements = KeplerianElements::new(
             semi_major_axis,
             eccentricity,
@@ -51,9 +59,7 @@ impl KeplerianState {
     }
 }
 
-#[pymethods]
 impl KeplerianState {
-    #[new]
     pub fn new(
         epoch: Epoch,
         elements: KeplerianElements,
@@ -68,89 +74,53 @@ impl KeplerianState {
         }
     }
 
-    pub fn to_cartesian(&self) -> CartesianState {
-        let xa_kep = self.elements.get_xa_kep();
-        let (pos, vel) = astro_func_interface::keplerian_to_cartesian(&xa_kep);
-        CartesianState::new(
-            self.epoch,
-            CartesianVector::from(pos),
-            CartesianVector::from(vel),
-            self.frame,
-        )
-    }
-
     pub fn to_frame(&self, frame: ReferenceFrame) -> KeplerianState {
-        self.to_cartesian().to_frame(frame).to_keplerian()
+        let cartesian = CartesianState::from(self);
+        cartesian.to_frame(frame).into()
     }
 
-    #[getter]
     pub fn get_semi_major_axis(&self) -> f64 {
-        self.elements.get_semi_major_axis()
+        self.elements.semi_major_axis
     }
 
-    #[getter]
     pub fn get_mean_anomaly(&self) -> f64 {
-        self.elements.get_mean_anomaly()
+        self.elements.mean_anomaly
     }
 
-    #[getter]
     pub fn get_eccentricity(&self) -> f64 {
-        self.elements.get_eccentricity()
+        self.elements.eccentricity
     }
 
-    #[getter]
     pub fn get_inclination(&self) -> f64 {
-        self.elements.get_inclination()
+        self.elements.inclination
     }
 
-    #[getter]
     pub fn get_raan(&self) -> f64 {
-        self.elements.get_raan()
+        self.elements.raan
     }
 
-    #[getter]
     pub fn get_argument_of_perigee(&self) -> f64 {
-        self.elements.get_argument_of_perigee()
+        self.elements.argument_of_perigee
     }
 
-    #[getter]
     pub fn get_apoapsis(&self) -> f64 {
         self.elements.get_apoapsis()
     }
 
-    #[getter]
     pub fn get_periapsis(&self) -> f64 {
         self.elements.get_periapsis()
     }
 
-    #[getter]
-    pub fn get_epoch(&self) -> Epoch {
-        self.epoch
-    }
-
-    #[getter]
     pub fn get_mean_motion(&self) -> f64 {
         self.elements.get_mean_motion(self.keplerian_type)
     }
 
-    #[getter]
     pub fn get_frame(&self) -> ReferenceFrame {
         self.frame
     }
 
-    #[getter]
     pub fn get_type(&self) -> KeplerianType {
         self.keplerian_type
-    }
-
-    #[setter]
-    pub fn set_epoch(&mut self, epoch: Epoch) {
-        self.epoch = epoch;
-    }
-
-    #[setter]
-    pub fn set_type(&mut self, keplerian_type: KeplerianType) {
-        self.keplerian_type = keplerian_type;
     }
 }
 
@@ -158,7 +128,7 @@ impl KeplerianState {
 mod tests {
 
     use super::KeplerianState;
-    use crate::elements::KeplerianElements;
+    use crate::elements::{CartesianState, KeplerianElements};
     use crate::enums::{KeplerianType, ReferenceFrame, TimeSystem};
     use crate::time::Epoch;
     use approx::assert_abs_diff_eq;
@@ -173,8 +143,9 @@ mod tests {
 
     #[test]
     fn test_to_cartesian() {
+        let _guard = crate::test_lock::lock_for_test();
         let osc = geo_state();
-        let state = osc.to_cartesian();
+        let state: CartesianState = osc.into();
         assert_eq!(state.get_frame(), ReferenceFrame::TEME);
         assert_abs_diff_eq!(state.position[0], 42164.0, epsilon = 1e-6);
         assert_abs_diff_eq!(state.position[1], 0.0, epsilon = 1e-6);

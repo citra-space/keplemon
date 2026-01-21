@@ -1,10 +1,8 @@
 use super::{CartesianVector, KeplerianElements, KeplerianState};
 use crate::enums::{KeplerianType, ReferenceFrame};
-use crate::saal::astro_func_interface;
 use crate::time::Epoch;
-use pyo3::prelude::*;
+use saal::astro;
 
-#[pyclass]
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct CartesianState {
     pub epoch: Epoch,
@@ -14,34 +12,6 @@ pub struct CartesianState {
 }
 
 impl CartesianState {
-    pub fn set_element(&mut self, element: usize, value: f64) {
-        match element {
-            0 => self.position[0] = value,
-            1 => self.position[1] = value,
-            2 => self.position[2] = value,
-            3 => self.velocity[0] = value,
-            4 => self.velocity[1] = value,
-            5 => self.velocity[2] = value,
-            _ => panic!("Invalid element index"),
-        }
-    }
-
-    pub fn get_element(&self, element: usize) -> f64 {
-        match element {
-            0 => self.position[0],
-            1 => self.position[1],
-            2 => self.position[2],
-            3 => self.velocity[0],
-            4 => self.velocity[1],
-            5 => self.velocity[2],
-            _ => panic!("Invalid element index"),
-        }
-    }
-}
-
-#[pymethods]
-impl CartesianState {
-    #[new]
     pub fn new(epoch: Epoch, position: CartesianVector, velocity: CartesianVector, frame: ReferenceFrame) -> Self {
         Self {
             epoch,
@@ -51,165 +21,70 @@ impl CartesianState {
         }
     }
 
-    #[getter]
-    pub fn get_position(&self) -> CartesianVector {
-        self.position
-    }
-
-    #[getter]
-    pub fn get_velocity(&self) -> CartesianVector {
-        self.velocity
-    }
-
-    #[getter]
-    pub fn get_epoch(&self) -> Epoch {
-        self.epoch
-    }
-
     pub fn get_frame(&self) -> ReferenceFrame {
         self.frame
     }
 
-    pub fn to_keplerian(&self) -> KeplerianState {
-        let pos: [f64; 3] = [self.position[0], self.position[1], self.position[2]];
-        let vel: [f64; 3] = [self.velocity[0], self.velocity[1], self.velocity[2]];
-        let kep = KeplerianElements::from(astro_func_interface::cartesian_to_keplerian(&pos, &vel));
-        KeplerianState::new(self.epoch, kep, self.frame, KeplerianType::Osculating)
-    }
-
     pub fn to_frame(&self, frame: ReferenceFrame) -> CartesianState {
-        let in_pos: [f64; 3] = [self.position[0], self.position[1], self.position[2]];
-        let in_vel: [f64; 3] = [self.velocity[0], self.velocity[1], self.velocity[2]];
         match self.frame {
             ReferenceFrame::TEME => match frame {
                 ReferenceFrame::TEME => *self,
                 ReferenceFrame::J2000 => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::teme_to_j2000(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::teme_to_j2000(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::ECR => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::teme_to_ecr(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::teme_to_ecr(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::EFG => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::teme_to_efg(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::teme_to_efg(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
             },
             ReferenceFrame::J2000 => match frame {
                 ReferenceFrame::TEME => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::j2000_to_teme(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::j2000_to_teme(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::J2000 => *self,
                 ReferenceFrame::ECR => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::j2000_to_ecr(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::j2000_to_ecr(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
+
                 ReferenceFrame::EFG => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::j2000_to_efg(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::j2000_to_efg(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
             },
             ReferenceFrame::ECR => match frame {
                 ReferenceFrame::TEME => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::ecr_to_teme(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::ecr_to_teme(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::J2000 => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::ecr_to_j2000(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::ecr_to_j2000(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::ECR => *self,
                 ReferenceFrame::EFG => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::ecr_to_efg(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::ecr_to_efg(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
             },
             ReferenceFrame::EFG => match frame {
                 ReferenceFrame::TEME => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::efg_to_teme(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::efg_to_teme(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::J2000 => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::efg_to_j2000(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::efg_to_j2000(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::ECR => {
-                    let (out_pos, out_vel) =
-                        astro_func_interface::efg_to_ecr(self.epoch.days_since_1950, &in_pos, &in_vel);
-                    CartesianState::new(
-                        self.epoch,
-                        CartesianVector::from(out_pos),
-                        CartesianVector::from(out_vel),
-                        frame,
-                    )
+                    let posvel = astro::efg_to_ecr(self.epoch.days_since_1950, &self.into());
+                    CartesianState::from((self.epoch, posvel, frame))
                 }
                 ReferenceFrame::EFG => *self,
             },
@@ -217,27 +92,70 @@ impl CartesianState {
     }
 }
 
+impl From<(Epoch, [f64; 6], ReferenceFrame)> for CartesianState {
+    fn from(data: (Epoch, [f64; 6], ReferenceFrame)) -> Self {
+        Self {
+            epoch: data.0,
+            position: CartesianVector::from([data.1[0], data.1[1], data.1[2]]),
+            velocity: CartesianVector::from([data.1[3], data.1[4], data.1[5]]),
+            frame: data.2,
+        }
+    }
+}
+
+impl From<CartesianState> for KeplerianState {
+    fn from(cartesian: CartesianState) -> Self {
+        let kep = KeplerianElements::from(astro::cartesian_to_keplerian(&cartesian.into()));
+        KeplerianState::new(cartesian.epoch, kep, cartesian.frame, KeplerianType::Osculating)
+    }
+}
+
+impl From<CartesianState> for [f64; 6] {
+    fn from(state: CartesianState) -> Self {
+        [
+            state.position.get_x(),
+            state.position.get_y(),
+            state.position.get_z(),
+            state.velocity.get_x(),
+            state.velocity.get_y(),
+            state.velocity.get_z(),
+        ]
+    }
+}
+
+impl From<&CartesianState> for [f64; 6] {
+    fn from(state: &CartesianState) -> Self {
+        [
+            state.position.get_x(),
+            state.position.get_y(),
+            state.position.get_z(),
+            state.velocity.get_x(),
+            state.velocity.get_y(),
+            state.velocity.get_z(),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CartesianState, CartesianVector};
+    use crate::elements::KeplerianState;
     use crate::enums::{ReferenceFrame, TimeSystem};
     use crate::time::Epoch;
     use approx::assert_abs_diff_eq;
 
-    fn epoch_1() -> Epoch {
-        Epoch::from_days_since_1950(25142.432, TimeSystem::UTC)
-    }
-    fn geo_position() -> CartesianVector {
-        CartesianVector::new(42164.0, 0.0, 0.0)
-    }
-    fn geo_velocity() -> CartesianVector {
-        CartesianVector::new(0.0, 3.0746676656429814, 0.0)
+    fn get_state(frame: ReferenceFrame) -> CartesianState {
+        let epoch = Epoch::from_days_since_1950(25142.432, TimeSystem::UTC);
+        let position = CartesianVector::new(42164.0, 0.0, 0.0);
+        let velocity = CartesianVector::new(0.0, 3.0746676656429814, 0.0);
+        CartesianState::new(epoch, position, velocity, frame)
     }
 
     #[test]
     fn test_to_keplerian() {
-        let state = CartesianState::new(epoch_1(), geo_position(), geo_velocity(), ReferenceFrame::TEME);
-        let osc = state.to_keplerian();
+        let _guard = crate::test_lock::lock_for_test();
+        let state = get_state(ReferenceFrame::TEME);
+        let osc = KeplerianState::from(state);
         assert_abs_diff_eq!(osc.get_semi_major_axis(), 42164.0, epsilon = 1e-6);
         assert_abs_diff_eq!(osc.get_mean_anomaly(), 0.0, epsilon = 1e-6);
         assert_abs_diff_eq!(osc.get_eccentricity(), 0.0, epsilon = 1e-6);
@@ -245,6 +163,6 @@ mod tests {
         assert_abs_diff_eq!(osc.get_raan(), 0.0, epsilon = 1e-6);
         assert_abs_diff_eq!(osc.get_argument_of_perigee(), 0.0, epsilon = 1e-6);
         assert_eq!(osc.get_frame(), ReferenceFrame::TEME);
-        assert_eq!(osc.get_epoch(), state.epoch);
+        assert_eq!(osc.epoch, state.epoch);
     }
 }

@@ -1,6 +1,20 @@
 # flake8: noqa
 from enum import Enum
 
+class AssociationConfidence(Enum):
+    """
+    Confidence level of an observation association
+
+    Attributes:
+        Low (AssociationConfidence): Low confidence
+        Medium (AssociationConfidence): Medium confidence
+        High (AssociationConfidence): High confidence
+    """
+
+    Low = ...
+    Medium = ...
+    High = ...
+
 class CovarianceType(Enum):
     """
     Reference frame/element types for a covariance matrix
@@ -15,17 +29,35 @@ class CovarianceType(Enum):
     Relative = ...
     Equinoctial = ...
 
-class SAALKeyMode(Enum):
+class GeodeticModel(Enum):
     """
-    How data is referenced in SAAL memory
+    Geodetic model used for Earth shape and gravity
 
     Attributes:
-        NoDuplicates (SAALKeyMode): Keys are constructed from unique fields such as epoch or satellite ID
-        DirectMemoryAccess (SAALKeyMode): Keys are constructed from the memory address of the data
+        WGS72 (GeodeticModel): WGS72 geodetic model
+        WGS84 (GeodeticModel): WGS84 geodetic model
+        EGM96 (GeodeticModel): EGM96 geodetic model
     """
 
-    NoDuplicates = ...
-    DirectMemoryAccess = ...
+    WGS72 = ...
+    WGS84 = ...
+    EGM96 = ...
+
+class MeanEquinox(Enum):
+    """
+    Mean equinox used for topocentric calculations
+
+    Attributes:
+        OfDate (MeanEquinox): Mean equinox of date
+        OfYear (MeanEquinox): Mean equinox of year
+        J2000 (MeanEquinox): J2000 mean equinox
+        B1950 (MeanEquinox): B1950 mean equinox
+    """
+
+    OfDate = ...
+    OfYear = ...
+    J2000 = ...
+    B1950 = ...
 
 class TimeSystem(Enum):
     """

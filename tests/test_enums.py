@@ -1,15 +1,9 @@
 from keplemon.enums import (
-    SAALKeyMode,
     TimeSystem,
     KeplerianType,
     Classification,
     ReferenceFrame,
 )
-
-
-def test_saal_key_mode():
-    assert SAALKeyMode.NoDuplicates.value == 0
-    assert SAALKeyMode.DirectMemoryAccess.value == 1
 
 
 def test_time_system():

@@ -1,28 +1,67 @@
 [package]
 name = "keplemon"
-version = "1.6.0"
-edition = "2021"
+version = "3.1.4"
+edition = "2024"
+build = "build.rs"
+description = "Expanded functionality for the Standardized Astrodynamics Algorithms Library (SAAL)"
+exclude = [
+  "tests/**",
+  "benches/**",
+  "benchmarks/**",
+  "skills/**",
+  "venv/**",
+  "truth/**",
+  "local/**",
+  "overrides/**",
+  "scripts/**",
+  "docs/**",
+  "fort.*",
+  "AI.md",
+  "CONTRIBUTING.md",
+  "agents.yaml",
+  "assets/**",
+  "lib/**",
+]
+license = "MIT"
 
 [dependencies]
-ctor = "0.4.1"
+ctor = "0.6.3"
+pyo3 = { version = "0.27.2", optional = true }
+pyo3-log = "0.13.2"
+saal = "1.3.3"
 log = "0.4"
 nalgebra = "0.33.2"
-pyo3 = { version = "0.24.1", features = ["extension-module"] }
 rayon = "1.10.0"
-reqwest = "0.12.15"
 uuid = { version = "1.18.0", features = ["v4"] }
+libc = "0.2.180"
 
-[target.'cfg(target_env = "musl")'.dependencies]
-openssl = { version = "0.10.72", default-features = false, features = [
-  "vendored",
-] }
-openssl-sys = { version = "0.9.108", default-features = false, features = [
-  "vendored",
-] }
-
+[build-dependencies]
+saal = "1.3.3"
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 name = "keplemon"
 
 [dev-dependencies]
 approx = "0.5.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+criterion = "0.5"
+
+[[bench]]
+name = "batch_least_squares"
+harness = false
+
+[[bench]]
+name = "satellite"
+harness = false
+
+[[bench]]
+name = "constellation"
+harness = false
+
+[[bench]]
+name = "memory"
+harness = false
+
+[features]
+python = ["pyo3/extension-module", "pyo3/abi3-py39"]

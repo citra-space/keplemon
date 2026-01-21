@@ -1,15 +1,12 @@
 use crate::enums::CovarianceType;
 use nalgebra::{DMatrix, Matrix6};
-use pyo3::prelude::*;
 
-#[pyclass]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Covariance {
     elements: Matrix6<f64>,
     covariance_type: CovarianceType,
 }
 
-#[pymethods]
 impl Covariance {
     pub fn get_element(&self, i: usize, j: usize) -> f64 {
         self.elements[(i, j)]
@@ -19,12 +16,10 @@ impl Covariance {
         self.elements[(i, j)] = value;
     }
 
-    #[getter]
     pub fn get_covariance_type(&self) -> CovarianceType {
         self.covariance_type
     }
 
-    #[getter]
     pub fn get_sigmas(&self) -> Vec<f64> {
         let mut sigmas = vec![0.0; 6];
         for (i, sigma) in sigmas.iter_mut().enumerate() {

@@ -4,9 +4,15 @@ use super::ObservationResidual;
 
 /// Trait for different types of observations used in orbit determination
 pub trait ObservationType: Send + Sync {
+    /// Get the unique observation ID
+    fn id(&self) -> &str;
+
     /// Get measurement values and corresponding weights (1/sigma^2)
     /// Returns (measurement_vector, weight_vector)
     fn get_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>);
+
+    /// Fill the output vector with predicted measurements for a given satellite state
+    fn fill_predicted_vector(&self, satellite: &Satellite, out: &mut Vec<f64>) -> Result<(), String>;
 
     /// Get predicted measurements for a given satellite state
     fn get_predicted_vector(&self, satellite: &Satellite) -> Result<Vec<f64>, String>;
@@ -15,7 +21,7 @@ pub trait ObservationType: Send + Sync {
     fn get_epoch(&self) -> Epoch;
 
     /// Get the satellite ID if set
-    fn get_satellite_id(&self) -> Option<i32>;
+    fn get_satellite_id(&self) -> Option<String>;
 
     /// Get the dimension (number of measurements) this observation contributes
     fn dimension(&self) -> usize {

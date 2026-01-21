@@ -1,0 +1,544 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  BUILD_PYTHON_VERSION: '3.10'
+
+jobs:
+  build-linux-x86:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test Rust
+        run: cargo test --target x86_64-unknown-linux-gnu --lib --tests --bins
+
+      - name: Build wheel (manylinux x86)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/io \
+            -e HOME=/root \
+            -w /io quay.io/pypa/manylinux2014_x86_64 \
+            bash -c '
+              yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
+              source "$CARGO_HOME/env" && \
+              cargo clean && \
+              cargo install --locked maturin && \
+              export OPENSSL_DIR=/usr && \
+              export OPENSSL_LIB_DIR=/usr/lib64 && \
+              export OPENSSL_INCLUDE_DIR=/usr/include && \
+              PYTHON_VERSION=${{ env.BUILD_PYTHON_VERSION }} && \
+              TAG=${PYTHON_VERSION//./} && \
+              PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
+              PIP="${PY_BIN%/python}/pip" && \
+              $PIP install --upgrade pip setuptools wheel auditwheel && \
+              maturin build --release --compatibility manylinux2014 -i $PY_BIN
+            '
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-linux-x86_64-gnu
+          path: target/wheels/*.whl
+
+  build-linux-arm:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test Rust
+        run: cargo test --target aarch64-unknown-linux-gnu --lib --tests --bins
+
+      - name: Build wheel (manylinux arm)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/io \
+            -e HOME=/root \
+            -w /io quay.io/pypa/manylinux2014_aarch64 \
+            bash -c '
+              yum install -y curl gcc gcc-c++ make openssl-devel openssl && \
+              export CARGO_HOME="$HOME/.cargo" && export RUSTUP_HOME="$HOME/.rustup" && \
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable && \
+              source "$CARGO_HOME/env" && \
+              cargo clean && \
+              cargo install --locked maturin && \
+              export OPENSSL_DIR=/usr && \
+              export OPENSSL_LIB_DIR=/usr/lib64 && \
+              export OPENSSL_INCLUDE_DIR=/usr/include && \
+              PYTHON_VERSION=${{ env.BUILD_PYTHON_VERSION }} && \
+              TAG=${PYTHON_VERSION//./} && \
+              PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
+              PIP="${PY_BIN%/python}/pip" && \
+              $PIP install --upgrade pip setuptools wheel auditwheel && \
+              maturin build --release --compatibility manylinux2014 -i $PY_BIN
+            '
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-linux-aarch64-gnu
+          path: target/wheels/*.whl
+
+  build-macos-x86:
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+    env:
+      TARGET: x86_64-apple-darwin
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
+
+      - name: Test Rust
+        run: cargo test --target x86_64-apple-darwin --lib --tests --bins
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip maturin
+          maturin build --release --locked --target x86_64-apple-darwin
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-macos-x86_64
+          path: target/wheels/*.whl
+
+  build-macos-arm:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      TARGET: aarch64-apple-darwin
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
+
+      - name: Test Rust
+        run: cargo test --target aarch64-apple-darwin --lib --tests --bins
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip maturin
+          maturin build --release --locked --target aarch64-apple-darwin
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-macos-aarch64
+          path: target/wheels/*.whl
+
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.BUILD_PYTHON_VERSION }}
+
+      - name: Test Rust
+        run: cargo test --target x86_64-pc-windows-msvc --lib --tests --bins
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip maturin
+          maturin build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-windows-x86_64
+          path: target/wheels/*.whl
+
+  test-linux-x86:
+    runs-on: ubuntu-latest
+    needs: build-linux-x86
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.14']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-linux-x86_64-gnu
+          path: dist
+
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install dist/*.whl
+          python -m pytest
+
+  test-linux-arm:
+    runs-on: ubuntu-24.04-arm
+    needs: build-linux-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.14']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-linux-aarch64-gnu
+          path: dist
+
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install dist/*.whl
+          python -m pytest
+
+  test-macos-x86:
+    runs-on: macos-15-intel
+    needs: build-macos-x86
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.14']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-macos-x86_64
+          path: dist
+
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install dist/*.whl
+          python -m pytest
+
+  test-macos-arm:
+    runs-on: macos-latest
+    needs: build-macos-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.14']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-macos-aarch64
+          path: dist
+
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install dist/*.whl
+          python -m pytest
+
+  test-windows:
+    runs-on: windows-latest
+    needs: build-windows
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.14']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-windows-x86_64
+          path: dist
+
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install dist/*.whl
+          python -m pytest
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $tag does not match v.x.y.z"
+            exit 1
+          fi
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip maturin
+          maturin build --release --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-sdist
+          path: target/wheels/*.tar.gz
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux-x86
+      - build-linux-arm
+      - build-macos-x86
+      - build-macos-arm
+      - build-windows
+      - test-linux-x86
+      - test-linux-arm
+      - test-macos-x86
+      - test-macos-arm
+      - test-windows
+      - build-sdist
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PyPI version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $tag does not match v.x.y.z"
+            exit 1
+          fi
+          version="${tag#v}"
+          py_version="$(awk -F' = ' '
+            $0=="[project]"{in_project=1;next}
+            /^\[/{if(in_project)exit}
+            in_project && $1=="version"{gsub(/"/,"",$2);print $2;exit}
+          ' pyproject.toml)"
+          if [ -z "$py_version" ]; then
+            echo "version not found in pyproject.toml"
+            exit 1
+          fi
+          if [ "$py_version" != "$version" ]; then
+            echo "pyproject.toml version $py_version does not match tag $version"
+            exit 1
+          fi
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish via Trusted Publisher
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+
+  create-github-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - build-linux-x86
+      - build-linux-arm
+      - build-macos-x86
+      - build-macos-arm
+      - build-windows
+      - test-linux-x86
+      - test-linux-arm
+      - test-macos-x86
+      - test-macos-arm
+      - test-windows
+      - build-sdist
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  publish-crates:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs:
+      - test-linux-x86
+      - test-linux-arm
+      - test-macos-x86
+      - test-macos-arm
+      - test-windows
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag and Cargo version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $tag does not match v.x.y.z"
+            exit 1
+          fi
+          version="${tag#v}"
+          cargo_version="$(awk -F' = ' '
+            $0=="[package]"{in_pkg=1;next}
+            /^\[/{if(in_pkg)exit}
+            in_pkg && $1=="version"{gsub(/"/,"",$2);print $2;exit}
+          ' Cargo.toml)"
+          if [ -z "$cargo_version" ]; then
+            echo "version not found in Cargo.toml [package]"
+            exit 1
+          fi
+          if [ "$cargo_version" != "$version" ]; then
+            echo "Cargo.toml version $cargo_version does not match tag $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked

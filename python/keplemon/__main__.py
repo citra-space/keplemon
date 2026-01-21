@@ -1,7 +1,7 @@
 from __future__ import annotations
 import click
 from pathlib import Path
-from keplemon import TIME_CONSTANTS_PATH
+from importlib import resources
 from keplemon.time import request_time_constants_update
 
 
@@ -14,7 +14,7 @@ from keplemon.time import request_time_constants_update
 def cli(update_eop: Path | None) -> None:
     if update_eop is not None:
         if update_eop == "global":
-            update_eop = TIME_CONSTANTS_PATH
+            time_constants_path = resources.files("keplemon") / "time_constants.dat"
         print("Requesting time constants and EOP data from USNO...")
-        request_time_constants_update(update_eop)
+        request_time_constants_update(str(time_constants_path))
         print(f"Updated time constants at {update_eop}")

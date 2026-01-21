@@ -1,35 +1,33 @@
-from keplemon._keplemon.saal.time_func_interface import load_time_constants  # type: ignore
+# flake8: noqa
+from __future__ import annotations
+
+import os
+import logging
+from importlib import resources
+
+_logger = logging.getLogger(__name__)
+
+
+def _set_asset_directory() -> None:
+
+    asset_dir = os.getenv("SAAL_ASSET_DIRECTORY")
+    if asset_dir is None:
+        pkg_dir = resources.files("keplemon")
+        _logger.debug("Setting SAAL_ASSET_DIRECTORY to %s", pkg_dir)
+        os.environ.setdefault("SAAL_ASSET_DIRECTORY", str(pkg_dir))
+    elif not os.path.exists(asset_dir):
+        raise FileNotFoundError(f"SAAL_ASSET_DIRECTORY '{asset_dir}' does not exist.")
+
+
+_set_asset_directory()
+
 from keplemon._keplemon import (  # type: ignore
     get_thread_count,
     set_thread_count,
-    set_license_file_path,
-    get_license_file_path,
-    set_jpl_ephemeris_file_path,
 )
-from pathlib import Path
 
-
-PACKAGE_DIRECTORY = Path(__file__).parent
-ASSETS_DIRECTORY = PACKAGE_DIRECTORY / "assets"
-
-# Set the license file directory to the package directory
-set_license_file_path(ASSETS_DIRECTORY.as_posix())
-
-# Load the time constants from the assets directory
-TIME_CONSTANTS_PATH = ASSETS_DIRECTORY / "time_constants.dat"
-load_time_constants(TIME_CONSTANTS_PATH.as_posix())
-
-# Load the JPL path
-JPL_EPHEMERIS_PATH = ASSETS_DIRECTORY / "JPLcon_1950_2050.405"
-set_jpl_ephemeris_file_path(JPL_EPHEMERIS_PATH.as_posix())
 
 __all__ = [
     "get_thread_count",
     "set_thread_count",
-    "TIME_CONSTANTS_PATH",
-    "JPL_EPHEMERIS_PATH",
-    "set_license_file_path",
-    "PACKAGE_DIRECTORY",
-    "ASSETS_DIRECTORY",
-    "get_license_file_path",
 ]

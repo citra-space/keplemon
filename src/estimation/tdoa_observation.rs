@@ -4,22 +4,20 @@ use super::{ObservationType, ObservationResidual};
 use crate::bodies::{Satellite, Sensor};
 use crate::elements::CartesianVector;
 use crate::time::Epoch;
-use pyo3::prelude::*;
 
 // Speed of light in km/s
 const SPEED_OF_LIGHT: f64 = 299792.458;
 
-#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TDOAObservation {
-    id: String,
-    sensor_1: Sensor,
-    sensor_2: Sensor,
-    epoch: Epoch,
-    time_difference: f64,  // seconds, positive means sensor_2 received later
-    observer_1_teme_position: CartesianVector,
-    observer_2_teme_position: CartesianVector,
-    observed_satellite_id: Option<i32>,
+    pub id: String,
+    pub sensor_1: Sensor,
+    pub sensor_2: Sensor,
+    pub epoch: Epoch,
+    pub time_difference: f64,  // seconds, positive means sensor_2 received later
+    pub observer_1_teme_position: CartesianVector,
+    pub observer_2_teme_position: CartesianVector,
+    pub observed_satellite_id: Option<i32>,
 }
 
 impl TDOAObservation {
@@ -39,7 +37,7 @@ impl TDOAObservation {
 
         // Combined noise for differential measurement: σ_combined² = σ_1² + σ_2²
         // Weight = 1/σ_combined² = 1/(σ_1² + σ_2²)
-        let w_vec = match (self.sensor_1.get_tdoa_noise(), self.sensor_2.get_tdoa_noise()) {
+        let w_vec = match (self.sensor_1.tdoa_noise, self.sensor_2.tdoa_noise) {
             (Some(noise1), Some(noise2)) => {
                 let variance_combined = noise1.powi(2) + noise2.powi(2);
                 vec![1.0 / variance_combined]
@@ -63,16 +61,14 @@ impl TDOAObservation {
             }
             None => Err(format!(
                 "Error propagating satellite {} to {}",
-                satellite.get_id(),
+                satellite.id,
                 self.epoch.to_iso()
             )),
         }
     }
 }
 
-#[pymethods]
 impl TDOAObservation {
-    #[new]
     pub fn new(
         sensor_1: Sensor,
         sensor_2: Sensor,
@@ -92,75 +88,22 @@ impl TDOAObservation {
             observed_satellite_id: None,
         }
     }
-
-    #[getter]
-    pub fn sensor_1(&self) -> Sensor {
-        self.sensor_1.clone()
-    }
-
-    #[getter]
-    pub fn sensor_2(&self) -> Sensor {
-        self.sensor_2.clone()
-    }
-
-    #[getter]
-    pub fn epoch(&self) -> Epoch {
-        self.epoch
-    }
-
-    #[getter]
-    pub fn id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[getter]
-    pub fn time_difference(&self) -> f64 {
-        self.time_difference
-    }
-
-    #[getter]
-    pub fn observer_1_teme_position(&self) -> CartesianVector {
-        self.observer_1_teme_position
-    }
-
-    #[getter]
-    pub fn observer_2_teme_position(&self) -> CartesianVector {
-        self.observer_2_teme_position
-    }
-
-    #[getter]
-    pub fn observed_satellite_id(&self) -> Option<i32> {
-        self.observed_satellite_id
-    }
-
-    #[setter]
-    pub fn set_id(&mut self, id: String) {
-        self.id = id;
-    }
-
-    #[setter]
-    pub fn set_time_difference(&mut self, time_difference: f64) {
-        self.time_difference = time_difference;
-    }
-
-    #[setter]
-    pub fn set_observed_satellite_id(&mut self, observed_satellite_id: i32) {
-        self.observed_satellite_id = Some(observed_satellite_id);
-    }
-
-    pub fn get_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>) {
-        self.compute_measurement_and_weight_vector()
-    }
-
-    pub fn get_predicted_vector(&self, satellite: &Satellite) -> PyResult<Vec<f64>> {
-        self.compute_predicted_vector(satellite)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
-    }
 }
 
 impl ObservationType for TDOAObservation {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
     fn get_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>) {
         self.compute_measurement_and_weight_vector()
+    }
+
+    fn fill_predicted_vector(&self, satellite: &Satellite, out: &mut Vec<f64>) -> Result<(), String> {
+        let vec = self.compute_predicted_vector(satellite)?;
+        out.clear();
+        out.extend_from_slice(&vec);
+        Ok(())
     }
 
     fn get_predicted_vector(&self, satellite: &Satellite) -> Result<Vec<f64>, String> {
@@ -171,8 +114,8 @@ impl ObservationType for TDOAObservation {
         self.epoch
     }
 
-    fn get_satellite_id(&self) -> Option<i32> {
-        self.observed_satellite_id
+    fn get_satellite_id(&self) -> Option<String> {
+        self.observed_satellite_id.map(|id| id.to_string())
     }
 
     fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {

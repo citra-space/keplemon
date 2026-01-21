@@ -14,6 +14,8 @@ from keplemon._keplemon.elements import (  # type: ignore
     OrbitPlotState,
     RelativeState,
     BoreToBodyAngles,
+    TopocentricState,
+    EquinoctialElements,
 )
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "OrbitPlotState",
     "RelativeState",
     "BoreToBodyAngles",
+    "TopocentricState",
+    "EquinoctialElements",
 ]

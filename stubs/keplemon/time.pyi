@@ -2,10 +2,10 @@
 from __future__ import annotations
 from pathlib import Path
 from keplemon.enums import TimeSystem
-from typing import overload, Any
+from typing import overload, Any, Union
 from datetime import datetime
 
-def request_time_constants_update(output_path: str | Path) -> None:
+def request_time_constants_update(output_path: Union[str, Path]) -> None:
     """
     Request time constants and EOP data from USNO and save to the specified path.
 
