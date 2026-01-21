@@ -103,9 +103,9 @@ __device__ void sgp4_propagate_single(
     double em = p.ecco;
     double inclm = p.inclo;
     double nodem = nodedf + p.xnodcf * t2;
-    
-    if (!p.is_deep_space) {
-        // Near-earth satellite
+
+    if (!p.is_deep_space || p.force_near_earth) {
+        // Near-earth satellite (or forced to use SGP4)
         double delomg = p.omgcof * tsince;
         double delm = p.xmcof * (pow(1.0 + p.eta * cos(xmdf), 3.0) - p.delmo);
         double temp = delomg + delm;
@@ -188,10 +188,10 @@ __device__ void sgp4_propagate_single(
     }
     
     mm = mm + p.no_unkozai * templ;
-    
+
     // For deep space, apply lunar-solar periodics (DPPER)
     double xnode = nodem;
-    if (p.is_deep_space) {
+    if (p.is_deep_space && !p.force_near_earth) {
         dpper(p.inclo, false, tsince, em, inclm, nodem, argpm, mm, p, debug);
         xnode = nodem;
         
@@ -231,7 +231,7 @@ __device__ void sgp4_propagate_single(
     // the dpper-modified inclination (matching python-sgp4 behavior)
     double aycof_eff = p.aycof;
     double xlcof_eff = p.xlcof;
-    if (p.is_deep_space) {
+    if (p.is_deep_space && !p.force_near_earth) {
         aycof_eff = -0.5 * J3OJ2 * sinip;
         if (fabs(cosip + 1.0) > 1.5e-12) {
             xlcof_eff = -0.25 * J3OJ2 * sinip * (3.0 + 5.0 * cosip) / (1.0 + cosip);
@@ -339,12 +339,12 @@ __device__ void sgp4_propagate_single(
     double temp1 = 0.5 * J2 * temp;
     double temp2 = temp1 * temp;
     
-    // For deep space satellites, recalculate con41, x1mth2, x7thm1 
+    // For deep space satellites, recalculate con41, x1mth2, x7thm1
     // using the dpper-modified inclination (matching python-sgp4 behavior)
     double con41_eff = p.con41;
     double x1mth2_eff = p.x1mth2;
     double x7thm1_eff = p.x7thm1;
-    if (p.is_deep_space) {
+    if (p.is_deep_space && !p.force_near_earth) {
         double cosisq = cosip * cosip;
         con41_eff = 3.0 * cosisq - 1.0;
         x1mth2_eff = 1.0 - cosisq;
@@ -549,7 +549,80 @@ extern "C" __global__ void sgp4_propagate_soa_kernel(
     // Adjacent satellites (sat_idx, sat_idx+1) write to adjacent memory addresses
     // This is optimal because blockDim.x threads have adjacent sat_idx values
     int out_idx = time_idx * n_sats + sat_idx;
-    
+
+    state_x[out_idx] = state.x;
+    state_y[out_idx] = state.y;
+    state_z[out_idx] = state.z;
+    state_vx[out_idx] = state.vx;
+    state_vy[out_idx] = state.vy;
+    state_vz[out_idx] = state.vz;
+    state_error[out_idx] = state.error_code;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INDEXED SoA KERNEL - Supports GPU-side scatter for two-kernel optimization
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// This kernel writes to indexed positions, allowing partitioned satellites
+// (SGP4 and SDP4) to write directly to their correct positions in a shared
+// output buffer without CPU-side scatter.
+//
+// Memory layout: state_x[time_idx * n_total_sats + original_indices[sat_idx]]
+
+extern "C" __global__ void sgp4_propagate_soa_indexed_kernel(
+    const Sgp4Params* __restrict__ params,       // [n_partition_sats] partition params
+    const double* __restrict__ jd_times,          // [n_times] Julian Dates
+    const int* __restrict__ original_indices,     // [n_partition_sats] index mapping
+    double* __restrict__ state_x,                 // [n_total_sats * n_times] shared output
+    double* __restrict__ state_y,
+    double* __restrict__ state_z,
+    double* __restrict__ state_vx,
+    double* __restrict__ state_vy,
+    double* __restrict__ state_vz,
+    int* __restrict__ state_error,
+    long long packed_dims,                        // high 32-bits: n_partition_sats, low 32-bits: n_total_sats
+    int n_times
+) {
+    // Unpack dimensions
+    int n_partition_sats = (int)(packed_dims >> 32);
+    int n_total_sats = (int)(packed_dims & 0xFFFFFFFF);
+    __shared__ double shared_times[MAX_TIMES_SHARED];
+
+    int sat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int time_idx = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int thread_id = threadIdx.y * blockDim.x + threadIdx.x;
+    int block_size = blockDim.x * blockDim.y;
+
+    // Cooperatively load time values into shared memory
+    int time_block_start = blockIdx.y * blockDim.y;
+    int time_block_end = min(time_block_start + (int)blockDim.y, n_times);
+    int times_to_load = time_block_end - time_block_start;
+
+    for (int i = thread_id; i < times_to_load && i < MAX_TIMES_SHARED; i += block_size) {
+        int global_time_idx = time_block_start + i;
+        if (global_time_idx < n_times) {
+            shared_times[i] = jd_times[global_time_idx];
+        }
+    }
+    __syncthreads();
+
+    if (sat_idx >= n_partition_sats || time_idx >= n_times) return;
+
+    Sgp4Params p = params[sat_idx];
+
+    int local_time_idx = time_idx - time_block_start;
+    double jd = shared_times[local_time_idx];
+    double tsince = (jd - p.epoch_jd) * MINUTES_PER_DAY;
+
+    Sgp4State state;
+    sgp4_propagate_single(p, tsince, state, sat_idx, time_idx);
+
+    // Write to indexed position in shared output buffer
+    // Uses original_indices to map partition satellite to original position
+    int original_sat_idx = original_indices[sat_idx];
+    int out_idx = time_idx * n_total_sats + original_sat_idx;
+
     state_x[out_idx] = state.x;
     state_y[out_idx] = state.y;
     state_z[out_idx] = state.z;

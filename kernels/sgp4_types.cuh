@@ -139,8 +139,9 @@ struct Sgp4Params {
     
     // Flags
     int is_deep_space;
-    int irez;          // 0=none, 1=one-day, 2=half-day resonance
-    int _padding[2];   // Maintain 8-byte alignment
+    int irez;                // 0=none, 1=one-day, 2=half-day resonance
+    int force_near_earth;    // 1=override is_deep_space, force SGP4 behavior
+    int _padding;            // Maintain 8-byte alignment
 };
 
 // Output state (position and velocity in TEME frame)

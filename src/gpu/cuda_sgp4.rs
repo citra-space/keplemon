@@ -26,6 +26,17 @@ pub struct TleDataGpu {
 // SAFETY: TleDataGpu is #[repr(C)] with only f64 fields, valid for GPU transfer
 unsafe impl cudarc::driver::DeviceRepr for TleDataGpu {}
 
+/// Propagator selection override for testing/analysis
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PropagatorOverride {
+    /// Automatic selection based on mean motion (default)
+    Auto,
+    /// Force all satellites to use SGP4 (near-earth propagator)
+    ForceSgp4,
+    /// Force all satellites to use SDP4 (deep-space propagator)
+    ForceSdp4,
+}
+
 // Julian Date epoch for 1950-01-01 00:00:00 UTC
 const JD_1950: f64 = 2433281.5;
 
@@ -176,8 +187,9 @@ pub struct Sgp4ParamsGpu {
     
     // Flags
     pub is_deep_space: i32,
-    pub irez: i32,          // 0=none, 1=one-day, 2=half-day resonance
-    pub _padding: [i32; 2], // Maintain 8-byte alignment
+    pub irez: i32,             // 0=none, 1=one-day, 2=half-day resonance
+    pub force_near_earth: i32, // 1=override is_deep_space, force SGP4 behavior
+    pub _padding: i32,         // Maintain 8-byte alignment
 }
 
 unsafe impl cudarc::driver::DeviceRepr for Sgp4ParamsGpu {}
@@ -329,7 +341,16 @@ impl SoAArrays {
     }
 }
 
+/// Mean motion threshold for deep space (225 min period = 6.4 rev/day)
+/// Satellites with period >= 225 min use SDP4, others use SGP4
+const DEEP_SPACE_MEAN_MOTION_THRESHOLD: f64 = 6.4; // rev/day
+
 /// GPU-accelerated SGP4 batch propagator
+///
+/// Uses two-kernel launch optimization to eliminate warp divergence when
+/// processing mixed LEO/GEO satellite constellations. Near-earth satellites
+/// (SGP4) and deep-space satellites (SDP4) are partitioned and processed
+/// separately, then results are merged back in original order.
 pub struct CudaSgp4Propagator {
     device: CudaDevice,
     n_satellites: usize,
@@ -348,6 +369,29 @@ pub struct CudaSgp4Propagator {
     init_kernel: CudaFunction,
     propagate_kernel: CudaFunction,
     propagate_soa_kernel: CudaFunction,
+    propagate_soa_indexed_kernel: CudaFunction,
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // TWO-KERNEL LAUNCH OPTIMIZATION
+    // Partitions satellites by propagator type to eliminate warp divergence
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /// Original indices of near-earth (SGP4) satellites
+    sgp4_indices: Vec<usize>,
+    /// Original indices of deep-space (SDP4) satellites
+    sdp4_indices: Vec<usize>,
+    /// Initialized params for near-earth satellites only
+    params_sgp4_gpu: Option<CudaSlice<Sgp4ParamsGpu>>,
+    /// Initialized params for deep-space satellites only
+    params_sdp4_gpu: Option<CudaSlice<Sgp4ParamsGpu>>,
+    /// GPU-resident index mapping for SGP4 partition
+    sgp4_indices_gpu: Option<CudaSlice<i32>>,
+    /// GPU-resident index mapping for SDP4 partition
+    sdp4_indices_gpu: Option<CudaSlice<i32>>,
+    /// Cached SoA buffers for SGP4 partition
+    cached_soa_sgp4: Option<CachedSoABuffers>,
+    /// Cached SoA buffers for SDP4 partition
+    cached_soa_sdp4: Option<CachedSoABuffers>,
 }
 
 /// Cached SoA buffers to avoid repeated allocation
@@ -373,9 +417,9 @@ impl CudaSgp4Propagator {
             .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
         
         dev.load_ptx(
-            SGP4_BATCH_PTX.into(), 
-            "sgp4_batch", 
-            &["sgp4_propagate_kernel", "sgp4_propagate_soa_kernel"]
+            SGP4_BATCH_PTX.into(),
+            "sgp4_batch",
+            &["sgp4_propagate_kernel", "sgp4_propagate_soa_kernel", "sgp4_propagate_soa_indexed_kernel"]
         ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
         
         // Cache kernel functions for faster access
@@ -387,8 +431,11 @@ impl CudaSgp4Propagator {
         
         let propagate_soa_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_kernel not found".into()))?;
-        
-        Ok(Self { 
+
+        let propagate_soa_indexed_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_soa_indexed_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_indexed_kernel not found".into()))?;
+
+        Ok(Self {
             device,
             n_satellites: 0,
             tle_data_gpu: None,
@@ -401,6 +448,16 @@ impl CudaSgp4Propagator {
             init_kernel,
             propagate_kernel,
             propagate_soa_kernel,
+            propagate_soa_indexed_kernel,
+            // Two-kernel optimization fields
+            sgp4_indices: Vec::new(),
+            sdp4_indices: Vec::new(),
+            params_sgp4_gpu: None,
+            params_sdp4_gpu: None,
+            sgp4_indices_gpu: None,
+            sdp4_indices_gpu: None,
+            cached_soa_sgp4: None,
+            cached_soa_sdp4: None,
         })
     }
     
@@ -415,49 +472,273 @@ impl CudaSgp4Propagator {
     }
     
     /// Initialize satellites from TLE data
+    ///
+    /// Uses two-kernel optimization: partitions satellites by propagator type
+    /// (SGP4 for near-earth, SDP4 for deep-space) to eliminate warp divergence
+    /// during propagation of mixed constellations.
     pub fn init_satellites(&mut self, tle_data: &[TleDataGpu]) -> Result<(), CudaError> {
+        self.init_satellites_with_override(tle_data, PropagatorOverride::Auto)
+    }
+
+    /// Initialize satellites with manual propagator selection override
+    ///
+    /// **WARNING**: Using the wrong propagator (e.g., SGP4 for GEO satellites) will
+    /// produce severely incorrect results! This method is intended for testing and
+    /// error analysis only.
+    ///
+    /// # Arguments
+    /// * `tle_data` - TLE data for satellites
+    /// * `override_mode` - Propagator selection mode:
+    ///   - `Auto`: Automatic selection based on mean motion (recommended)
+    ///   - `ForceSgp4`: Force all satellites to use SGP4 (near-earth)
+    ///   - `ForceSdp4`: Force all satellites to use SDP4 (deep-space)
+    pub fn init_satellites_with_override(&mut self, tle_data: &[TleDataGpu], override_mode: PropagatorOverride) -> Result<(), CudaError> {
         self.n_satellites = tle_data.len();
-        
+
         if self.n_satellites == 0 {
+            self.sgp4_indices.clear();
+            self.sdp4_indices.clear();
             return Ok(());
         }
-        
+
         let dev = self.device.device();
-        
-        // Upload TLE data to GPU
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PARTITION SATELLITES BY PROPAGATOR TYPE
+        // SGP4 (near-earth): period < 225 min → mean_motion > 6.4 rev/day
+        // SDP4 (deep-space): period >= 225 min → mean_motion <= 6.4 rev/day
+        // ═══════════════════════════════════════════════════════════════════
+
+        self.sgp4_indices.clear();
+        self.sdp4_indices.clear();
+
+        let mut sgp4_tles = Vec::new();
+        let mut sdp4_tles = Vec::new();
+
+        for (i, tle) in tle_data.iter().enumerate() {
+            let use_sgp4 = match override_mode {
+                PropagatorOverride::Auto => {
+                    // Automatic selection based on mean motion
+                    tle.mean_motion > DEEP_SPACE_MEAN_MOTION_THRESHOLD
+                }
+                PropagatorOverride::ForceSgp4 => {
+                    // Force all to SGP4 (WARNING: incorrect for deep-space!)
+                    true
+                }
+                PropagatorOverride::ForceSdp4 => {
+                    // Force all to SDP4 (safe but slower for LEO)
+                    false
+                }
+            };
+
+            if use_sgp4 {
+                // Near-earth satellite (LEO, some MEO) - uses SGP4
+                self.sgp4_indices.push(i);
+                sgp4_tles.push(*tle);
+            } else {
+                // Deep-space satellite (GEO, some MEO) - uses SDP4
+                self.sdp4_indices.push(i);
+                sdp4_tles.push(*tle);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // INITIALIZE SGP4 PARTITION (if any near-earth satellites)
+        // ═══════════════════════════════════════════════════════════════════
+
+        if !sgp4_tles.is_empty() {
+            let tle_gpu = dev.htod_sync_copy(&sgp4_tles)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+
+            let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(sgp4_tles.len())
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+
+            let block_size = 256u32;
+            let grid_size = (sgp4_tles.len() as u32 + block_size - 1) / block_size;
+
+            let cfg = LaunchConfig {
+                grid_dim: (grid_size, 1, 1),
+                block_dim: (block_size, 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            unsafe {
+                self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, sgp4_tles.len() as i32))
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
+
+            self.params_sgp4_gpu = Some(params_gpu);
+
+            // Upload index mapping to GPU for indexed kernel
+            let sgp4_indices_i32: Vec<i32> = self.sgp4_indices.iter().map(|&i| i as i32).collect();
+            self.sgp4_indices_gpu = Some(dev.htod_sync_copy(&sgp4_indices_i32)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?);
+        } else {
+            self.params_sgp4_gpu = None;
+            self.sgp4_indices_gpu = None;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // INITIALIZE SDP4 PARTITION (if any deep-space satellites)
+        // ═══════════════════════════════════════════════════════════════════
+
+        if !sdp4_tles.is_empty() {
+            let tle_gpu = dev.htod_sync_copy(&sdp4_tles)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+
+            let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(sdp4_tles.len())
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+
+            let block_size = 256u32;
+            let grid_size = (sdp4_tles.len() as u32 + block_size - 1) / block_size;
+
+            let cfg = LaunchConfig {
+                grid_dim: (grid_size, 1, 1),
+                block_dim: (block_size, 1, 1),
+                shared_mem_bytes: 0,
+            };
+
+            unsafe {
+                self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, sdp4_tles.len() as i32))
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
+
+            self.params_sdp4_gpu = Some(params_gpu);
+
+            // Upload index mapping to GPU for indexed kernel
+            let sdp4_indices_i32: Vec<i32> = self.sdp4_indices.iter().map(|&i| i as i32).collect();
+            self.sdp4_indices_gpu = Some(dev.htod_sync_copy(&sdp4_indices_i32)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?);
+        } else {
+            self.params_sdp4_gpu = None;
+            self.sdp4_indices_gpu = None;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ALSO INIT LEGACY UNIFIED BUFFER (for backward compatibility)
+        // ═══════════════════════════════════════════════════════════════════
+
         let tle_gpu = dev.htod_sync_copy(tle_data)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        
-        // Allocate space for initialized parameters
+
         let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(self.n_satellites)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        
-        // Use cached init kernel
+
         let block_size = 256u32;
         let grid_size = (self.n_satellites as u32 + block_size - 1) / block_size;
-        
+
         let cfg = LaunchConfig {
             grid_dim: (grid_size, 1, 1),
             block_dim: (block_size, 1, 1),
             shared_mem_bytes: 0,
         };
-        
-        // Launch: sgp4_init_kernel(TleData* tle_in, Sgp4Params* params_out, int n_satellites)
+
         unsafe {
             self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, self.n_satellites as i32))
                 .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
-        
-        // Sync to ensure kernel completed
+
+        // Sync to ensure all kernels completed
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
-        
+
         self.tle_data_gpu = Some(tle_gpu);
         self.params_gpu = Some(params_gpu);
-        
+
+        // Clear partition caches (will be allocated on first use)
+        self.cached_soa_sgp4 = None;
+        self.cached_soa_sdp4 = None;
+
         Ok(())
     }
-    
+
+    /// Set the force_near_earth override flag for all satellites
+    ///
+    /// **WARNING**: This is for testing and error analysis only! Forcing SGP4
+    /// propagation for deep-space satellites (GEO) will produce severely incorrect
+    /// results due to missing lunar-solar perturbations and resonance terms.
+    ///
+    /// This method modifies the initialized parameters on the GPU to force all
+    /// satellites to use near-earth (SGP4) propagation logic, regardless of their
+    /// orbital period.
+    ///
+    /// # Arguments
+    /// * `force` - If true, force SGP4 behavior for all satellites. If false, restore default behavior.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+    /// # let tle_data: Vec<TleDataGpu> = vec![];
+    /// let mut propagator = CudaSgp4Propagator::new()?;
+    /// propagator.init_satellites(&tle_data)?;
+    ///
+    /// // Force all satellites to use SGP4 (for error analysis)
+    /// propagator.set_force_near_earth_override(true)?;
+    ///
+    /// // Propagate - GEO satellites will now incorrectly use SGP4
+    /// let results = propagator.propagate(&[2459945.5])?;
+    ///
+    /// // Restore default behavior
+    /// propagator.set_force_near_earth_override(false)?;
+    /// # Ok::<(), keplemon::gpu::CudaError>(())
+    /// ```
+    pub fn set_force_near_earth_override(&mut self, force: bool) -> Result<(), CudaError> {
+        if self.n_satellites == 0 {
+            return Err(CudaError::NotInitialized);
+        }
+
+        let dev = self.device.device();
+        let force_value = if force { 1i32 } else { 0i32 };
+
+        // Update unified params buffer (for backward compatibility)
+        if let Some(params_gpu) = &self.params_gpu {
+            let mut params = dev.dtoh_sync_copy(params_gpu)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+
+            for p in params.iter_mut() {
+                p.force_near_earth = force_value;
+            }
+
+            let new_params_gpu = dev.htod_sync_copy(&params)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            self.params_gpu = Some(new_params_gpu);
+        }
+
+        // Update SGP4 partition
+        if let Some(params_sgp4) = &self.params_sgp4_gpu {
+            let mut params = dev.dtoh_sync_copy(params_sgp4)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+
+            for p in params.iter_mut() {
+                p.force_near_earth = force_value;
+            }
+
+            let new_params_gpu = dev.htod_sync_copy(&params)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            self.params_sgp4_gpu = Some(new_params_gpu);
+        }
+
+        // Update SDP4 partition
+        if let Some(params_sdp4) = &self.params_sdp4_gpu {
+            let mut params = dev.dtoh_sync_copy(params_sdp4)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+
+            for p in params.iter_mut() {
+                p.force_near_earth = force_value;
+            }
+
+            let new_params_gpu = dev.htod_sync_copy(&params)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+            self.params_sdp4_gpu = Some(new_params_gpu);
+        }
+
+        // Synchronize to ensure updates complete
+        dev.synchronize()
+            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+
+        Ok(())
+    }
+
     /// Propagate all initialized satellites to given Julian Date times
     /// 
     /// # Arguments
@@ -602,38 +883,151 @@ impl CudaSgp4Propagator {
     }
     
     /// Propagate using SoA kernel and return raw SoA arrays
-    /// 
-    /// Use this when you want to keep data in SoA format for downstream processing.
-    /// This avoids the overhead of converting back to AoS.
-    /// 
+    ///
+    /// Uses two-kernel optimization with GPU-side scatter:
+    /// - Launches separate kernels for SGP4 (near-earth) and SDP4 (deep-space)
+    /// - Both kernels write directly to correct positions in shared output buffer
+    /// - Eliminates CPU-side scatter and reduces GPU→CPU transfer to single download
+    ///
     /// # Returns
     /// SoAArrays with time-major ordering: array[time_idx * n_sats + sat_idx]
     pub fn propagate_soa_arrays(&mut self, jd_times: &[f64]) -> Result<SoAArrays, CudaError> {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
-        
+
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
-        
-        // Allocate output arrays
-        let mut x = vec![0.0f64; n_results];
-        let mut y = vec![0.0f64; n_results];
-        let mut z = vec![0.0f64; n_results];
-        let mut vx = vec![0.0f64; n_results];
-        let mut vy = vec![0.0f64; n_results];
-        let mut vz = vec![0.0f64; n_results];
-        let mut error_code = vec![0i32; n_results];
-        
-        self.propagate_soa_into(
-            jd_times,
-            &mut x, &mut y, &mut z,
-            &mut vx, &mut vy, &mut vz,
-            &mut error_code,
-        )?;
-        
+        let dev = self.device.device();
+
+        // Upload times to GPU
+        let times_gpu = dev.htod_sync_copy(jd_times)
+            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
+
+        // Allocate or reuse shared output buffers (both partitions write here)
+        let need_realloc = match &self.cached_soa_buffers {
+            Some(buffers) => buffers.n_results != n_results,
+            None => true,
+        };
+
+        if need_realloc {
+            self.cached_soa_buffers = Some(CachedSoABuffers {
+                x: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                y: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                z: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vx: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vy: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vz: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                error_code: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                n_results,
+            });
+        }
+
+        let soa = self.cached_soa_buffers.as_ref().unwrap();
+        let shared_mem_bytes = 256 * std::mem::size_of::<f64>() as u32;
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PROPAGATE SGP4 PARTITION (near-earth satellites)
+        // Uses indexed kernel to write directly to correct positions
+        // ═══════════════════════════════════════════════════════════════════
+
+        if let (Some(params_sgp4), Some(indices_gpu)) = (&self.params_sgp4_gpu, &self.sgp4_indices_gpu) {
+            let n_sgp4 = self.sgp4_indices.len();
+
+            let block_x = 16u32;
+            let block_y = 16u32;
+            let grid_x = (n_sgp4 as u32 + block_x - 1) / block_x;
+            let grid_y = (n_times as u32 + block_y - 1) / block_y;
+
+            let cfg = LaunchConfig {
+                grid_dim: (grid_x, grid_y, 1),
+                block_dim: (block_x, block_y, 1),
+                shared_mem_bytes,
+            };
+
+            // Pack dimensions: high 32-bits = n_partition_sats, low 32-bits = n_total_sats
+            let packed_dims: i64 = ((n_sgp4 as i64) << 32) | (self.n_satellites as i64);
+
+            unsafe {
+                self.propagate_soa_indexed_kernel.clone().launch(
+                    cfg,
+                    (
+                        params_sgp4,
+                        &times_gpu,
+                        indices_gpu,
+                        &soa.x, &soa.y, &soa.z,
+                        &soa.vx, &soa.vy, &soa.vz,
+                        &soa.error_code,
+                        packed_dims,
+                        n_times as i32,
+                    )
+                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PROPAGATE SDP4 PARTITION (deep-space satellites)
+        // Uses indexed kernel to write directly to correct positions
+        // ═══════════════════════════════════════════════════════════════════
+
+        if let (Some(params_sdp4), Some(indices_gpu)) = (&self.params_sdp4_gpu, &self.sdp4_indices_gpu) {
+            let n_sdp4 = self.sdp4_indices.len();
+
+            let block_x = 16u32;
+            let block_y = 16u32;
+            let grid_x = (n_sdp4 as u32 + block_x - 1) / block_x;
+            let grid_y = (n_times as u32 + block_y - 1) / block_y;
+
+            let cfg = LaunchConfig {
+                grid_dim: (grid_x, grid_y, 1),
+                block_dim: (block_x, block_y, 1),
+                shared_mem_bytes,
+            };
+
+            // Pack dimensions: high 32-bits = n_partition_sats, low 32-bits = n_total_sats
+            let packed_dims: i64 = ((n_sdp4 as i64) << 32) | (self.n_satellites as i64);
+
+            unsafe {
+                self.propagate_soa_indexed_kernel.clone().launch(
+                    cfg,
+                    (
+                        params_sdp4,
+                        &times_gpu,
+                        indices_gpu,
+                        &soa.x, &soa.y, &soa.z,
+                        &soa.vx, &soa.vy, &soa.vz,
+                        &soa.error_code,
+                        packed_dims,
+                        n_times as i32,
+                    )
+                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
+        }
+
+        // Synchronize to ensure both kernels complete
+        dev.synchronize()
+            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SINGLE DOWNLOAD - results are already in correct order!
+        // ═══════════════════════════════════════════════════════════════════
+
+        let out_x = dev.dtoh_sync_copy(&soa.x).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_y = dev.dtoh_sync_copy(&soa.y).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_z = dev.dtoh_sync_copy(&soa.z).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_vx = dev.dtoh_sync_copy(&soa.vx).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_vy = dev.dtoh_sync_copy(&soa.vy).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_vz = dev.dtoh_sync_copy(&soa.vz).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_error = dev.dtoh_sync_copy(&soa.error_code).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+
         Ok(SoAArrays {
-            x, y, z, vx, vy, vz, error_code,
+            x: out_x,
+            y: out_y,
+            z: out_z,
+            vx: out_vx,
+            vy: out_vy,
+            vz: out_vz,
+            error_code: out_error,
             n_sats: self.n_satellites,
             n_times,
         })
@@ -827,9 +1221,6 @@ impl CudaSgp4Propagator {
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
 
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
-
         let dev = self.device.device();
 
         // Upload times to GPU (reuse cached buffer if possible)
@@ -870,38 +1261,79 @@ impl CudaSgp4Propagator {
         }
 
         let soa = self.cached_soa_buffers.as_ref().unwrap();
-
-        // Launch config (same as propagate_soa_into)
-        let block_x = 16u32;
-        let block_y = 16u32;
-        let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
-        let grid_y = (n_times as u32 + block_y - 1) / block_y;
         let shared_mem_bytes = 256 * std::mem::size_of::<f64>() as u32;
 
-        let cfg = LaunchConfig {
-            grid_dim: (grid_x, grid_y, 1),
-            block_dim: (block_x, block_y, 1),
-            shared_mem_bytes,
-        };
+        // ═══════════════════════════════════════════════════════════════════
+        // TWO-KERNEL LAUNCH: Eliminates warp divergence between SGP4/SDP4
+        // Uses indexed kernel for GPU-side scatter to correct output positions
+        // ═══════════════════════════════════════════════════════════════════
 
-        // Launch SoA kernel
-        unsafe {
-            self.propagate_soa_kernel.clone().launch(
-                cfg,
-                (
-                    params_gpu,
-                    times_gpu,
-                    &soa.x,
-                    &soa.y,
-                    &soa.z,
-                    &soa.vx,
-                    &soa.vy,
-                    &soa.vz,
-                    &soa.error_code,
-                    self.n_satellites as i32,
-                    n_times as i32,
-                )
-            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+        // PROPAGATE SGP4 PARTITION (near-earth satellites)
+        if let (Some(params_sgp4), Some(indices_gpu)) = (&self.params_sgp4_gpu, &self.sgp4_indices_gpu) {
+            let n_sgp4 = self.sgp4_indices.len();
+
+            let block_x = 16u32;
+            let block_y = 16u32;
+            let grid_x = (n_sgp4 as u32 + block_x - 1) / block_x;
+            let grid_y = (n_times as u32 + block_y - 1) / block_y;
+
+            let cfg = LaunchConfig {
+                grid_dim: (grid_x, grid_y, 1),
+                block_dim: (block_x, block_y, 1),
+                shared_mem_bytes,
+            };
+
+            let packed_dims: i64 = ((n_sgp4 as i64) << 32) | (self.n_satellites as i64);
+
+            unsafe {
+                self.propagate_soa_indexed_kernel.clone().launch(
+                    cfg,
+                    (
+                        params_sgp4,
+                        times_gpu,
+                        indices_gpu,
+                        &soa.x, &soa.y, &soa.z,
+                        &soa.vx, &soa.vy, &soa.vz,
+                        &soa.error_code,
+                        packed_dims,
+                        n_times as i32,
+                    )
+                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
+        }
+
+        // PROPAGATE SDP4 PARTITION (deep-space satellites)
+        if let (Some(params_sdp4), Some(indices_gpu)) = (&self.params_sdp4_gpu, &self.sdp4_indices_gpu) {
+            let n_sdp4 = self.sdp4_indices.len();
+
+            let block_x = 16u32;
+            let block_y = 16u32;
+            let grid_x = (n_sdp4 as u32 + block_x - 1) / block_x;
+            let grid_y = (n_times as u32 + block_y - 1) / block_y;
+
+            let cfg = LaunchConfig {
+                grid_dim: (grid_x, grid_y, 1),
+                block_dim: (block_x, block_y, 1),
+                shared_mem_bytes,
+            };
+
+            let packed_dims: i64 = ((n_sdp4 as i64) << 32) | (self.n_satellites as i64);
+
+            unsafe {
+                self.propagate_soa_indexed_kernel.clone().launch(
+                    cfg,
+                    (
+                        params_sdp4,
+                        times_gpu,
+                        indices_gpu,
+                        &soa.x, &soa.y, &soa.z,
+                        &soa.vx, &soa.vy, &soa.vz,
+                        &soa.error_code,
+                        packed_dims,
+                        n_times as i32,
+                    )
+                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
         }
 
         // Synchronize to ensure kernel completion

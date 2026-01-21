@@ -83,9 +83,10 @@ __device__ void sgp4_init_single(const TleData& tle, Sgp4Params& p) {
     // ═══════════════════════════════════════════════════════════════════
     // DEEP SPACE CHECK
     // ═══════════════════════════════════════════════════════════════════
-    
+
     double period = TWOPI / p.no_unkozai;  // Period in minutes
     p.is_deep_space = (period >= DEEP_SPACE_PERIOD_MIN) ? 1 : 0;
+    p.force_near_earth = 0;  // Default: no override
     
     // ═══════════════════════════════════════════════════════════════════
     // ATMOSPHERIC DRAG TERMS (S and QOMS2T)
