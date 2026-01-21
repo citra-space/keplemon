@@ -52,7 +52,7 @@ impl TLECatalog {
     }
 
     /// Returns all TLEs as a Vec
-    pub fn get_all(&self) -> Vec<TLE> {
+    pub fn list(&self) -> Vec<TLE> {
         self.map.values().cloned().collect()
     }
 

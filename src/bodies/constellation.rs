@@ -3,6 +3,7 @@ use crate::bodies::Observatory;
 use crate::catalogs::TLECatalog;
 use crate::configs;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
+use crate::enums::KeplerianType;
 use crate::events::{CloseApproachReport, HorizonAccessReport};
 use crate::time::{Epoch, TimeSpan};
 use crate::propagation::{BatchPropagator, PropagationBackend};
@@ -399,23 +400,33 @@ impl Constellation {
                 .values()
                 .map(|sat| TLE::from(sat.clone()))
                 .collect();
-            
-            // If we successfully got TLEs for all satellites, use batch propagation
+
+            // If we successfully got TLEs for all satellites, check if all are GP-only
             if tles.len() == n_sats {
-                match propagator.propagate_batch(&tles, epochs) {
-                    Ok(batch_results) => {
-                        // Map results back to satellite IDs
-                        let sat_ids: Vec<String> = self.satellites.keys().cloned().collect();
-                        return sat_ids.iter()
-                            .zip(batch_results.into_iter())
-                            .map(|(sat_id, states)| {
-                                (sat_id.clone(), states.into_iter().map(Some).collect())
-                            })
-                            .collect();
-                    }
-                    Err(e) => {
-                        log::warn!("GPU batch propagation failed: {}, falling back to CPU", e);
-                    }
+                // Check if all TLEs are GP-only (MeanKozaiGP or MeanBrouwerGP)
+                // GPU propagator only supports type 0 (SGP) and type 2 (SGP4) TLEs
+                let all_gp_only = tles.iter().all(|tle| {
+                    matches!(
+                        tle.get_type(),
+                        KeplerianType::MeanKozaiGP | KeplerianType::MeanBrouwerGP
+                    )
+                });
+
+                if !all_gp_only {
+                    log::warn!(
+                        "Not all TLEs are GP-only (SGP/SGP4), falling back to CPU propagation"
+                    );
+                } else if let Ok(batch_results) = propagator.propagate_batch(&tles, epochs) {
+                    // Map results back to satellite IDs
+                    let sat_ids: Vec<String> = self.satellites.keys().cloned().collect();
+                    return sat_ids.iter()
+                        .zip(batch_results.into_iter())
+                        .map(|(sat_id, states)| {
+                            (sat_id.clone(), states.into_iter().map(Some).collect())
+                        })
+                        .collect();
+                } else {
+                    log::warn!("GPU batch propagation failed, falling back to CPU");
                 }
             } else {
                 log::warn!(
@@ -449,14 +460,12 @@ impl Constellation {
         step: TimeSpan,
         backend: Option<PropagationBackend>,
     ) -> HashMap<String, Vec<Option<CartesianState>>> {
-        let mut epochs = Vec::new();
-        let mut current = start;
-        
-        while current <= end {
-            epochs.push(current);
-            current = current + step;
-        }
-        
+        let epochs: Vec<Epoch> = std::iter::successors(Some(start), |&current| {
+            let next = current + step;
+            (next <= end).then_some(next)
+        })
+        .collect();
+
         self.get_states_at_epochs(&epochs, backend)
     }
     
