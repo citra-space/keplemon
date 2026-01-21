@@ -10,7 +10,7 @@
 
 use keplemon::elements::TLE;
 use keplemon::bodies::Satellite;
-use keplemon::time::{Epoch, TimeSpan};
+use keplemon::time::TimeSpan;
 
 /// GEO satellite: TDRS 3
 const GEO_TLE: (&str, &str, &str) = (
@@ -21,7 +21,8 @@ const GEO_TLE: (&str, &str, &str) = (
 
 /// To test SGP4 at GEO, we'll artificially increase mean motion to force SGP4 selection,
 /// then compare against the correct SDP4 propagation
-fn create_forced_sgp4_tle(original: &TLE) -> TLE {
+#[allow(dead_code)]
+fn create_forced_sgp4_tle(_original: &TLE) -> TLE {
     // Get original TLE data
     let name = GEO_TLE.0;
     let line1 = GEO_TLE.1;
@@ -51,6 +52,7 @@ fn create_forced_sgp4_tle(original: &TLE) -> TLE {
 }
 
 /// Calculate TLE checksum
+#[allow(dead_code)]
 fn calculate_checksum(line: &str) -> u8 {
     let mut sum = 0;
     for c in line.chars() {
@@ -64,6 +66,7 @@ fn calculate_checksum(line: &str) -> u8 {
 }
 
 /// Compute position error between two states
+#[allow(dead_code)]
 fn position_error(state1: &keplemon::elements::CartesianState,
                   state2: &keplemon::elements::CartesianState) -> f64 {
     let dx = state1.position[0] - state2.position[0];
@@ -189,10 +192,10 @@ fn test_propagator_selection() {
     println!("{}", "=".repeat(80));
 
     // LEO satellite
-    let leo_tle = TLE::from_lines(
+    let leo_tle = TLE::from_three_lines(
+        "ISS (ZARYA)",
         "1 25544U 98067A   25105.52083333  .00012345  00000+0  22013-3 0  9991",
-        "2 25544  51.6456 339.5765 0003456  35.8734  85.9834 15.48919755123456",
-        Some("ISS (ZARYA)")
+        "2 25544  51.6456 339.5765 0003456  35.8734  85.9834 15.48919755123456"
     ).expect("Failed to parse LEO TLE");
 
     // GEO satellite

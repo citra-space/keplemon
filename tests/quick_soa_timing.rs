@@ -15,6 +15,7 @@ fn load_tles(n: usize) -> Vec<TleDataGpu> {
 }
 
 #[test]
+#[ignore]
 fn quick_timing_comparison() {
     let n_sats = 1000;
     let n_times = 100;

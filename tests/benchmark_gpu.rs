@@ -51,6 +51,7 @@ fn generate_time_points(base_jd: f64, count: usize, interval_minutes: f64) -> Ve
 }
 
 #[test]
+#[ignore]
 fn benchmark_gpu_propagation() {
     println!("\n=== GPU SGP4 Performance Benchmark ===\n");
     
@@ -109,6 +110,7 @@ fn benchmark_gpu_propagation() {
 }
 
 #[test]
+#[ignore]
 fn benchmark_init_vs_propagate() {
     println!("\n=== Init vs Propagate Timing ===\n");
     

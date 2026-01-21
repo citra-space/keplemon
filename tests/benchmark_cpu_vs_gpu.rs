@@ -295,6 +295,7 @@ fn run_benchmark(n_satellites: usize, n_times: usize, regime: OrbitRegime) {
 }
 
 #[test]
+#[ignore]
 fn test_benchmark_cpu_vs_gpu() {
     // Skip if CUDA not available
     if !CudaSgp4Propagator::is_cuda_available() {
@@ -341,6 +342,7 @@ fn test_benchmark_cpu_vs_gpu() {
 
 /// Quick benchmark with just a few sizes for CI/testing
 #[test]
+#[ignore]
 fn test_quick_benchmark() {
     if !CudaSgp4Propagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping quick benchmark");

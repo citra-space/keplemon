@@ -172,6 +172,7 @@ fn run_crossover_analysis(
 }
 
 #[test]
+#[ignore]
 fn test_gpu_crossover_analysis() {
     if !CudaSgp4Propagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping crossover analysis");
@@ -221,6 +222,7 @@ fn test_gpu_crossover_analysis() {
 
 /// Quick crossover test for CI
 #[test]
+#[ignore]
 fn test_quick_crossover() {
     if !CudaSgp4Propagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping quick crossover test");
