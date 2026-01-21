@@ -13,7 +13,6 @@ from keplemon.enums import TimeSystem, ReferenceFrame, KeplerianType
 from keplemon.elements import CartesianVector, CartesianState, TopocentricElements, TLE
 from keplemon.catalogs import TLECatalog
 import json
-import numpy as np
 
 class TestBatchLeastSquaresMixed:
     """Integration tests for BatchLeastSquares with mixed observation types."""
