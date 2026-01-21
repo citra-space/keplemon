@@ -34,18 +34,9 @@ impl TDOAObservation {
 
     pub(crate) fn compute_measurement_and_weight_vector(&self) -> (Vec<f64>, Vec<f64>) {
         let m_vec = vec![self.time_difference];
-
         // Combined noise for differential measurement: σ_combined² = σ_1² + σ_2²
         // Weight = 1/σ_combined² = 1/(σ_1² + σ_2²)
-        let w_vec = match (self.sensor_1.tdoa_noise, self.sensor_2.tdoa_noise) {
-            (Some(noise1), Some(noise2)) => {
-                let variance_combined = noise1.powi(2) + noise2.powi(2);
-                vec![1.0 / variance_combined]
-            },
-            (Some(noise1), None) => vec![1.0 / noise1.powi(2)],  // Fall back to sensor 1 only
-            (None, Some(noise2)) => vec![1.0 / noise2.powi(2)],  // Fall back to sensor 2 only
-            (None, None) => vec![0.0],  // No weight if neither sensor has noise specified
-        };
+        let w_vec = vec![1.0 / (self.sensor_1.tdoa_noise.unwrap().powf(2.0) + self.sensor_2.tdoa_noise.unwrap().powf(2.0))];
         (m_vec, w_vec)
     }
 
