@@ -8,6 +8,10 @@ use pyo3::prelude::*;
 
 pub const DEFAULT_MAX_ITERATIONS: usize = 20;
 
+// Note: We cannot derive Debug, Clone, or PartialEq for BatchLeastSquares because
+// the obs field contains Vec<Box<dyn ObservationType>>, and trait objects do not
+// implement Clone or PartialEq by default. If debugging information is needed,
+// consider implementing a custom Debug trait.
 #[pyclass]
 pub struct BatchLeastSquares {
     obs: Vec<Box<dyn ObservationType>>,
