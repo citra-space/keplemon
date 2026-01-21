@@ -95,28 +95,54 @@ const GEO_TLES: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Generate a mix of LEO and GEO TLEs
-/// Mix ratio: ~60% LEO, ~40% GEO (typical operational distribution)
-fn generate_mixed_tles(count: usize) -> Vec<TLE> {
+/// Orbit regime for benchmark configuration
+#[derive(Debug, Clone, Copy)]
+enum OrbitRegime {
+    LeoOnly,
+    GeoOnly,
+    Mixed,
+}
+
+impl OrbitRegime {
+    fn name(&self) -> &str {
+        match self {
+            OrbitRegime::LeoOnly => "LEO only",
+            OrbitRegime::GeoOnly => "GEO only",
+            OrbitRegime::Mixed => "Mixed (60% LEO, 40% GEO)",
+        }
+    }
+}
+
+/// Generate TLEs based on orbit regime
+fn generate_tles(count: usize, regime: OrbitRegime) -> Vec<TLE> {
     let mut tles = Vec::with_capacity(count);
-    
+
     for i in 0..count {
-        // 60% LEO, 40% GEO distribution
-        let use_leo = (i % 5) < 3;
-        
-        let (name, line1, line2) = if use_leo {
-            LEO_TLES[i % LEO_TLES.len()]
-        } else {
-            GEO_TLES[i % GEO_TLES.len()]
+        let (name, line1, line2) = match regime {
+            OrbitRegime::LeoOnly => {
+                LEO_TLES[i % LEO_TLES.len()]
+            }
+            OrbitRegime::GeoOnly => {
+                GEO_TLES[i % GEO_TLES.len()]
+            }
+            OrbitRegime::Mixed => {
+                // 60% LEO, 40% GEO distribution
+                let use_leo = (i % 5) < 3;
+                if use_leo {
+                    LEO_TLES[i % LEO_TLES.len()]
+                } else {
+                    GEO_TLES[i % GEO_TLES.len()]
+                }
+            }
         };
-        
+
         // Create TLE (each satellite will be unique enough from the mix)
         let tle = TLE::from_three_lines(name, line1, line2)
             .expect("Failed to parse TLE");
-        
+
         tles.push(tle);
     }
-    
+
     tles
 }
 
@@ -150,59 +176,81 @@ fn benchmark_cpu(satellites: &[Satellite], times: &[Epoch]) -> std::time::Durati
     start.elapsed()
 }
 
-/// Benchmark GPU propagation (parallel)
-fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<std::time::Duration, String> {
-    // Convert to GPU format
-    let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
-    
-    // Initialize GPU propagator
-    let mut gpu_propagator = CudaSgp4Propagator::new()
-        .map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
-    
-    gpu_propagator.init_satellites(&tle_data_gpu)
-        .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
-    
-    // Benchmark propagation
-    let start = Instant::now();
-    
-    let _states = gpu_propagator.propagate(times_jd)
-        .map_err(|e| format!("Failed to propagate on GPU: {}", e))?;
-    
-    Ok(start.elapsed())
+/// GPU benchmark result with breakdown
+struct GpuBenchmarkResult {
+    /// Time including GPU→CPU transfer
+    total_time: std::time::Duration,
+    /// Time for kernel only (GPU-resident, no transfer)
+    kernel_time: std::time::Duration,
 }
 
-/// Run benchmark for a specific satellite count
-fn run_benchmark(n_satellites: usize, n_times: usize) {
+/// Benchmark GPU propagation (parallel)
+///
+/// Uses the two-kernel optimization: partitions satellites by propagator type
+/// (SGP4 for LEO, SDP4 for GEO) to eliminate warp divergence.
+fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<GpuBenchmarkResult, String> {
+    // Convert to GPU format
+    let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
+
+    // Initialize GPU propagator (partitions satellites internally)
+    let mut gpu_propagator = CudaSgp4Propagator::new()
+        .map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
+
+    gpu_propagator.init_satellites(&tle_data_gpu)
+        .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
+
+    // Warmup call to ensure all allocations are done
+    let _ = gpu_propagator.propagate_soa_arrays(times_jd)
+        .map_err(|e| format!("Warmup failed: {}", e))?;
+
+    // Benchmark 1: Full pipeline including GPU→CPU transfer
+    let start_total = Instant::now();
+    let _states = gpu_propagator.propagate_soa_arrays(times_jd)
+        .map_err(|e| format!("Failed to propagate on GPU: {}", e))?;
+    let total_time = start_total.elapsed();
+
+    // Benchmark 2: GPU-resident (kernel only, no transfer)
+    let start_kernel = Instant::now();
+    let _gpu_resident = gpu_propagator.propagate_soa_gpu_resident(times_jd)
+        .map_err(|e| format!("Failed to propagate (GPU-resident): {}", e))?;
+    let kernel_time = start_kernel.elapsed();
+
+    Ok(GpuBenchmarkResult { total_time, kernel_time })
+}
+
+/// Run benchmark for a specific satellite count and orbit regime
+fn run_benchmark(n_satellites: usize, n_times: usize, regime: OrbitRegime) {
     println!("\n{}", "=".repeat(70));
     println!("Benchmarking {} satellites at {} time points", n_satellites, n_times);
+    println!("Orbit regime: {}", regime.name());
     println!("Total propagations: {}", n_satellites * n_times);
     println!("{}", "=".repeat(70));
-    
-    // Generate mixed LEO/GEO satellites
-    let tles = generate_mixed_tles(n_satellites);
+
+    // Generate satellites based on orbit regime
+    let tles = generate_tles(n_satellites, regime);
     let satellites: Vec<Satellite> = tles.iter()
         .map(|tle| Satellite::from(tle.clone()))
         .collect();
-    
-    // Count LEO vs GEO
+
+    // Count LEO vs GEO for verification
     let n_leo = tles.iter()
         .filter(|tle| tle.get_mean_motion() > 1.5)  // LEO typically > 1.5 rev/day
         .count();
     let n_geo = n_satellites - n_leo;
-    println!("Mix: {} LEO ({:.1}%), {} GEO ({:.1}%)", 
+    println!("Actual mix: {} LEO ({:.1}%), {} GEO ({:.1}%)",
              n_leo, (n_leo as f64 / n_satellites as f64) * 100.0,
              n_geo, (n_geo as f64 / n_satellites as f64) * 100.0);
-    
-    // Generate time points (propagate over 7 days at 1-hour intervals)
+
+    // Generate time points (propagate at 1-minute intervals)
     let base_epoch = tles[0].get_keplerian_state().epoch;
     let times: Vec<Epoch> = (0..n_times)
-        .map(|i| base_epoch + TimeSpan::from_hours(i as f64))
+        .map(|i| base_epoch + TimeSpan::from_minutes(i as f64))
         .collect();
-    
+
     // Also create JD times for GPU
     let base_jd = base_epoch.days_since_1950 + JD_1950;
     let times_jd: Vec<f64> = (0..n_times)
-        .map(|i| base_jd + (i as f64) / 24.0)  // 1-hour intervals
+        .map(|i| base_jd + (i as f64) / 1440.0)  // 1-minute intervals (1440 minutes/day)
         .collect();
     
     // CPU Benchmark
@@ -210,29 +258,38 @@ fn run_benchmark(n_satellites: usize, n_times: usize) {
     std::io::Write::flush(&mut std::io::stdout()).unwrap();
     let cpu_time = benchmark_cpu(&satellites, &times);
     println!("{:.3} ms", cpu_time.as_secs_f64() * 1000.0);
-    
+
     // GPU Benchmark
-    print!("GPU (parallel):   ");
-    std::io::Write::flush(&mut std::io::stdout()).unwrap();
     match benchmark_gpu(&tles, &times_jd) {
-        Ok(gpu_time) => {
-            println!("{:.3} ms", gpu_time.as_secs_f64() * 1000.0);
-            
-            // Calculate speedup
-            let speedup = cpu_time.as_secs_f64() / gpu_time.as_secs_f64();
-            println!("\nSpeedup: {:.2}x", speedup);
-            
+        Ok(gpu_result) => {
+            let kernel_ms = gpu_result.kernel_time.as_secs_f64() * 1000.0;
+            let total_ms = gpu_result.total_time.as_secs_f64() * 1000.0;
+            let transfer_ms = total_ms - kernel_ms;
+
+            println!("GPU (kernel only): {:.3} ms", kernel_ms);
+            println!("GPU (+ transfer):  {:.3} ms  (transfer: {:.3} ms, {:.1}% overhead)",
+                total_ms, transfer_ms, (transfer_ms / total_ms) * 100.0);
+
+            // Calculate speedups
+            let speedup_kernel = cpu_time.as_secs_f64() / gpu_result.kernel_time.as_secs_f64();
+            let speedup_total = cpu_time.as_secs_f64() / gpu_result.total_time.as_secs_f64();
+
+            println!("\nSpeedup (kernel only): {:.2}x", speedup_kernel);
+            println!("Speedup (+ transfer):  {:.2}x", speedup_total);
+
             // Calculate throughput
             let total_props = (n_satellites * n_times) as f64;
             let cpu_throughput = total_props / cpu_time.as_secs_f64();
-            let gpu_throughput = total_props / gpu_time.as_secs_f64();
-            
-            println!("Throughput:");
-            println!("  CPU: {:.0} propagations/sec", cpu_throughput);
-            println!("  GPU: {:.0} propagations/sec", gpu_throughput);
+            let gpu_kernel_throughput = total_props / gpu_result.kernel_time.as_secs_f64();
+            let gpu_total_throughput = total_props / gpu_result.total_time.as_secs_f64();
+
+            println!("\nThroughput:");
+            println!("  CPU:              {:>12.0} propagations/sec", cpu_throughput);
+            println!("  GPU (kernel):     {:>12.0} propagations/sec", gpu_kernel_throughput);
+            println!("  GPU (+ transfer): {:>12.0} propagations/sec", gpu_total_throughput);
         }
         Err(e) => {
-            println!("ERROR: {}", e);
+            println!("GPU ERROR: {}", e);
         }
     }
 }
@@ -244,23 +301,37 @@ fn test_benchmark_cpu_vs_gpu() {
         eprintln!("CUDA not available, skipping CPU vs GPU benchmark");
         return;
     }
-    
+
     println!("\n");
     println!("{}", "#".repeat(70));
     println!("# CPU vs GPU SGP4 Performance Benchmark");
-    println!("# Mixed LEO/GEO Satellite Propagation");
+    println!("# LEO Only, GEO Only, and Mixed Constellations");
     println!("{}", "#".repeat(70));
-    
-    // Test with 168 time points (7 days at hourly intervals)
-    let n_times = 168;
-    
+
+    // Test with 10,080 time points (7 days at 1-minute intervals)
+    let n_times = 10_080;
+
     // Benchmark different satellite counts
-    let satellite_counts = vec![10, 20, 40, 80, 160, 1000];
-    
-    for &n_sats in satellite_counts.iter() {
-        run_benchmark(n_sats, n_times);
+    let satellite_counts = vec![10, 50, 100, 1000];
+
+    // Test all three orbit regimes
+    let regimes = vec![
+        OrbitRegime::LeoOnly,
+        OrbitRegime::GeoOnly,
+        OrbitRegime::Mixed,
+    ];
+
+    for &regime in regimes.iter() {
+        println!("\n");
+        println!("{}", "█".repeat(70));
+        println!("█ ORBIT REGIME: {}", regime.name());
+        println!("{}", "█".repeat(70));
+
+        for &n_sats in satellite_counts.iter() {
+            run_benchmark(n_sats, n_times, regime);
+        }
     }
-    
+
     // Summary
     println!("\n");
     println!("{}", "=".repeat(70));
@@ -275,12 +346,12 @@ fn test_quick_benchmark() {
         eprintln!("CUDA not available, skipping quick benchmark");
         return;
     }
-    
+
     println!("\n=== Quick CPU vs GPU Benchmark ===\n");
-    
+
     let n_times = 10;
-    
+
     for &n_sats in &[10, 40, 160] {
-        run_benchmark(n_sats, n_times);
+        run_benchmark(n_sats, n_times, OrbitRegime::Mixed);
     }
 }
