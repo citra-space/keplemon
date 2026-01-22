@@ -729,7 +729,7 @@ impl TLE {
             BatchPropagator::new().set_gpu_threshold(usize::MAX) // Force CPU
         };
         
-        let results = propagator.propagate_batch(&[self.clone()], epochs)?;
+        let results = propagator.propagate_batch(std::slice::from_ref(self), epochs)?;
         Ok(results.into_iter().next().unwrap_or_default())
     }
 }

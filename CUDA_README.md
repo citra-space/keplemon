@@ -56,7 +56,7 @@ let states = constellation.get_batch_ephemeris(start, end, step, None);
 
 // Force GPU backend
 let states_gpu = constellation.get_batch_ephemeris(
-    start, end, step, 
+    start, end, step,
     Some(PropagationBackend::Gpu)
 );
 
@@ -112,32 +112,32 @@ Based on comprehensive benchmarking, GPU acceleration becomes beneficial when:
 
 **LEO Satellites (~90 minute period):**
 
-| Satellites | Time Points | Speedup | Recommendation |
-|------------|-------------|---------|----------------|
-| 10         | 90 (1-min dt, 1 period) | 1.05x | GPU wins |
-| 40         | 90 (1-min dt, 1 period) | 4.72x | GPU wins |
-| 100        | 90 (1-min dt, 1 period) | 10.36x | GPU wins |
-| 500        | 90 (1-min dt, 1 period) | 19.59x | GPU wins |
+| Satellites | Time Points             | Speedup | Recommendation |
+| ---------- | ----------------------- | ------- | -------------- |
+| 10         | 90 (1-min dt, 1 period) | 1.05x   | GPU wins       |
+| 40         | 90 (1-min dt, 1 period) | 4.72x   | GPU wins       |
+| 100        | 90 (1-min dt, 1 period) | 10.36x  | GPU wins       |
+| 500        | 90 (1-min dt, 1 period) | 19.59x  | GPU wins       |
 
 **GEO Satellites (~24 hour period):**
 
-| Satellites | Time Points | Speedup | Recommendation |
-|------------|-------------|---------|----------------|
-| 10         | 1436 (1-min dt, 1 period) | 15.34x | GPU wins |
-| 40         | 1436 (1-min dt, 1 period) | 31.79x | GPU wins |
-| 100        | 1436 (1-min dt, 1 period) | 41.40x | **Best GPU performance** |
-| 500        | 144 (10-min dt, 1 period) | 28.43x | GPU wins |
+| Satellites | Time Points               | Speedup | Recommendation           |
+| ---------- | ------------------------- | ------- | ------------------------ |
+| 10         | 1436 (1-min dt, 1 period) | 15.34x  | GPU wins                 |
+| 40         | 1436 (1-min dt, 1 period) | 31.79x  | GPU wins                 |
+| 100        | 1436 (1-min dt, 1 period) | 41.40x  | **Best GPU performance** |
+| 500        | 144 (10-min dt, 1 period) | 28.43x  | GPU wins                 |
 
 **Week-Long Propagation (168 hours):**
 
-| Satellites | CPU Time | GPU Time | Speedup | Throughput |
-|------------|----------|----------|---------|------------|
-| 10         | 1.99 ms  | 5.06 ms  | 0.40x   | CPU better |
-| 40         | 7.68 ms  | 5.37 ms  | 1.43x   | GPU better |
-| 100        | 19.32 ms | 6.89 ms  | 2.80x   | GPU better |
-| 1,000      | 191.05 ms| 57.40 ms | 3.33x   | 4.54M props/sec |
+| Satellites | CPU Time  | GPU Time | Speedup | Throughput      |
+| ---------- | --------- | -------- | ------- | --------------- |
+| 10         | 1.99 ms   | 5.06 ms  | 0.40x   | CPU better      |
+| 40         | 7.68 ms   | 5.37 ms  | 1.43x   | GPU better      |
+| 100        | 19.32 ms  | 6.89 ms  | 2.80x   | GPU better      |
+| 1,000      | 191.05 ms | 57.40 ms | 3.33x   | 4.54M props/sec |
 
-For detailed crossover analysis across different time steps, orbital periods, and satellite counts, 
+For detailed crossover analysis across different time steps, orbital periods, and satellite counts,
 see [tests/GPU_CROSSOVER_ANALYSIS.md](tests/GPU_CROSSOVER_ANALYSIS.md).
 
 ### Running Benchmarks
@@ -170,7 +170,7 @@ cargo test --features cuda --release test_gpu_crossover_analysis -- --nocapture
 ✅ Unit tests for backend selection  
 ✅ Performance benchmarks (CPU vs GPU)  
 ✅ Comprehensive crossover point analysis  
-✅ Build system integration (PTX compilation)  
+✅ Build system integration (PTX compilation)
 
 ### TODO
 
@@ -200,6 +200,7 @@ Feature flags ensure zero overhead when CUDA is not needed.
 ### "nvcc not found"
 
 Install CUDA Toolkit or set `CUDA_PATH`:
+
 ```bash
 export CUDA_PATH=/usr/local/cuda
 ```
@@ -213,6 +214,7 @@ export CUDA_PATH=/usr/local/cuda
 ### "GPU not available" at runtime
 
 The code will automatically fall back to CPU. Check:
+
 ```rust
 if Constellation::is_gpu_available() {
     println!("GPU available");
@@ -246,6 +248,7 @@ struct Sgp4StateGpu {
 ### Compilation Options
 
 CUDA kernels are compiled with aggressive optimizations:
+
 - `-O3`: Maximum optimization
 - `--use_fast_math`: Fast math operations
 - `-arch=sm_50`: Support Maxwell architecture and newer
