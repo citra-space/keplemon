@@ -1,6 +1,9 @@
 use super::{ObservationAssociation, ObservationResidual};
 use crate::bodies::{Constellation, Observatory, Satellite, Sensor};
-use crate::configs::{self, DEFAULT_ANGULAR_RATE_NOISE};
+use crate::configs::{
+    self, DEFAULT_ANGULAR_RATE_NOISE, HIGH_ASSOCIATION_CLOS_RANGE, LOW_ASSOCIATION_CLOS_RANGE,
+    MEDIUM_ASSOCIATION_CLOS_RANGE,
+};
 use crate::elements::{CartesianState, CartesianVector, TopocentricElements};
 use crate::enums::{AssociationConfidence, TimeSystem};
 use crate::time::Epoch;
@@ -272,6 +275,10 @@ impl Observation {
         self.epoch
     }
 
+    pub fn get_observer_position(&self) -> CartesianVector {
+        self.observer_teme_position
+    }
+
     pub fn get_range(&self) -> Option<f64> {
         self.observed_teme_topocentric.range
     }
@@ -310,6 +317,28 @@ impl Observation {
 
     pub fn set_declination(&mut self, declination: f64) {
         self.observed_teme_topocentric.declination = declination;
+    }
+
+    pub fn get_association(&self, satellite: &Satellite) -> Option<ObservationAssociation> {
+        if let Some(residual) = self.get_residual(satellite) {
+            let confidence = if residual.get_range() < HIGH_ASSOCIATION_CLOS_RANGE {
+                AssociationConfidence::High
+            } else if residual.get_range() < MEDIUM_ASSOCIATION_CLOS_RANGE {
+                AssociationConfidence::Medium
+            } else if residual.get_range() < LOW_ASSOCIATION_CLOS_RANGE {
+                AssociationConfidence::Low
+            } else {
+                return None;
+            };
+            Some(ObservationAssociation::new(
+                self.id.clone(),
+                satellite.id.clone(),
+                residual,
+                confidence,
+            ))
+        } else {
+            None
+        }
     }
 
     pub fn get_associations(&self, constellation: &Constellation) -> Vec<ObservationAssociation> {

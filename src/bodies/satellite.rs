@@ -5,7 +5,7 @@ use crate::elements::{
     OrbitPlotState, RelativeState, TLE, construct_ephemeris_id,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
-use crate::estimation::Observation;
+use crate::estimation::{Observation, ObservationAssociation, ObservationCollection};
 use crate::events::{CloseApproach, HorizonAccessReport, ManeuverEvent, ProximityReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::time::{Epoch, TimeSpan};
@@ -262,6 +262,16 @@ impl Satellite {
         self.inertial_propagator
             .as_ref()
             .map(|propagator| propagator.get_cartesian_state_at_epoch(epoch))?
+    }
+
+    pub fn get_associations(&self, collections: &Vec<ObservationCollection>) -> Vec<ObservationAssociation> {
+        let mut associations: Vec<ObservationAssociation> = Vec::new();
+        for collection in collections {
+            if let Some(association) = collection.get_association(self) {
+                associations.push(association);
+            }
+        }
+        associations
     }
 
     pub fn set_keplerian_state(&mut self, keplerian_state: KeplerianState) -> Result<(), String> {

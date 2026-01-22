@@ -6,6 +6,67 @@ from keplemon.time import Epoch
 from keplemon.bodies import Satellite, Sensor, Constellation
 from keplemon.enums import KeplerianType, AssociationConfidence
 
+class ObservationCollection:
+    """
+    A collection of simultaneous observations from the same sensor position.
+
+    Args:
+        obs: List of observations with the same epoch and observer position
+    """
+
+    sensor_position: CartesianVector
+    """TEME position of the sensor in **_kilometers_**"""
+
+    sensor_direction: CartesianVector
+    """Unit vector pointing in the average direction of all observations"""
+
+    field_of_view: float
+    """Estimated field of view in **_degrees_** based on observation spread"""
+
+    observations: list["Observation"]
+    """List of observations in this collection"""
+
+    epoch: "Epoch"
+    """Common epoch of all observations in the collection"""
+
+    def __init__(self, obs: list["Observation"]) -> None: ...
+    @staticmethod
+    def get_list(obs: list["Observation"]) -> list["ObservationCollection"]:
+        """
+        Group observations by epoch and observer position into collections.
+
+        Args:
+            obs: List of observations with potentially different epochs and positions
+
+        Returns:
+            List of ObservationCollection instances, one for each unique (epoch, position) pair
+        """
+        ...
+
+    def get_visibility(self, satellite: "Satellite") -> bool:
+        """
+        Check if a satellite is within the field of view of this collection.
+
+        Args:
+            satellite: Satellite to check visibility for
+
+        Returns:
+            True if the satellite is within the field of view
+        """
+        ...
+
+    def get_association(self, satellite: "Satellite") -> Optional["ObservationAssociation"]:
+        """
+        Get the best observation association for a satellite within this collection.
+
+        Args:
+            satellite: Satellite to find an association for
+
+        Returns:
+            Best matching ObservationAssociation, or None if not visible or no match
+        """
+        ...
+
 class Covariance:
     sigmas: list[float]
     """"""

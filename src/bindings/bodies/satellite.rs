@@ -3,6 +3,7 @@ use crate::bindings::elements::{
     PyBoreToBodyAngles, PyCartesianState, PyEphemeris, PyGeodeticPosition, PyKeplerianState, PyOrbitPlotData,
     PyRelativeState, PyTLE,
 };
+use crate::bindings::estimation::{PyObservationAssociation, PyObservationCollection};
 use crate::bindings::events::{PyCloseApproach, PyHorizonAccessReport, PyManeuverEvent, PyProximityReport};
 use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
@@ -283,5 +284,14 @@ impl PySatellite {
                 .get_observatory_access_report(observatories, start, end, min_el, min_duration)
                 .map(PyHorizonAccessReport::from)
         })
+    }
+
+    pub fn get_associations(&self, collections: Vec<PyObservationCollection>) -> Vec<PyObservationAssociation> {
+        let collections: Vec<_> = collections.iter().map(|c| c.inner().clone()).collect();
+        self.inner
+            .get_associations(&collections)
+            .into_iter()
+            .map(PyObservationAssociation::from)
+            .collect()
     }
 }

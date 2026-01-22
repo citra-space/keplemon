@@ -15,3 +15,6 @@ pub const DEFAULT_ANGULAR_NOISE: f64 = 0.002; // in degrees
 pub const DEFAULT_RANGE_NOISE: f64 = 0.1; // in kilometers
 pub const DEFAULT_RANGE_RATE_NOISE: f64 = 0.0001; // in kilometers per second
 pub const DEFAULT_ANGULAR_RATE_NOISE: f64 = 0.002; // in degrees per second
+pub const LOW_ASSOCIATION_CLOS_RANGE: f64 = 500.0; // in kilometers
+pub const MEDIUM_ASSOCIATION_CLOS_RANGE: f64 = 50.0;
+pub const HIGH_ASSOCIATION_CLOS_RANGE: f64 = 5.0;

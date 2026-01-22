@@ -20,6 +20,9 @@ SGP4_Open_License.txt
 python/keplemon/*.405
 python/keplemon/*.d
 python/keplemon/saal/*.pyi
+python/keplemon/*.rlib
+._.DS_Store
+._x86
 site/
 local/
 fort.3

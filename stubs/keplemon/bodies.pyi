@@ -17,6 +17,7 @@ from keplemon.time import Epoch, TimeSpan
 from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
+from keplemon.estimation import ObservationAssociation, ObservationCollection
 
 class Satellite:
 
@@ -157,6 +158,20 @@ class Satellite:
         Returns:
             Horizon access report containing accesses from all observatories to the satellite,
             or None if the satellite ephemeris cannot be generated
+        """
+        ...
+
+    def get_associations(
+        self, collections: list[ObservationCollection]
+    ) -> list[ObservationAssociation]:
+        """
+        Find observation associations for this satellite across multiple observation collections.
+
+        Args:
+            collections: List of observation collections to search for associations
+
+        Returns:
+            List of observation associations where this satellite matches observations
         """
         ...
 

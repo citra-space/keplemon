@@ -2,12 +2,14 @@ mod batch_least_squares;
 mod covariance;
 mod observation;
 mod observation_association;
+mod observation_collection;
 mod observation_residual;
 
 pub use batch_least_squares::PyBatchLeastSquares;
 pub use covariance::PyCovariance;
 pub use observation::PyObservation;
 pub use observation_association::PyObservationAssociation;
+pub use observation_collection::PyObservationCollection;
 pub use observation_residual::PyObservationResidual;
 
 use pyo3::prelude::*;
@@ -21,6 +23,7 @@ pub fn register_estimation(parent_module: &Bound<'_, PyModule>) -> PyResult<()> 
     estimation.add_class::<PyBatchLeastSquares>()?;
     estimation.add_class::<PyCovariance>()?;
     estimation.add_class::<PyObservationAssociation>()?;
+    estimation.add_class::<PyObservationCollection>()?;
     py_run!(
         parent_module.py(),
         estimation,
