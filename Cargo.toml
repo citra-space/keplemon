@@ -68,6 +68,7 @@ harness = false
 name = "gpu_propagation"
 harness = false
 required-features = ["cuda"]
+path = "benches/gpu/propagation.rs"
 
 [features]
 python = ["pyo3/extension-module", "pyo3/abi3-py39"]
