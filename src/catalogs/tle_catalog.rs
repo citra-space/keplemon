@@ -29,6 +29,11 @@ impl TLECatalog {
         self.map.get(&satellite_id).cloned()
     }
 
+    /// Get a TLE by its NORAD catalog number (e.g., 25544 for ISS)
+    pub fn get_by_norad_id(&self, norad_id: i32) -> Option<TLE> {
+        self.map.values().find(|tle| tle.norad_id == norad_id).cloned()
+    }
+
     pub fn remove(&mut self, satellite_id: String) {
         self.map.remove(&satellite_id);
     }
@@ -39,6 +44,16 @@ impl TLECatalog {
 
     pub fn get_count(&self) -> usize {
         self.map.len()
+    }
+
+    /// Returns an iterator over all TLEs in the catalog
+    pub fn values(&self) -> impl Iterator<Item = &TLE> {
+        self.map.values()
+    }
+
+    /// Returns all TLEs as a Vec
+    pub fn list(&self) -> Vec<TLE> {
+        self.map.values().cloned().collect()
     }
 
     pub fn from_tle_file(file_path: &str) -> Result<TLECatalog, String> {

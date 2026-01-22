@@ -11,6 +11,10 @@ pub mod estimation;
 pub mod events;
 pub mod propagation;
 pub mod time;
+
+#[cfg(feature = "cuda")]
+pub mod gpu;
+
 #[cfg(test)]
 mod test_lock;
 use rayon::current_num_threads;

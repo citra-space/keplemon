@@ -3,6 +3,7 @@ use crate::bindings::catalogs::PyTLECatalog;
 use crate::bindings::elements::{PyCartesianState, PyEphemeris, PyOrbitPlotData};
 use crate::bindings::events::{PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport};
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
+use crate::bindings::propagation::PyPropagationBackend;
 use crate::bodies::{Constellation, Satellite};
 use crate::catalogs::TLECatalog;
 use crate::time::{Epoch, TimeSpan};
@@ -246,5 +247,83 @@ impl PyConstellation {
     #[getter]
     pub fn get_count(&self) -> usize {
         self.inner.get_count()
+    }
+
+    /// Get states at multiple epochs using batch propagation (GPU-accelerated when available)
+    /// 
+    /// # Arguments
+    /// * `epochs` - List of epochs to propagate to
+    /// * `backend` - Optional backend selection (Auto, Cpu, or Gpu)
+    /// 
+    /// # Returns
+    /// Dictionary mapping satellite ID to list of states (one per epoch)
+    #[pyo3(signature = (epochs, backend = None))]
+    pub fn get_states_at_epochs(
+        &self,
+        py: Python<'_>,
+        epochs: Vec<PyEpoch>,
+        backend: Option<PyPropagationBackend>,
+    ) -> HashMap<String, Vec<Option<PyCartesianState>>> {
+        let epochs: Vec<Epoch> = epochs.into_iter().map(|e| e.into()).collect();
+        let backend = backend.map(|b| b.into());
+        
+        py.allow_threads(|| {
+            self.inner
+                .get_states_at_epochs(&epochs, backend)
+                .into_iter()
+                .map(|(id, states)| {
+                    let py_states = states
+                        .into_iter()
+                        .map(|opt_state| opt_state.map(PyCartesianState::from))
+                        .collect();
+                    (id, py_states)
+                })
+                .collect()
+        })
+    }
+
+    /// Get batch ephemeris for all satellites
+    /// 
+    /// # Arguments
+    /// * `start` - Start epoch
+    /// * `end` - End epoch
+    /// * `step` - Time step between epochs
+    /// * `backend` - Optional backend selection (Auto, Cpu, or Gpu)
+    /// 
+    /// # Returns
+    /// Dictionary mapping satellite ID to list of states
+    #[pyo3(signature = (start, end, step, backend = None))]
+    pub fn get_batch_ephemeris(
+        &self,
+        py: Python<'_>,
+        start: PyEpoch,
+        end: PyEpoch,
+        step: PyTimeSpan,
+        backend: Option<PyPropagationBackend>,
+    ) -> HashMap<String, Vec<Option<PyCartesianState>>> {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        let step: TimeSpan = step.into();
+        let backend = backend.map(|b| b.into());
+        
+        py.allow_threads(|| {
+            self.inner
+                .get_batch_ephemeris(start, end, step, backend)
+                .into_iter()
+                .map(|(id, states)| {
+                    let py_states = states
+                        .into_iter()
+                        .map(|opt_state| opt_state.map(PyCartesianState::from))
+                        .collect();
+                    (id, py_states)
+                })
+                .collect()
+        })
+    }
+
+    /// Check if GPU acceleration is available
+    #[staticmethod]
+    pub fn is_gpu_available() -> bool {
+        Constellation::is_gpu_available()
     }
 }

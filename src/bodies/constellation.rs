@@ -3,7 +3,10 @@ use crate::bodies::Observatory;
 use crate::catalogs::TLECatalog;
 use crate::configs;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
+#[cfg(feature = "cuda")]
+use crate::enums::KeplerianType;
 use crate::events::{CloseApproachReport, HorizonAccessReport, ManeuverEvent, ManeuverReport, ProximityReport};
+use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::time::{Epoch, TimeSpan};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -444,5 +447,115 @@ mod tests {
             let expected_distance = secondary_map.get(&secondary_name).expect("missing expected distance");
             assert_abs_diff_eq!(distance, *expected_distance, epsilon = 1e-3);
         }
+    }
+}
+
+impl Constellation {
+    /// Get states at multiple epochs using batch propagation (GPU-accelerated when available)
+    ///
+    /// This method automatically selects GPU or CPU backend based on problem size.
+    /// For large constellations and many time points, GPU acceleration can provide
+    /// significant speedups over serial CPU propagation.
+    ///
+    /// # Arguments
+    /// * `epochs` - Vector of epochs to propagate to
+    /// * `backend` - Optional backend selection (defaults to Auto)
+    ///
+    /// # Returns
+    /// HashMap mapping satellite ID to vector of states (one per epoch)
+    pub fn get_states_at_epochs(
+        &self,
+        epochs: &[Epoch],
+        backend: Option<PropagationBackend>,
+    ) -> HashMap<String, Vec<Option<CartesianState>>> {
+        use crate::elements::TLE;
+
+        let backend = backend.unwrap_or(PropagationBackend::Auto);
+        let propagator = BatchPropagator::new().set_backend(backend);
+
+        let n_sats = self.satellites.len();
+        let n_times = epochs.len();
+
+        let selected = propagator.select_backend(n_sats, n_times);
+
+        // Try batch GPU propagation if selected
+        #[cfg(feature = "cuda")]
+        if matches!(selected, crate::propagation::SelectedBackend::Gpu) {
+            log::info!(
+                "Using GPU batch propagation for {} satellites × {} epochs",
+                n_sats,
+                n_times
+            );
+
+            // Collect TLEs from satellites
+            let tles: Vec<TLE> = self.satellites.values().map(|sat| TLE::from(sat.clone())).collect();
+
+            // If we successfully got TLEs for all satellites, check if all are GP-only
+            if tles.len() == n_sats {
+                // Check if all TLEs are GP-only (MeanKozaiGP or MeanBrouwerGP)
+                // GPU propagator only supports type 0 (SGP) and type 2 (SGP4) TLEs
+                let all_gp_only = tles.iter().all(|tle| {
+                    matches!(
+                        tle.get_type(),
+                        KeplerianType::MeanKozaiGP | KeplerianType::MeanBrouwerGP
+                    )
+                });
+
+                if !all_gp_only {
+                    log::warn!("Not all TLEs are GP-only (SGP/SGP4), falling back to CPU propagation");
+                } else if let Ok(batch_results) = propagator.propagate_batch(&tles, epochs) {
+                    // Map results back to satellite IDs
+                    let sat_ids: Vec<String> = self.satellites.keys().cloned().collect();
+                    return sat_ids
+                        .iter()
+                        .zip(batch_results.into_iter())
+                        .map(|(sat_id, states)| (sat_id.clone(), states.into_iter().map(Some).collect()))
+                        .collect();
+                } else {
+                    log::warn!("GPU batch propagation failed, falling back to CPU");
+                }
+            } else {
+                log::warn!(
+                    "Not all satellites have TLEs ({}/{}), falling back to serial propagation",
+                    tles.len(),
+                    n_sats
+                );
+            }
+        }
+
+        // CPU path: propagate each satellite independently
+        self.satellites
+            .iter()
+            .map(|(sat_id, sat)| {
+                let states: Vec<Option<CartesianState>> =
+                    epochs.iter().map(|&epoch| sat.get_state_at_epoch(epoch)).collect();
+                (sat_id.clone(), states)
+            })
+            .collect()
+    }
+
+    /// Get ephemeris for all satellites using batch propagation
+    ///
+    /// This is a convenience wrapper around get_states_at_epochs that generates
+    /// the epoch list automatically.
+    pub fn get_batch_ephemeris(
+        &self,
+        start: Epoch,
+        end: Epoch,
+        step: TimeSpan,
+        backend: Option<PropagationBackend>,
+    ) -> HashMap<String, Vec<Option<CartesianState>>> {
+        let epochs: Vec<Epoch> = std::iter::successors(Some(start), |&current| {
+            let next = current + step;
+            (next <= end).then_some(next)
+        })
+        .collect();
+
+        self.get_states_at_epochs(&epochs, backend)
+    }
+
+    /// Check if GPU acceleration is available
+    pub fn is_gpu_available() -> bool {
+        BatchPropagator::new().is_gpu_available()
     }
 }

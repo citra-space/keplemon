@@ -1,7 +1,10 @@
-use super::PyCartesianState;
+use super::{PyCartesianState, PyKeplerianState};
+use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::PyEpoch;
 use crate::bindings::enums::{PyClassification, PyKeplerianType};
 use crate::elements::TLE;
+use crate::enums::Classification;
+use crate::propagation::ForceProperties;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -29,6 +32,57 @@ impl PyTLE {
     #[pyo3(signature = (line_1, line_2, line_3 = None))]
     pub fn from_lines(line_1: &str, line_2: &str, line_3: Option<&str>) -> PyResult<PyTLE> {
         match TLE::from_lines(line_1, line_2, line_3) {
+            Ok(tle) => Ok(PyTLE::from(tle)),
+            Err(e) => Err(PyValueError::new_err(e)),
+        }
+    }
+
+    /// Create a TLE from Keplerian elements
+    /// 
+    /// This allows creating TLE objects from orbital elements (COE) instead of
+    /// TLE line strings. The resulting TLE can be used with batch propagation
+    /// including CUDA-accelerated SGP4.
+    /// 
+    /// # Arguments
+    /// * `keplerian_state` - Orbital state with epoch and Keplerian elements
+    /// * `norad_id` - NORAD catalog ID (use 99999 for analyst objects)
+    /// * `name` - Optional satellite name
+    /// * `classification` - Security classification (default: Unclassified)
+    /// * `designator` - International designator (default: empty)
+    /// * `force_properties` - Atmospheric drag/SRP properties (optional)
+    /// 
+    /// # Returns
+    /// TLE object that can be propagated using SGP4 (CPU or CUDA)
+    #[staticmethod]
+    #[pyo3(signature = (keplerian_state, norad_id = 99999, name = None, classification = None, designator = None, force_properties = None))]
+    pub fn from_elements(
+        keplerian_state: PyKeplerianState,
+        norad_id: i32,
+        name: Option<String>,
+        classification: Option<PyClassification>,
+        designator: Option<String>,
+        force_properties: Option<PyForceProperties>,
+    ) -> PyResult<PyTLE> {
+        let classification: Classification = classification
+            .map(Classification::from)
+            .unwrap_or(Classification::Unclassified);
+        let designator = designator.unwrap_or_default();
+        let force_properties: ForceProperties = force_properties
+            .map(ForceProperties::from)
+            .unwrap_or_default();
+        
+        // Generate a unique satellite ID if not provided via name
+        let satellite_id = name.clone().unwrap_or_else(|| format!("SAT-{}", norad_id));
+        
+        match TLE::new(
+            satellite_id,
+            norad_id,
+            name,
+            classification,
+            designator,
+            keplerian_state.into(),
+            force_properties,
+        ) {
             Ok(tle) => Ok(PyTLE::from(tle)),
             Err(e) => Err(PyValueError::new_err(e)),
         }
@@ -147,5 +201,72 @@ impl PyTLE {
     #[getter]
     fn get_cartesian_state(&self) -> PyCartesianState {
         PyCartesianState::from(self.inner.get_cartesian_state())
+    }
+
+    /// Propagate multiple TLEs to multiple epochs using batch propagation
+    /// 
+    /// GPU acceleration is used automatically when beneficial based on problem size.
+    /// 
+    /// # Arguments
+    /// * `tles` - List of TLEs to propagate
+    /// * `epochs` - List of epochs to propagate to
+    /// 
+    /// # Returns
+    /// 2D list of states: result[sat_idx][epoch_idx]
+    #[staticmethod]
+    #[pyo3(signature = (tles, epochs))]
+    pub fn propagate_batch(
+        py: Python<'_>,
+        tles: Vec<PyTLE>,
+        epochs: Vec<PyEpoch>,
+    ) -> PyResult<Vec<Vec<PyCartesianState>>> {
+        let tles: Vec<TLE> = tles.into_iter().map(|tle| tle.into()).collect();
+        let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
+        
+        py.allow_threads(|| {
+            TLE::propagate_batch(&tles, &epochs)
+                .map(|results| {
+                    results
+                        .into_iter()
+                        .map(|sat_states| {
+                            sat_states
+                                .into_iter()
+                                .map(PyCartesianState::from)
+                                .collect()
+                        })
+                        .collect()
+                })
+                .map_err(|e| PyValueError::new_err(e))
+        })
+    }
+
+    /// Propagate a single TLE to multiple epochs
+    /// 
+    /// Automatically uses GPU if the number of epochs is large enough.
+    /// 
+    /// # Arguments
+    /// * `epochs` - List of epochs to propagate to
+    /// 
+    /// # Returns
+    /// List of states, one for each epoch
+    #[pyo3(signature = (epochs))]
+    pub fn propagate_to_epochs(
+        &self,
+        py: Python<'_>,
+        epochs: Vec<PyEpoch>,
+    ) -> PyResult<Vec<PyCartesianState>> {
+        let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
+        
+        py.allow_threads(|| {
+            self.inner
+                .propagate_to_epochs(&epochs)
+                .map(|states| {
+                    states
+                        .into_iter()
+                        .map(PyCartesianState::from)
+                        .collect()
+                })
+                .map_err(|e| PyValueError::new_err(e))
+        })
     }
 }

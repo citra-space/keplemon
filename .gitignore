@@ -13,6 +13,9 @@ python/keplemon/*.pyi
 python/keplemon/*.GEO
 python/keplemon/*.dat
 python/keplemon/.cargo-lock
+python/keplemon/*.rlib
+python/keplemon/.DS_Store
+python/keplemon/._*
 SGP4_Open_License.txt
 python/keplemon/*.405
 python/keplemon/*.d
