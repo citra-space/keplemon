@@ -117,8 +117,65 @@ cargo test --features cuda --release
 - NVIDIA GPU with Compute Capability 5.0+ (Maxwell or newer)
 - Set `CUDA_PATH` environment variable if needed
 
-For detailed information including usage examples, performance benchmarks, crossover analysis, and troubleshooting, 
+For detailed information including usage examples, performance benchmarks, crossover analysis, and troubleshooting,
 see the [CUDA GPU Acceleration Guide](CUDA_README.md).
+
+## Benchmarks and Performance Analysis
+
+KepLemon includes both statistical benchmarks and quick performance analysis tools.
+
+### Statistical Benchmarks (Criterion)
+
+For rigorous, statistically significant performance measurements:
+
+```bash
+# CPU benchmarks
+cargo bench --bench satellite
+cargo bench --bench constellation
+cargo bench --bench batch_least_squares
+cargo bench --bench memory
+
+# GPU benchmark (requires CUDA)
+cargo bench --features cuda --bench gpu_propagation
+```
+
+These run many iterations and take several minutes but provide robust statistical analysis.
+
+### Quick Performance Analysis Tools
+
+For immediate feedback with custom output (speedup factors, "GPU WINS" tables, etc.):
+
+```bash
+# Basic GPU performance analysis
+cargo test --features cuda --release benchmark_gpu_propagation -- --ignored --nocapture
+
+# CPU vs GPU comparison with speedup calculations
+cargo test --features cuda --release test_benchmark_cpu_vs_gpu -- --ignored --nocapture
+
+# Crossover point analysis (when does GPU become faster?)
+cargo test --features cuda --release test_gpu_crossover_analysis -- --ignored --nocapture
+
+# Quick AoS vs SoA comparison
+cargo test --features cuda --release quick_timing_comparison -- --ignored --nocapture
+```
+
+These are single-run tools that execute in seconds and provide decision guidance.
+
+For detailed information, see [benches/gpu/README.md](benches/gpu/README.md).
+
+### Tests
+
+```bash
+# Run CPU tests
+cargo test
+
+# Run GPU tests (requires CUDA)
+cargo test --features cuda
+
+# Run specific tests
+cargo test --test batch_api
+cargo test --features cuda --test gpu_cpu_parity -- --ignored
+```
 
 ## Contributing
 
