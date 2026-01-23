@@ -17,7 +17,7 @@ from keplemon.time import Epoch, TimeSpan
 from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
-from keplemon.estimation import ObservationAssociation, ObservationCollection
+from keplemon.estimation import CollectionAssociationReport, ObservationAssociation, ObservationCollection
 
 class Satellite:
 
@@ -353,6 +353,34 @@ class Constellation:
 
         Returns:
             Horizon access report for the constellation from the observatory
+        """
+        ...
+
+    def cache_ephemeris(self, start: Epoch, end: Epoch, step: TimeSpan) -> None:
+        """
+        Cache ephemeris for all satellites in the constellation.
+
+        This pre-computes and caches ephemeris data for each satellite, enabling
+        faster interpolation-based state lookups via interpolate_state_at_epoch.
+
+        Args:
+            start: Start epoch for ephemeris caching
+            end: End epoch for ephemeris caching
+            step: Time step between cached states
+        """
+        ...
+
+    def get_association_reports(
+        self, collections: list[ObservationCollection]
+    ) -> list[CollectionAssociationReport]:
+        """
+        Get association reports for multiple observation collections.
+
+        Args:
+            collections: List of observation collections to find associations for
+
+        Returns:
+            List of CollectionAssociationReport, one per input collection
         """
         ...
 

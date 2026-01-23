@@ -33,7 +33,7 @@ impl PyBatchLeastSquares {
     }
 
     pub fn solve(&mut self, py: Python<'_>) -> PyResult<()> {
-        py.allow_threads(|| self.inner.solve())
+        py.detach(|| self.inner.solve())
             .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 

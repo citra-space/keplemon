@@ -67,9 +67,37 @@ class ObservationCollection:
         """
         ...
 
+    def get_association_report(self, satellites: "Constellation") -> "CollectionAssociationReport":
+        """
+        Get optimal observation-satellite associations for a constellation.
+
+        This method finds the best combination of observation-satellite pairs,
+        prioritizing high confidence associations, then medium, then low.
+        Each satellite can only associate with one observation and vice versa.
+
+        Args:
+            satellites: Constellation of satellites to find associations for
+
+        Returns:
+            CollectionAssociationReport containing associations, orphans, and moving satellite IDs
+        """
+        ...
+
 class Covariance:
     sigmas: list[float]
     """"""
+
+class CollectionAssociationReport:
+    """Report of observation associations for an ObservationCollection."""
+
+    orphan_observations: list["Observation"]
+    """Observations that could not be associated with any satellite"""
+
+    associations: list["ObservationAssociation"]
+    """List of observation-satellite associations found"""
+
+    moving_satellite_ids: list[str]
+    """Satellite IDs with low or medium confidence associations (potential movers)"""
 
 class ObservationAssociation:
     observation_id: str

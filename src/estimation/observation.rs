@@ -406,36 +406,64 @@ impl Observation {
     }
     pub fn get_residual(&self, satellite: &Satellite) -> Option<ObservationResidual> {
         match satellite.get_state_at_epoch(self.epoch) {
-            Some(satellite_state) => {
-                let sensor_to_satellite = satellite_state.position - self.observer_teme_position;
-                let teme_estimate = self.observer_teme_position
-                    + (*self.observed_teme_topocentric.get_observed_direction() * sensor_to_satellite.get_magnitude());
-
-                let posvel_1 = [
-                    satellite_state.position[0],
-                    satellite_state.position[1],
-                    satellite_state.position[2],
-                    satellite_state.velocity[0],
-                    satellite_state.velocity[1],
-                    satellite_state.velocity[2],
-                ];
-                let posvel_2 = [
-                    teme_estimate[0],
-                    teme_estimate[1],
-                    teme_estimate[2],
-                    satellite_state.velocity[0],
-                    satellite_state.velocity[1],
-                    satellite_state.velocity[2],
-                ];
-
-                Some(ObservationResidual::from(satellite::get_relative_array(
-                    &posvel_1,
-                    &posvel_2,
-                    self.epoch.days_since_1950,
-                    1,
-                )))
-            }
+            Some(satellite_state) => self.get_residual_from_state(&satellite_state),
             None => None,
+        }
+    }
+
+    pub fn get_residual_from_state(&self, satellite_state: &CartesianState) -> Option<ObservationResidual> {
+        let sensor_to_satellite = satellite_state.position - self.observer_teme_position;
+        let teme_estimate = self.observer_teme_position
+            + (*self.observed_teme_topocentric.get_observed_direction() * sensor_to_satellite.get_magnitude());
+
+        let posvel_1 = [
+            satellite_state.position[0],
+            satellite_state.position[1],
+            satellite_state.position[2],
+            satellite_state.velocity[0],
+            satellite_state.velocity[1],
+            satellite_state.velocity[2],
+        ];
+        let posvel_2 = [
+            teme_estimate[0],
+            teme_estimate[1],
+            teme_estimate[2],
+            satellite_state.velocity[0],
+            satellite_state.velocity[1],
+            satellite_state.velocity[2],
+        ];
+
+        Some(ObservationResidual::from(satellite::get_relative_array(
+            &posvel_1,
+            &posvel_2,
+            self.epoch.days_since_1950,
+            1,
+        )))
+    }
+
+    pub fn get_association_from_state(
+        &self,
+        satellite_id: &str,
+        satellite_state: &CartesianState,
+    ) -> Option<ObservationAssociation> {
+        if let Some(residual) = self.get_residual_from_state(satellite_state) {
+            let confidence = if residual.get_range() < HIGH_ASSOCIATION_CLOS_RANGE {
+                AssociationConfidence::High
+            } else if residual.get_range() < MEDIUM_ASSOCIATION_CLOS_RANGE {
+                AssociationConfidence::Medium
+            } else if residual.get_range() < LOW_ASSOCIATION_CLOS_RANGE {
+                AssociationConfidence::Low
+            } else {
+                return None;
+            };
+            Some(ObservationAssociation::new(
+                self.id.clone(),
+                satellite_id.to_string(),
+                residual,
+                confidence,
+            ))
+        } else {
+            None
         }
     }
 }

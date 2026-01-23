@@ -137,7 +137,7 @@ impl PyObservatory {
     ) -> PyFieldOfViewReport {
         let epoch: Epoch = epoch.into();
         let reference_frame: ReferenceFrame = reference_frame.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             PyFieldOfViewReport::from(self.inner.get_field_of_view_report(
                 epoch,
                 sensor_direction.into(),

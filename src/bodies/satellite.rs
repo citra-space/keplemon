@@ -264,6 +264,19 @@ impl Satellite {
             .map(|propagator| propagator.get_cartesian_state_at_epoch(epoch))?
     }
 
+    pub fn interpolate_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
+        // Check if ephemeris is cached and covers the requested epoch
+        if let Some(ref ephemeris) = self.ephemeris_cache
+            && let Some((start, end)) = ephemeris.get_epoch_range()
+            && epoch >= start
+            && epoch <= end
+        {
+            return ephemeris.get_state_at_epoch(epoch);
+        }
+        // Fall back to propagator-based state computation
+        self.get_state_at_epoch(epoch)
+    }
+
     pub fn get_associations(&self, collections: &Vec<ObservationCollection>) -> Vec<ObservationAssociation> {
         let mut associations: Vec<ObservationAssociation> = Vec::new();
         for collection in collections {
@@ -603,6 +616,81 @@ mod tests {
             assert!(
                 duration.in_minutes() >= min_duration.in_minutes()
                     || (duration.in_minutes() - min_duration.in_minutes()).abs() <= 0.1
+            );
+        }
+    }
+
+    #[test]
+    fn test_interpolate_state_at_epoch_accuracy() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
+        let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+        let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+        let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();
+        let mut sat_with_cache = Satellite::from(tle.clone());
+        let sat_reference = Satellite::from(tle);
+
+        // Cache ephemeris covering a 1-hour window with 60-second steps
+        let start = Epoch::from_iso("2020-07-18T12:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2020-07-18T13:00:00.000000Z", TimeSystem::UTC);
+        let step = TimeSpan::from_seconds(60.0);
+        sat_with_cache
+            .get_ephemeris(start, end, step)
+            .expect("failed to cache ephemeris");
+
+        // Test at multiple query epochs within the cached range
+        let test_epochs = vec![
+            Epoch::from_iso("2020-07-18T12:00:05.000000Z", TimeSystem::UTC), // Between grid points
+            Epoch::from_iso("2020-07-18T12:15:00.000000Z", TimeSystem::UTC), // On a grid point
+            Epoch::from_iso("2020-07-18T12:30:03.500000Z", TimeSystem::UTC), // Between grid points
+            Epoch::from_iso("2020-07-18T12:45:00.000000Z", TimeSystem::UTC), // On a grid point
+            Epoch::from_iso("2020-07-18T12:59:55.000000Z", TimeSystem::UTC), // Near end
+        ];
+
+        // Position tolerance in km (Hermite interpolation should be very accurate)
+        let pos_tolerance_km = 1e-3;
+        // Velocity tolerance in km/s (looser due to interpolation between grid points)
+        let vel_tolerance_km_s = 1e-4;
+
+        for epoch in test_epochs {
+            let interpolated = sat_with_cache
+                .interpolate_state_at_epoch(epoch)
+                .expect("interpolate_state_at_epoch failed");
+            let propagated = sat_reference
+                .get_state_at_epoch(epoch)
+                .expect("get_state_at_epoch failed");
+
+            // Compare positions
+            assert_abs_diff_eq!(
+                interpolated.position.get_x(),
+                propagated.position.get_x(),
+                epsilon = pos_tolerance_km
+            );
+            assert_abs_diff_eq!(
+                interpolated.position.get_y(),
+                propagated.position.get_y(),
+                epsilon = pos_tolerance_km
+            );
+            assert_abs_diff_eq!(
+                interpolated.position.get_z(),
+                propagated.position.get_z(),
+                epsilon = pos_tolerance_km
+            );
+
+            // Compare velocities
+            assert_abs_diff_eq!(
+                interpolated.velocity.get_x(),
+                propagated.velocity.get_x(),
+                epsilon = vel_tolerance_km_s
+            );
+            assert_abs_diff_eq!(
+                interpolated.velocity.get_y(),
+                propagated.velocity.get_y(),
+                epsilon = vel_tolerance_km_s
+            );
+            assert_abs_diff_eq!(
+                interpolated.velocity.get_z(),
+                propagated.velocity.get_z(),
+                epsilon = vel_tolerance_km_s
             );
         }
     }

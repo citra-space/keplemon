@@ -1,5 +1,5 @@
-use super::{PyObservation, PyObservationAssociation};
-use crate::bindings::bodies::PySatellite;
+use super::{PyCollectionAssociationReport, PyObservation, PyObservationAssociation};
+use crate::bindings::bodies::{PyConstellation, PySatellite};
 use crate::bindings::elements::PyCartesianVector;
 use crate::bindings::time::PyEpoch;
 use crate::estimation::ObservationCollection;
@@ -80,5 +80,9 @@ impl PyObservationCollection {
         self.inner
             .get_association(satellite.inner())
             .map(PyObservationAssociation::from)
+    }
+
+    pub fn get_association_report(&self, satellites: &PyConstellation) -> PyCollectionAssociationReport {
+        PyCollectionAssociationReport::from(self.inner.get_association_report(satellites.inner()))
     }
 }

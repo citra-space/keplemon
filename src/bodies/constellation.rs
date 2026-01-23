@@ -7,6 +7,7 @@ use crate::elements::TLE;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
 #[cfg(feature = "cuda")]
 use crate::enums::KeplerianType;
+use crate::estimation::{CollectionAssociationReport, ObservationCollection};
 use crate::events::{CloseApproachReport, HorizonAccessReport, ManeuverEvent, ManeuverReport, ProximityReport};
 use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::time::{Epoch, TimeSpan};
@@ -324,6 +325,22 @@ impl Constellation {
 
     pub fn get_count(&self) -> usize {
         self.satellites.len()
+    }
+
+    pub fn cache_ephemeris(&mut self, start: Epoch, end: Epoch, step: TimeSpan) {
+        self.satellites.par_iter_mut().for_each(|(_, sat)| {
+            let _ = sat.get_ephemeris(start, end, step);
+        });
+    }
+
+    pub fn get_association_reports(
+        &self,
+        collections: &Vec<ObservationCollection>,
+    ) -> Vec<CollectionAssociationReport> {
+        collections
+            .par_iter()
+            .map(|collection| collection.get_association_report(self))
+            .collect()
     }
 }
 

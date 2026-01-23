@@ -155,7 +155,7 @@ impl PyObservation {
         py: Python<'_>,
         constellation: &PyConstellation,
     ) -> Vec<PyObservationAssociation> {
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_associations(constellation.inner())
                 .into_iter()

@@ -1,12 +1,15 @@
-use super::{Observation, ObservationAssociation};
-use crate::bodies::Satellite;
+use super::{CollectionAssociationReport, Observation, ObservationAssociation};
+use crate::bodies::{Constellation, Satellite};
 use crate::elements::CartesianVector;
+use crate::enums::AssociationConfidence;
 use crate::time::Epoch;
 use log;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct ObservationCollection {
+    id: String,
     epoch: Epoch,
     sensor_position: CartesianVector,
     sensor_direction: CartesianVector,
@@ -65,6 +68,7 @@ impl ObservationCollection {
         );
 
         Ok(Self {
+            id: Uuid::new_v4().to_string(),
             epoch: reference_epoch,
             sensor_position: reference_position,
             sensor_direction,
@@ -75,6 +79,10 @@ impl ObservationCollection {
 
     pub fn get_sensor_position(&self) -> CartesianVector {
         self.sensor_position
+    }
+
+    pub fn get_id(&self) -> String {
+        self.id.clone()
     }
 
     pub fn get_sensor_direction(&self) -> CartesianVector {
@@ -95,13 +103,25 @@ impl ObservationCollection {
 
     pub fn get_visibility(&self, satellite: &Satellite) -> bool {
         if let Some(sat_state) = satellite.get_state_at_epoch(self.epoch) {
-            let sensor_to_sat = sat_state.position - self.sensor_position;
-            let angle_from_bore = sensor_to_sat.angle(&self.sensor_direction);
-            let max_angle = (self.field_of_view / 2.0).max(1.0);
-            angle_from_bore.to_degrees() <= max_angle
+            self.is_state_visible(&sat_state)
         } else {
             false
         }
+    }
+
+    pub fn get_visibility_interpolated(&self, satellite: &Satellite) -> bool {
+        if let Some(sat_state) = satellite.interpolate_state_at_epoch(self.epoch) {
+            self.is_state_visible(&sat_state)
+        } else {
+            false
+        }
+    }
+
+    fn is_state_visible(&self, sat_state: &crate::elements::CartesianState) -> bool {
+        let sensor_to_sat = sat_state.position - self.sensor_position;
+        let angle_from_bore = sensor_to_sat.angle(&self.sensor_direction);
+        let max_angle = (self.field_of_view / 2.0).max(1.0);
+        angle_from_bore.to_degrees() <= max_angle
     }
 
     pub fn get_association(&self, satellite: &Satellite) -> Option<ObservationAssociation> {
@@ -136,5 +156,102 @@ impl ObservationCollection {
         }
 
         groups.into_values().filter_map(|group| Self::new(group).ok()).collect()
+    }
+
+    pub fn get_association_report(&self, satellites: &Constellation) -> CollectionAssociationReport {
+        let mut associations: Vec<ObservationAssociation> = Vec::new();
+        let mut moving_satellite_ids: HashSet<String> = HashSet::new();
+        let mut associated_satellite_ids: HashSet<String> = HashSet::new();
+        let mut associated_observation_ids: HashSet<String> = HashSet::new();
+
+        // Pre-filter satellites to only those visible in the field of view
+        let visible_satellites: HashMap<String, &Satellite> = satellites
+            .get_satellites()
+            .iter()
+            .filter(|(_, sat)| self.get_visibility_interpolated(sat))
+            .map(|(id, sat)| (id.clone(), sat))
+            .collect();
+
+        // Pre-compute all candidate associations with their states
+        // Structure: (observation_id, satellite_id, association)
+        let mut all_candidates: Vec<(String, String, ObservationAssociation)> = Vec::new();
+
+        for observation in &self.observations {
+            // First check observed_satellite_id if present
+            if let Some(ref observed_id) = observation.observed_satellite_id
+                && let Some(satellite) = visible_satellites.get(observed_id)
+                && let Some(state) = satellite.interpolate_state_at_epoch(self.epoch)
+                && let Some(association) = observation.get_association_from_state(observed_id, &state)
+            {
+                all_candidates.push((observation.id.clone(), observed_id.clone(), association));
+            }
+
+            // Then check all other visible satellites
+            for (sat_id, satellite) in &visible_satellites {
+                if observation.observed_satellite_id.as_ref() == Some(sat_id) {
+                    continue;
+                }
+
+                if let Some(state) = satellite.interpolate_state_at_epoch(self.epoch)
+                    && let Some(association) = observation.get_association_from_state(sat_id, &state)
+                {
+                    all_candidates.push((observation.id.clone(), sat_id.clone(), association));
+                }
+            }
+        }
+
+        // Process in order of confidence: High, then Medium, then Low
+        // Within each confidence level, sort by residual range (best first)
+        for target_confidence in [
+            AssociationConfidence::High,
+            AssociationConfidence::Medium,
+            AssociationConfidence::Low,
+        ] {
+            // Filter candidates for this confidence level
+            let mut level_candidates: Vec<&(String, String, ObservationAssociation)> = all_candidates
+                .iter()
+                .filter(|(obs_id, sat_id, assoc)| {
+                    !associated_observation_ids.contains(obs_id)
+                        && !associated_satellite_ids.contains(sat_id)
+                        && assoc.get_confidence() == target_confidence
+                })
+                .collect();
+
+            // Sort by residual range (smallest first = best match)
+            level_candidates.sort_by(|a, b| {
+                a.2.get_residual()
+                    .get_range()
+                    .partial_cmp(&b.2.get_residual().get_range())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            // Greedily assign best matches
+            for (obs_id, sat_id, association) in level_candidates {
+                if associated_observation_ids.contains(obs_id) || associated_satellite_ids.contains(sat_id) {
+                    continue;
+                }
+
+                associated_observation_ids.insert(obs_id.clone());
+                associated_satellite_ids.insert(sat_id.clone());
+
+                // Only add to moving_satellite_ids for low/medium confidence
+                if target_confidence != AssociationConfidence::High {
+                    moving_satellite_ids.insert(sat_id.clone());
+                }
+
+                associations.push(association.clone());
+            }
+        }
+
+        // Collect orphan observations (those without any association)
+        let orphan_observations: Vec<Observation> = self
+            .observations
+            .iter()
+            .filter(|obs| !associated_observation_ids.contains(&obs.id))
+            .cloned()
+            .collect();
+
+        let moving_satellite_ids: Vec<String> = moving_satellite_ids.into_iter().collect();
+        CollectionAssociationReport::new(self.id.clone(), orphan_observations, associations, moving_satellite_ids)
     }
 }

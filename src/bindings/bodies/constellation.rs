@@ -1,11 +1,13 @@
 use super::{PyObservatory, PySatellite};
 use crate::bindings::catalogs::PyTLECatalog;
 use crate::bindings::elements::{PyCartesianState, PyEphemeris, PyOrbitPlotData};
+use crate::bindings::estimation::{PyCollectionAssociationReport, PyObservationCollection};
 use crate::bindings::events::{PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport};
-use crate::bindings::time::{PyEpoch, PyTimeSpan};
 use crate::bindings::propagation::PyPropagationBackend;
+use crate::bindings::time::{PyEpoch, PyTimeSpan};
 use crate::bodies::{Constellation, Satellite};
 use crate::catalogs::TLECatalog;
+use crate::estimation::ObservationCollection;
 use crate::time::{Epoch, TimeSpan};
 use pyo3::prelude::*;
 use std::collections::HashMap;
@@ -91,7 +93,7 @@ impl PyConstellation {
         let min_duration: TimeSpan = min_duration.into();
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             PyHorizonAccessReport::from(self.inner.get_horizon_access_report(
                 site.inner(),
                 start,
@@ -112,7 +114,7 @@ impl PyConstellation {
     ) -> PyCloseApproachReport {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             PyCloseApproachReport::from(
                 self.inner
                     .get_ca_report_vs_one(sat.inner_mut(), start, end, distance_threshold),
@@ -129,7 +131,7 @@ impl PyConstellation {
     ) -> PyCloseApproachReport {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| PyCloseApproachReport::from(self.inner.get_ca_report_vs_many(start, end, distance_threshold)))
+        py.detach(|| PyCloseApproachReport::from(self.inner.get_ca_report_vs_many(start, end, distance_threshold)))
     }
 
     pub fn get_proximity_report_vs_one(
@@ -142,7 +144,7 @@ impl PyConstellation {
     ) -> PyProximityReport {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             PyProximityReport::from(
                 self.inner
                     .get_proximity_report_vs_one(sat.inner_mut(), start, end, distance_threshold),
@@ -159,7 +161,7 @@ impl PyConstellation {
     ) -> PyProximityReport {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| PyProximityReport::from(self.inner.get_proximity_report_vs_many(start, end, distance_threshold)))
+        py.detach(|| PyProximityReport::from(self.inner.get_proximity_report_vs_many(start, end, distance_threshold)))
     }
 
     pub fn get_maneuver_events(
@@ -173,7 +175,7 @@ impl PyConstellation {
     ) -> PyManeuverReport {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             PyManeuverReport::from(
                 self.inner
                     .get_maneuver_events(&mut future_sats.inner, start, end, distance_threshold, velocity_threshold),
@@ -191,7 +193,7 @@ impl PyConstellation {
         let step_size: TimeSpan = step_size.into();
         let start_epoch: Epoch = start_epoch.into();
         let end_epoch: Epoch = end_epoch.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_ephemeris(start_epoch, end_epoch, step_size)
                 .into_iter()
@@ -267,7 +269,7 @@ impl PyConstellation {
         let epochs: Vec<Epoch> = epochs.into_iter().map(|e| e.into()).collect();
         let backend = backend.map(|b| b.into());
         
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_states_at_epochs(&epochs, backend)
                 .into_iter()
@@ -306,7 +308,7 @@ impl PyConstellation {
         let step: TimeSpan = step.into();
         let backend = backend.map(|b| b.into());
         
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_batch_ephemeris(start, end, step, backend)
                 .into_iter()
@@ -325,5 +327,45 @@ impl PyConstellation {
     #[staticmethod]
     pub fn is_gpu_available() -> bool {
         Constellation::is_gpu_available()
+    }
+
+    /// Cache ephemeris for all satellites in the constellation
+    ///
+    /// # Arguments
+    /// * `start` - Start epoch for ephemeris caching
+    /// * `end` - End epoch for ephemeris caching
+    /// * `step` - Time step between cached states
+    pub fn cache_ephemeris(&mut self, py: Python<'_>, start: PyEpoch, end: PyEpoch, step: PyTimeSpan) {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        let step: TimeSpan = step.into();
+        py.detach(|| {
+            self.inner.cache_ephemeris(start, end, step);
+        });
+    }
+
+    /// Get association reports for multiple observation collections
+    ///
+    /// # Arguments
+    /// * `collections` - List of observation collections to find associations for
+    ///
+    /// # Returns
+    /// List of CollectionAssociationReport, one per input collection
+    pub fn get_association_reports(
+        &self,
+        py: Python<'_>,
+        collections: Vec<PyObservationCollection>,
+    ) -> Vec<PyCollectionAssociationReport> {
+        let collections: Vec<ObservationCollection> = collections
+            .into_iter()
+            .map(|c| c.inner().clone())
+            .collect();
+        py.detach(|| {
+            self.inner
+                .get_association_reports(&collections)
+                .into_iter()
+                .map(PyCollectionAssociationReport::from)
+                .collect()
+        })
     }
 }

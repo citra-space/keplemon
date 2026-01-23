@@ -89,7 +89,7 @@ impl PyBatchPropagator {
         let tles: Vec<TLE> = tles.into_iter().map(|tle| tle.into()).collect();
         let epochs: Vec<Epoch> = epochs.into_iter().map(|e| e.into()).collect();
         
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .propagate_batch(&tles, &epochs)
                 .map(|results| {

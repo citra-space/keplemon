@@ -223,7 +223,7 @@ impl PyTLE {
         let tles: Vec<TLE> = tles.into_iter().map(|tle| tle.into()).collect();
         let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
         
-        py.allow_threads(|| {
+        py.detach(|| {
             TLE::propagate_batch(&tles, &epochs)
                 .map(|results| {
                     results
@@ -257,7 +257,7 @@ impl PyTLE {
     ) -> PyResult<Vec<PyCartesianState>> {
         let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
         
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .propagate_to_epochs(&epochs)
                 .map(|states| {

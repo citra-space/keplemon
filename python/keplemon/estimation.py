@@ -5,6 +5,7 @@ from keplemon._keplemon.estimation import (  # type: ignore
     Covariance,
     ObservationAssociation,
     ObservationCollection,
+    CollectionAssociationReport,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "Covariance",
     "ObservationAssociation",
     "ObservationCollection",
+    "CollectionAssociationReport",
 ]

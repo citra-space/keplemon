@@ -241,7 +241,7 @@ impl PySatellite {
     ) -> Option<PyProximityReport> {
         let start_epoch: Epoch = start_epoch.into();
         let end_epoch: Epoch = end_epoch.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_proximity_report(other.inner_mut(), start_epoch, end_epoch, distance_threshold)
                 .map(PyProximityReport::from)
@@ -259,7 +259,7 @@ impl PySatellite {
     ) -> Option<PyManeuverEvent> {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_maneuver_event(future_sat.inner_mut(), start, end, distance_threshold, velocity_threshold)
                 .map(PyManeuverEvent::from)
@@ -279,7 +279,7 @@ impl PySatellite {
         let observatories: Vec<Observatory> = observatories.into_iter().map(Observatory::from).collect();
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_observatory_access_report(observatories, start, end, min_el, min_duration)
                 .map(PyHorizonAccessReport::from)
