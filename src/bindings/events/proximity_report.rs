@@ -47,7 +47,11 @@ impl PyProximityReport {
 
     #[getter]
     pub fn get_events(&self) -> Vec<PyProximityEvent> {
-        self.inner.get_events().into_iter().map(PyProximityEvent::from).collect()
+        self.inner
+            .get_events()
+            .into_iter()
+            .map(PyProximityEvent::from)
+            .collect()
     }
 
     #[setter]

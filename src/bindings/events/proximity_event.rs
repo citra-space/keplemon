@@ -32,7 +32,15 @@ impl PyProximityEvent {
     ) -> Self {
         let start_epoch: Epoch = start_epoch.into();
         let end_epoch: Epoch = end_epoch.into();
-        ProximityEvent::new(primary_id, secondary_id, start_epoch, end_epoch, minimum_distance, maximum_distance).into()
+        ProximityEvent::new(
+            primary_id,
+            secondary_id,
+            start_epoch,
+            end_epoch,
+            minimum_distance,
+            maximum_distance,
+        )
+        .into()
     }
 }
 

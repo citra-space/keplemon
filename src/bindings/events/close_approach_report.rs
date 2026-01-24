@@ -1,6 +1,6 @@
 use super::PyCloseApproach;
-use crate::events::{CloseApproach, CloseApproachReport};
 use crate::bindings::time::PyEpoch;
+use crate::events::{CloseApproach, CloseApproachReport};
 use crate::time::Epoch;
 use pyo3::prelude::*;
 

@@ -150,11 +150,7 @@ impl PyObservation {
         self.inner.observed_satellite_id = observed_satellite_id;
     }
 
-    pub fn get_associations(
-        &self,
-        py: Python<'_>,
-        constellation: &PyConstellation,
-    ) -> Vec<PyObservationAssociation> {
+    pub fn get_associations(&self, py: Python<'_>, constellation: &PyConstellation) -> Vec<PyObservationAssociation> {
         py.detach(|| {
             self.inner
                 .get_associations(constellation.inner())

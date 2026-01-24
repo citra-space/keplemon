@@ -261,7 +261,13 @@ impl PySatellite {
         let end: Epoch = end.into();
         py.detach(|| {
             self.inner
-                .get_maneuver_event(future_sat.inner_mut(), start, end, distance_threshold, velocity_threshold)
+                .get_maneuver_event(
+                    future_sat.inner_mut(),
+                    start,
+                    end,
+                    distance_threshold,
+                    velocity_threshold,
+                )
                 .map(PyManeuverEvent::from)
         })
     }

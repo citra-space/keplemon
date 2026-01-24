@@ -52,7 +52,11 @@ impl PyManeuverReport {
 
     #[getter]
     pub fn get_maneuvers(&self) -> Vec<PyManeuverEvent> {
-        self.inner.get_maneuvers().into_iter().map(PyManeuverEvent::from).collect()
+        self.inner
+            .get_maneuvers()
+            .into_iter()
+            .map(PyManeuverEvent::from)
+            .collect()
     }
 
     #[setter]

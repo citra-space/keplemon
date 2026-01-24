@@ -1,10 +1,10 @@
 //! Python bindings for BatchPropagator
 
+use crate::bindings::elements::PyCartesianState;
 use crate::bindings::elements::PyTLE;
 use crate::bindings::time::PyEpoch;
-use crate::bindings::elements::PyCartesianState;
-use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::elements::TLE;
+use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::time::Epoch;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -72,11 +72,11 @@ impl PyBatchPropagator {
     }
 
     /// Propagate multiple TLEs to multiple epochs
-    /// 
+    ///
     /// # Arguments
     /// * `tles` - List of TLEs to propagate
     /// * `epochs` - List of epochs to propagate to
-    /// 
+    ///
     /// # Returns
     /// 2D list of states: result[sat_idx][epoch_idx]
     #[pyo3(signature = (tles, epochs))]
@@ -88,19 +88,14 @@ impl PyBatchPropagator {
     ) -> PyResult<Vec<Vec<PyCartesianState>>> {
         let tles: Vec<TLE> = tles.into_iter().map(|tle| tle.into()).collect();
         let epochs: Vec<Epoch> = epochs.into_iter().map(|e| e.into()).collect();
-        
+
         py.detach(|| {
             self.inner
                 .propagate_batch(&tles, &epochs)
                 .map(|results| {
                     results
                         .into_iter()
-                        .map(|sat_states| {
-                            sat_states
-                                .into_iter()
-                                .map(PyCartesianState::from)
-                                .collect()
-                        })
+                        .map(|sat_states| sat_states.into_iter().map(PyCartesianState::from).collect())
                         .collect()
                 })
                 .map_err(|e| PyValueError::new_err(e))

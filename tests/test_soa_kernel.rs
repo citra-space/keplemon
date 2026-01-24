@@ -51,12 +51,12 @@ fn get_test_tles() -> Vec<TleDataGpu> {
 #[test]
 fn test_soa_matches_aos_kernel() {
     // Create propagator
-    let mut propagator = CudaSgp4Propagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut propagator = CudaSgp4Propagator::new().expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
     let tles = get_test_tles();
-    propagator.init_satellites(&tles)
+    propagator
+        .init_satellites(&tles)
         .expect("Failed to initialize satellites");
 
     // Generate test times
@@ -66,16 +66,19 @@ fn test_soa_matches_aos_kernel() {
         .collect();
 
     // Propagate with AoS kernel (original)
-    let aos_results = propagator.propagate(&jd_times)
-        .expect("AoS propagation failed");
+    let aos_results = propagator.propagate(&jd_times).expect("AoS propagation failed");
 
     // Propagate with SoA kernel (optimized)
-    let soa_results = propagator.propagate_soa(&jd_times)
-        .expect("SoA propagation failed");
+    let soa_results = propagator.propagate_soa(&jd_times).expect("SoA propagation failed");
 
     // Verify same number of results
-    assert_eq!(aos_results.len(), soa_results.len(),
-        "Result count mismatch: AoS={}, SoA={}", aos_results.len(), soa_results.len());
+    assert_eq!(
+        aos_results.len(),
+        soa_results.len(),
+        "Result count mismatch: AoS={}, SoA={}",
+        aos_results.len(),
+        soa_results.len()
+    );
 
     // Compare each result
     let mut max_pos_diff = 0.0f64;
@@ -83,12 +86,8 @@ fn test_soa_matches_aos_kernel() {
     let mut mismatch_count = 0;
 
     for (idx, (aos, soa)) in aos_results.iter().zip(soa_results.iter()).enumerate() {
-        let pos_diff = ((aos.x - soa.x).powi(2) + 
-                        (aos.y - soa.y).powi(2) + 
-                        (aos.z - soa.z).powi(2)).sqrt();
-        let vel_diff = ((aos.vx - soa.vx).powi(2) + 
-                        (aos.vy - soa.vy).powi(2) + 
-                        (aos.vz - soa.vz).powi(2)).sqrt();
+        let pos_diff = ((aos.x - soa.x).powi(2) + (aos.y - soa.y).powi(2) + (aos.z - soa.z).powi(2)).sqrt();
+        let vel_diff = ((aos.vx - soa.vx).powi(2) + (aos.vy - soa.vy).powi(2) + (aos.vz - soa.vz).powi(2)).sqrt();
 
         max_pos_diff = max_pos_diff.max(pos_diff);
         max_vel_diff = max_vel_diff.max(vel_diff);
@@ -96,8 +95,10 @@ fn test_soa_matches_aos_kernel() {
         // Allow tiny floating-point differences (< 1 nanometer position, 1 nm/s velocity)
         if pos_diff > 1e-12 || vel_diff > 1e-12 {
             if mismatch_count < 5 {
-                println!("Mismatch at index {}: pos_diff={:.2e} km, vel_diff={:.2e} km/s", 
-                    idx, pos_diff, vel_diff);
+                println!(
+                    "Mismatch at index {}: pos_diff={:.2e} km, vel_diff={:.2e} km/s",
+                    idx, pos_diff, vel_diff
+                );
                 println!("  AoS: ({:.10}, {:.10}, {:.10}) km", aos.x, aos.y, aos.z);
                 println!("  SoA: ({:.10}, {:.10}, {:.10}) km", soa.x, soa.y, soa.z);
             }
@@ -105,9 +106,11 @@ fn test_soa_matches_aos_kernel() {
         }
 
         // Check error codes match
-        assert_eq!(aos.error_code, soa.error_code,
-            "Error code mismatch at index {}: AoS={}, SoA={}", 
-            idx, aos.error_code, soa.error_code);
+        assert_eq!(
+            aos.error_code, soa.error_code,
+            "Error code mismatch at index {}: AoS={}, SoA={}",
+            idx, aos.error_code, soa.error_code
+        );
     }
 
     println!("\n=== AoS vs SoA Comparison ===");
@@ -117,31 +120,32 @@ fn test_soa_matches_aos_kernel() {
     println!("Mismatches (>1e-12 km): {}", mismatch_count);
 
     // Should have zero mismatches - kernels should produce bit-identical results
-    assert_eq!(mismatch_count, 0,
-        "SoA kernel should produce identical results to AoS kernel");
+    assert_eq!(
+        mismatch_count, 0,
+        "SoA kernel should produce identical results to AoS kernel"
+    );
 }
 
 #[test]
 fn test_soa_arrays_format() {
     // Create propagator
-    let mut propagator = CudaSgp4Propagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut propagator = CudaSgp4Propagator::new().expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
     let tles = get_test_tles();
     let n_sats = tles.len();
-    propagator.init_satellites(&tles)
+    propagator
+        .init_satellites(&tles)
         .expect("Failed to initialize satellites");
 
     // Generate test times
     let base_jd = 2460500.5;
     let n_times = 10;
-    let jd_times: Vec<f64> = (0..n_times)
-        .map(|i| base_jd + (i as f64) * 0.01)
-        .collect();
+    let jd_times: Vec<f64> = (0..n_times).map(|i| base_jd + (i as f64) * 0.01).collect();
 
     // Get SoA arrays directly
-    let soa_arrays = propagator.propagate_soa_arrays(&jd_times)
+    let soa_arrays = propagator
+        .propagate_soa_arrays(&jd_times)
         .expect("SoA arrays propagation failed");
 
     // Verify dimensions
@@ -157,8 +161,7 @@ fn test_soa_arrays_format() {
 
     // Verify indexing: time-major order means buffer[time_idx * n_sats + sat_idx]
     // Compare with AoS results which are sat-major: results[sat_idx * n_times + time_idx]
-    let aos_results = propagator.propagate(&jd_times)
-        .expect("AoS propagation failed");
+    let aos_results = propagator.propagate(&jd_times).expect("AoS propagation failed");
 
     for sat_idx in 0..n_sats {
         for time_idx in 0..n_times {
@@ -168,13 +171,26 @@ fn test_soa_arrays_format() {
             // Use the get() helper to access SoA data
             let soa = soa_arrays.get(sat_idx, time_idx);
 
-            assert!((aos.x - soa.x).abs() < 1e-12,
-                "X mismatch at sat={}, time={}: AoS={}, SoA={}", 
-                sat_idx, time_idx, aos.x, soa.x);
-            assert!((aos.y - soa.y).abs() < 1e-12,
-                "Y mismatch at sat={}, time={}", sat_idx, time_idx);
-            assert!((aos.z - soa.z).abs() < 1e-12,
-                "Z mismatch at sat={}, time={}", sat_idx, time_idx);
+            assert!(
+                (aos.x - soa.x).abs() < 1e-12,
+                "X mismatch at sat={}, time={}: AoS={}, SoA={}",
+                sat_idx,
+                time_idx,
+                aos.x,
+                soa.x
+            );
+            assert!(
+                (aos.y - soa.y).abs() < 1e-12,
+                "Y mismatch at sat={}, time={}",
+                sat_idx,
+                time_idx
+            );
+            assert!(
+                (aos.z - soa.z).abs() < 1e-12,
+                "Z mismatch at sat={}, time={}",
+                sat_idx,
+                time_idx
+            );
         }
     }
 
@@ -187,21 +203,19 @@ fn test_soa_arrays_format() {
 #[test]
 fn test_soa_into_preallocated() {
     // Create propagator
-    let mut propagator = CudaSgp4Propagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut propagator = CudaSgp4Propagator::new().expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
     let tles = get_test_tles();
     let n_sats = tles.len();
-    propagator.init_satellites(&tles)
+    propagator
+        .init_satellites(&tles)
         .expect("Failed to initialize satellites");
 
     // Generate test times
     let base_jd = 2460500.5;
     let n_times = 20;
-    let jd_times: Vec<f64> = (0..n_times)
-        .map(|i| base_jd + (i as f64) * 0.01)
-        .collect();
+    let jd_times: Vec<f64> = (0..n_times).map(|i| base_jd + (i as f64) * 0.01).collect();
 
     let n_results = n_sats * n_times;
 
@@ -215,12 +229,9 @@ fn test_soa_into_preallocated() {
     let mut error = vec![0i32; n_results];
 
     // Propagate into pre-allocated arrays
-    propagator.propagate_soa_into(
-        &jd_times,
-        &mut x, &mut y, &mut z,
-        &mut vx, &mut vy, &mut vz,
-        &mut error,
-    ).expect("SoA into propagation failed");
+    propagator
+        .propagate_soa_into(&jd_times, &mut x, &mut y, &mut z, &mut vx, &mut vy, &mut vz, &mut error)
+        .expect("SoA into propagation failed");
 
     // Verify arrays were populated (not all zeros)
     assert!(x.iter().any(|&v| v != 0.0), "X array should have non-zero values");
@@ -228,12 +239,18 @@ fn test_soa_into_preallocated() {
     assert!(z.iter().any(|&v| v != 0.0), "Z array should have non-zero values");
 
     // Compare with regular SoA arrays method
-    let soa_arrays = propagator.propagate_soa_arrays(&jd_times)
+    let soa_arrays = propagator
+        .propagate_soa_arrays(&jd_times)
         .expect("SoA arrays propagation failed");
 
     for i in 0..n_results {
-        assert!((x[i] - soa_arrays.x[i]).abs() < 1e-12,
-            "X mismatch at {}: into={}, arrays={}", i, x[i], soa_arrays.x[i]);
+        assert!(
+            (x[i] - soa_arrays.x[i]).abs() < 1e-12,
+            "X mismatch at {}: into={}, arrays={}",
+            i,
+            x[i],
+            soa_arrays.x[i]
+        );
         assert!((y[i] - soa_arrays.y[i]).abs() < 1e-12, "Y mismatch at {}", i);
         assert!((z[i] - soa_arrays.z[i]).abs() < 1e-12, "Z mismatch at {}", i);
     }

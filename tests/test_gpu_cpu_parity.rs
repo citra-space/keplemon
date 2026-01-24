@@ -14,7 +14,7 @@
 
 use keplemon::bodies::Satellite;
 use keplemon::elements::TLE;
-use keplemon::gpu::{cuda_sgp4::TleDataGpu, CudaSgp4Propagator};
+use keplemon::gpu::{CudaSgp4Propagator, cuda_sgp4::TleDataGpu};
 use keplemon::time::TimeSpan;
 
 const JD_1950: f64 = 2433281.5;
@@ -85,10 +85,7 @@ fn test_gpu_cpu_parity_all_regimes() {
     println!("\n=== GPU vs CPU Parity Test (All Orbit Regimes) ===\n");
 
     // Combine all TLEs
-    let all_tles: Vec<_> = NEAR_EARTH_TLES
-        .iter()
-        .chain(DEEP_SPACE_TLES.iter())
-        .collect();
+    let all_tles: Vec<_> = NEAR_EARTH_TLES.iter().chain(DEEP_SPACE_TLES.iter()).collect();
 
     // Parse TLEs
     let mut satellites = Vec::new();
@@ -101,11 +98,7 @@ fn test_gpu_cpu_parity_all_regimes() {
                 tle.name = Some(name.to_string());
                 let mm = tle.get_mean_motion();
                 let period = 1440.0 / mm;
-                let regime = if period > 225.0 {
-                    "deep-space"
-                } else {
-                    "near-earth"
-                };
+                let regime = if period > 225.0 { "deep-space" } else { "near-earth" };
                 println!("  {} ({}, period={:.0} min)", name, regime, period);
                 satellites.push(Satellite::from(tle.clone()));
                 tles.push(tle);
@@ -158,8 +151,7 @@ fn test_gpu_cpu_parity_all_regimes() {
         .collect();
 
     let mut gpu = CudaSgp4Propagator::new().expect("Failed to create GPU propagator");
-    gpu.init_satellites(&tle_gpu)
-        .expect("Failed to init satellites");
+    gpu.init_satellites(&tle_gpu).expect("Failed to init satellites");
 
     let gpu_start = std::time::Instant::now();
     let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();
@@ -216,7 +208,8 @@ fn test_gpu_cpu_parity_all_regimes() {
             max_vel_err = max_vel_err.max(vel_err);
 
             // Print all errors for debugging
-            if pos_err > 0.0001 {  // > 0.1m
+            if pos_err > 0.0001 {
+                // > 0.1m
                 println!(
                     "  {} t={}: pos_err={:.3}m vel_err={:.3}mm/s",
                     name,
@@ -226,12 +219,15 @@ fn test_gpu_cpu_parity_all_regimes() {
                 );
                 // Print detailed positions for ISS at t=24h
                 if sat_idx == 0 && time_idx == 4 {
-                    println!("    CPU: r=({:14.6}, {:14.6}, {:14.6}) km",
-                        cpu.position[0], cpu.position[1], cpu.position[2]);
-                    println!("    GPU: r=({:14.6}, {:14.6}, {:14.6}) km",
-                        gpu_state.x, gpu_state.y, gpu_state.z);
-                    println!("    diff=({:14.6}, {:14.6}, {:14.6}) km",
-                        dx, dy, dz);
+                    println!(
+                        "    CPU: r=({:14.6}, {:14.6}, {:14.6}) km",
+                        cpu.position[0], cpu.position[1], cpu.position[2]
+                    );
+                    println!(
+                        "    GPU: r=({:14.6}, {:14.6}, {:14.6}) km",
+                        gpu_state.x, gpu_state.y, gpu_state.z
+                    );
+                    println!("    diff=({:14.6}, {:14.6}, {:14.6}) km", dx, dy, dz);
                 }
             }
 
@@ -243,11 +239,7 @@ fn test_gpu_cpu_parity_all_regimes() {
     println!("\n=== Results ===");
     println!("Successful: {}", success);
     println!("Failures:   {}", failures);
-    println!(
-        "Max position error: {:.3} m ({})",
-        max_pos_err * 1000.0,
-        max_err_sat
-    );
+    println!("Max position error: {:.3} m ({})", max_pos_err * 1000.0, max_err_sat);
     println!("Max velocity error: {:.3} mm/s", max_vel_err * 1e6);
     println!("CPU time: {:.2}ms", cpu_time.as_secs_f64() * 1000.0);
     println!("GPU time: {:.2}ms", gpu_time.as_secs_f64() * 1000.0);
@@ -292,8 +284,7 @@ fn test_dual_mode_equivalence_leo_geo() {
     for (name, line1, line2) in &test_tles {
         println!("Testing: {}", name);
 
-        let tle = TLE::from_lines(line1, line2, None)
-            .expect("Failed to parse TLE");
+        let tle = TLE::from_lines(line1, line2, None).expect("Failed to parse TLE");
 
         let kep = tle.get_keplerian_state();
         let tle_gpu = TleDataGpu {
@@ -319,26 +310,29 @@ fn test_dual_mode_equivalence_leo_geo() {
         ];
 
         // Mode 1: CPU-copy (existing API)
-        let mut propagator1 = CudaSgp4Propagator::new()
-            .expect("Failed to create propagator 1");
-        propagator1.init_satellites(&[tle_gpu.clone()])
+        let mut propagator1 = CudaSgp4Propagator::new().expect("Failed to create propagator 1");
+        propagator1
+            .init_satellites(&[tle_gpu.clone()])
             .expect("Failed to init propagator 1");
 
-        let cpu_copy_results = propagator1.propagate_soa_arrays(&jd_times)
+        let cpu_copy_results = propagator1
+            .propagate_soa_arrays(&jd_times)
             .expect("propagate_soa_arrays failed");
 
         // Mode 2: GPU-resident (new API)
-        let mut propagator2 = CudaSgp4Propagator::new()
-            .expect("Failed to create propagator 2");
-        propagator2.init_satellites(&[tle_gpu])
+        let mut propagator2 = CudaSgp4Propagator::new().expect("Failed to create propagator 2");
+        propagator2
+            .init_satellites(&[tle_gpu])
             .expect("Failed to init propagator 2");
 
-        let gpu_resident = propagator2.propagate_soa_gpu_resident(&jd_times)
+        let gpu_resident = propagator2
+            .propagate_soa_gpu_resident(&jd_times)
             .expect("propagate_soa_gpu_resident failed");
 
         // Convert GPU-resident to host for comparison
         let device = propagator2.cuda_device();
-        let gpu_resident_results = gpu_resident.to_soa_arrays(device)
+        let gpu_resident_results = gpu_resident
+            .to_soa_arrays(device)
             .expect("Failed to convert GPU-resident to SoA arrays");
 
         // Compare results (should be bit-for-bit identical)
@@ -365,25 +359,38 @@ fn test_dual_mode_equivalence_leo_geo() {
             max_pos_diff = max_pos_diff.max(pos_diff);
             max_vel_diff = max_vel_diff.max(vel_diff);
 
-            assert_eq!(cpu_copy_results.error_code[idx], gpu_resident_results.error_code[idx],
-                "{} time_idx={}: error codes differ", name, time_idx);
+            assert_eq!(
+                cpu_copy_results.error_code[idx], gpu_resident_results.error_code[idx],
+                "{} time_idx={}: error codes differ",
+                name, time_idx
+            );
 
             // The results should be identical (same kernel, same GPU execution)
             assert!(
                 pos_diff < 1e-10, // Effectively zero (floating-point precision limit)
                 "{} time_idx={}: position differs by {:.3e} km (expected identical)",
-                name, time_idx, pos_diff
+                name,
+                time_idx,
+                pos_diff
             );
 
             assert!(
                 vel_diff < 1e-13, // Effectively zero for velocities
                 "{} time_idx={}: velocity differs by {:.3e} km/s (expected identical)",
-                name, time_idx, vel_diff
+                name,
+                time_idx,
+                vel_diff
             );
         }
 
-        println!("  ✓ Max position difference: {:.3e} km (bit-for-bit identical)", max_pos_diff);
-        println!("  ✓ Max velocity difference: {:.3e} km/s (bit-for-bit identical)", max_vel_diff);
+        println!(
+            "  ✓ Max position difference: {:.3e} km (bit-for-bit identical)",
+            max_pos_diff
+        );
+        println!(
+            "  ✓ Max velocity difference: {:.3e} km/s (bit-for-bit identical)",
+            max_vel_diff
+        );
     }
 
     println!("\n[PASS] Dual-mode APIs produce identical results for LEO and GEO");

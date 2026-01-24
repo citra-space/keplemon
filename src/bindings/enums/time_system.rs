@@ -22,21 +22,13 @@ impl Display for PyTimeSystem {
 #[pymethods]
 impl PyTimeSystem {
     #[classattr]
-    pub const UTC: Self = Self {
-        inner: TimeSystem::UTC,
-    };
+    pub const UTC: Self = Self { inner: TimeSystem::UTC };
     #[classattr]
-    pub const TAI: Self = Self {
-        inner: TimeSystem::TAI,
-    };
+    pub const TAI: Self = Self { inner: TimeSystem::TAI };
     #[classattr]
-    pub const UT1: Self = Self {
-        inner: TimeSystem::UT1,
-    };
+    pub const UT1: Self = Self { inner: TimeSystem::UT1 };
     #[classattr]
-    pub const TT: Self = Self {
-        inner: TimeSystem::TT,
-    };
+    pub const TT: Self = Self { inner: TimeSystem::TT };
 
     #[getter]
     fn value(&self) -> &str {

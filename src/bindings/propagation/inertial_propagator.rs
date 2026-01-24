@@ -1,11 +1,11 @@
 use super::PyForceProperties;
-use crate::bindings::elements::{PyCartesianState, PyKeplerianState};
 use crate::bindings::elements::PyTLE;
+use crate::bindings::elements::{PyCartesianState, PyKeplerianState};
+use crate::bindings::time::PyEpoch;
 use crate::bodies::Satellite;
 use crate::elements::TLE;
 use crate::estimation::Observation;
 use crate::propagation::InertialPropagator;
-use crate::bindings::time::PyEpoch;
 use crate::time::Epoch;
 use nalgebra::{DMatrix, DVector};
 use pyo3::prelude::*;
@@ -45,12 +45,16 @@ impl PyInertialPropagator {
 
     pub fn get_cartesian_state_at_epoch(&self, epoch: PyEpoch) -> Option<PyCartesianState> {
         let epoch: Epoch = epoch.into();
-        self.inner.get_cartesian_state_at_epoch(epoch).map(PyCartesianState::from)
+        self.inner
+            .get_cartesian_state_at_epoch(epoch)
+            .map(PyCartesianState::from)
     }
 
     pub fn get_keplerian_state_at_epoch(&self, epoch: PyEpoch) -> Option<PyKeplerianState> {
         let epoch: Epoch = epoch.into();
-        self.inner.get_keplerian_state_at_epoch(epoch).map(PyKeplerianState::from)
+        self.inner
+            .get_keplerian_state_at_epoch(epoch)
+            .map(PyKeplerianState::from)
     }
 
     #[getter]
@@ -85,11 +89,7 @@ impl PyInertialPropagator {
         self.inner.get_jacobian(ob, use_drag, use_srp)
     }
 
-    pub fn build_perturbed_satellites(
-        &self,
-        use_drag: bool,
-        use_srp: bool,
-    ) -> Result<Vec<(Satellite, f64)>, String> {
+    pub fn build_perturbed_satellites(&self, use_drag: bool, use_srp: bool) -> Result<Vec<(Satellite, f64)>, String> {
         self.inner.build_perturbed_satellites(use_drag, use_srp)
     }
 

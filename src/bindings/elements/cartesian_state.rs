@@ -1,8 +1,8 @@
 use super::{PyCartesianVector, PyKeplerianState};
 use crate::bindings::enums::PyReferenceFrame;
+use crate::bindings::time::PyEpoch;
 use crate::elements::{CartesianState, KeplerianState};
 use crate::enums::ReferenceFrame;
-use crate::bindings::time::PyEpoch;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 

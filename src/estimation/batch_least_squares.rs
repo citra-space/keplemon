@@ -4,6 +4,7 @@ use crate::configs;
 use crate::elements::EquinoctialElements;
 use crate::enums::{CovarianceType, KeplerianType};
 use crate::time::Epoch;
+use log;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
 use saal::astro;
@@ -117,6 +118,11 @@ impl BatchLeastSquares {
         for _ in 0..self.max_iterations {
             self.iterate()?;
             if self.converged {
+                log::debug!(
+                    "BLS converged in {} iterations with {:.3} RMS",
+                    self.iteration_count,
+                    self.get_rms().unwrap()
+                );
                 break;
             }
         }
@@ -582,6 +588,11 @@ impl BatchLeastSquares {
         // Compute weighted RMS for convergence testing
         let m: f64 = r.len() as f64;
         let current_weighted_rms = (wrss / m).sqrt();
+        log::debug!(
+            "BLS iteration {} has {:.3} weighted RMS",
+            self.iteration_count,
+            current_weighted_rms
+        );
         if self.weighted_rms.is_some() && (current_weighted_rms - self.weighted_rms.unwrap()).abs() < 1e-3 {
             self.converged = true;
         }

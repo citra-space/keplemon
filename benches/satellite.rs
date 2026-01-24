@@ -134,13 +134,8 @@ fn bench_get_observatory_access_report(c: &mut Criterion) {
         b.iter_batched(
             || base_sat.clone(),
             |mut sat| {
-                let _ = sat.get_observatory_access_report(
-                    observatories.clone(),
-                    start,
-                    end,
-                    min_elevation,
-                    min_duration,
-                );
+                let _ =
+                    sat.get_observatory_access_report(observatories.clone(), start, end, min_elevation, min_duration);
             },
             BatchSize::LargeInput,
         );

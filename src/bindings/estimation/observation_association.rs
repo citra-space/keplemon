@@ -1,7 +1,7 @@
 use super::PyObservationResidual;
 use crate::bindings::enums::PyAssociationConfidence;
-use crate::estimation::ObservationAssociation;
 use crate::enums::AssociationConfidence;
+use crate::estimation::ObservationAssociation;
 use pyo3::prelude::*;
 
 #[pyclass(name = "ObservationAssociation")]

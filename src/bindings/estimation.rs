@@ -17,7 +17,6 @@ pub use observation_residual::PyObservationResidual;
 use pyo3::prelude::*;
 use pyo3::py_run;
 
-
 pub fn register_estimation(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let estimation = PyModule::new(parent_module.py(), "estimation")?;
     estimation.add_class::<PyObservation>()?;

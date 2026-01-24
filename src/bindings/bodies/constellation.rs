@@ -115,10 +115,12 @@ impl PyConstellation {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
         py.detach(|| {
-            PyCloseApproachReport::from(
-                self.inner
-                    .get_ca_report_vs_one(sat.inner_mut(), start, end, distance_threshold),
-            )
+            PyCloseApproachReport::from(self.inner.get_ca_report_vs_one(
+                sat.inner_mut(),
+                start,
+                end,
+                distance_threshold,
+            ))
         })
     }
 
@@ -145,10 +147,12 @@ impl PyConstellation {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
         py.detach(|| {
-            PyProximityReport::from(
-                self.inner
-                    .get_proximity_report_vs_one(sat.inner_mut(), start, end, distance_threshold),
-            )
+            PyProximityReport::from(self.inner.get_proximity_report_vs_one(
+                sat.inner_mut(),
+                start,
+                end,
+                distance_threshold,
+            ))
         })
     }
 
@@ -176,10 +180,13 @@ impl PyConstellation {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
         py.detach(|| {
-            PyManeuverReport::from(
-                self.inner
-                    .get_maneuver_events(&mut future_sats.inner, start, end, distance_threshold, velocity_threshold),
-            )
+            PyManeuverReport::from(self.inner.get_maneuver_events(
+                &mut future_sats.inner,
+                start,
+                end,
+                distance_threshold,
+                velocity_threshold,
+            ))
         })
     }
 
@@ -252,11 +259,11 @@ impl PyConstellation {
     }
 
     /// Get states at multiple epochs using batch propagation (GPU-accelerated when available)
-    /// 
+    ///
     /// # Arguments
     /// * `epochs` - List of epochs to propagate to
     /// * `backend` - Optional backend selection (Auto, Cpu, or Gpu)
-    /// 
+    ///
     /// # Returns
     /// Dictionary mapping satellite ID to list of states (one per epoch)
     #[pyo3(signature = (epochs, backend = None))]
@@ -268,7 +275,7 @@ impl PyConstellation {
     ) -> HashMap<String, Vec<Option<PyCartesianState>>> {
         let epochs: Vec<Epoch> = epochs.into_iter().map(|e| e.into()).collect();
         let backend = backend.map(|b| b.into());
-        
+
         py.detach(|| {
             self.inner
                 .get_states_at_epochs(&epochs, backend)
@@ -285,13 +292,13 @@ impl PyConstellation {
     }
 
     /// Get batch ephemeris for all satellites
-    /// 
+    ///
     /// # Arguments
     /// * `start` - Start epoch
     /// * `end` - End epoch
     /// * `step` - Time step between epochs
     /// * `backend` - Optional backend selection (Auto, Cpu, or Gpu)
-    /// 
+    ///
     /// # Returns
     /// Dictionary mapping satellite ID to list of states
     #[pyo3(signature = (start, end, step, backend = None))]
@@ -307,7 +314,7 @@ impl PyConstellation {
         let end: Epoch = end.into();
         let step: TimeSpan = step.into();
         let backend = backend.map(|b| b.into());
-        
+
         py.detach(|| {
             self.inner
                 .get_batch_ephemeris(start, end, step, backend)
@@ -356,10 +363,7 @@ impl PyConstellation {
         py: Python<'_>,
         collections: Vec<PyObservationCollection>,
     ) -> Vec<PyCollectionAssociationReport> {
-        let collections: Vec<ObservationCollection> = collections
-            .into_iter()
-            .map(|c| c.inner().clone())
-            .collect();
+        let collections: Vec<ObservationCollection> = collections.into_iter().map(|c| c.inner().clone()).collect();
         py.detach(|| {
             self.inner
                 .get_association_reports(&collections)

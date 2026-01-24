@@ -89,4 +89,31 @@ impl PyTLECatalog {
     pub fn get_plot_data(&self) -> PyOrbitPlotData {
         PyOrbitPlotData::from(self.inner.get_plot_data())
     }
+
+    /// Fit the best TLE from all TLEs in this catalog using batch least squares
+    ///
+    /// Uses the first TLE as the a priori estimate and fits to all TLE observations.
+    /// Automatically enables drag and SRP estimation based on orbital altitude,
+    /// unless explicit coefficients are provided.
+    ///
+    /// # Arguments
+    /// * `srp_coefficient` - Optional SRP coefficient. If provided, SRP will not be estimated.
+    /// * `drag_coefficient` - Optional drag coefficient. If provided, drag will not be estimated.
+    ///
+    /// # Returns
+    /// The best-fit TLE
+    #[pyo3(signature = (srp_coefficient=None, drag_coefficient=None))]
+    pub fn fit_best_tle(
+        &self,
+        py: Python<'_>,
+        srp_coefficient: Option<f64>,
+        drag_coefficient: Option<f64>,
+    ) -> PyResult<PyTLE> {
+        py.detach(|| {
+            self.inner
+                .fit_best_tle(srp_coefficient, drag_coefficient)
+                .map(PyTLE::from)
+                .map_err(pyo3::exceptions::PyRuntimeError::new_err)
+        })
+    }
 }

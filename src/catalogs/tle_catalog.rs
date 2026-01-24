@@ -1,4 +1,9 @@
+use crate::bodies::Satellite;
+use crate::configs::{ATMOSPHERE_BOUNDARY_RADIUS, DEFAULT_STEP_MINUTES};
 use crate::elements::{OrbitPlotData, OrbitPlotState, TLE};
+use crate::enums::KeplerianType;
+use crate::estimation::{BatchLeastSquares, Observation};
+use crate::time::TimeSpan;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -86,5 +91,79 @@ impl TLECatalog {
             plot_data.add_state(OrbitPlotState::from(&tle.get_keplerian_state()));
         }
         plot_data
+    }
+
+    pub fn fit_best_tle(&self, srp_coefficient: Option<f64>, drag_coefficient: Option<f64>) -> Result<TLE, String> {
+        let mut tles = self.list();
+        if tles.is_empty() {
+            return Err("TLE catalog is empty".to_string());
+        }
+
+        // Sort by epoch descending for backward stepping through time
+        tles.sort_by(|a, b| {
+            b.get_epoch()
+                .days_since_1950
+                .partial_cmp(&a.get_epoch().days_since_1950)
+                .unwrap()
+        });
+
+        // Use the most recent TLE as a priori (first in descending order)
+        let a_priori_tle = &tles[0];
+
+        // Generate observations from each TLE, stepping backward until the previous TLE or max_days
+        let mut obs: Vec<Observation> = Vec::new();
+        let step = TimeSpan::from_minutes(DEFAULT_STEP_MINUTES);
+
+        for (i, tle) in tles.iter().enumerate() {
+            let start_epoch = tle.get_epoch();
+
+            let max_end = start_epoch - TimeSpan::from_minutes(tle.get_period());
+            let end_epoch = if i + 1 < tles.len() {
+                let prev_tle_epoch = tles[i + 1].get_epoch();
+                if prev_tle_epoch > max_end {
+                    prev_tle_epoch
+                } else {
+                    max_end
+                }
+            } else {
+                max_end
+            };
+
+            let mut current_epoch = start_epoch;
+            while current_epoch >= end_epoch {
+                if let Ok(observation) = tle.get_observation_at_epoch(current_epoch) {
+                    obs.push(observation);
+                }
+                current_epoch = current_epoch - step;
+            }
+        }
+        log::debug!(
+            "Generated {} observations between {} and {} using {} TLEs",
+            obs.len(),
+            obs.last().unwrap().get_epoch().to_iso(),
+            obs.first().unwrap().get_epoch().to_iso(),
+            tles.len()
+        );
+
+        let mut a_priori_satellite = Satellite::from(a_priori_tle.clone());
+        let mut force_properties = a_priori_satellite.get_force_properties();
+        let mut use_drag = a_priori_satellite.get_periapsis().unwrap() < ATMOSPHERE_BOUNDARY_RADIUS;
+        let mut use_srp = a_priori_satellite.get_apoapsis().unwrap() > ATMOSPHERE_BOUNDARY_RADIUS;
+        if let Some(srp) = srp_coefficient {
+            force_properties.srp_coefficient = srp;
+            use_srp = false;
+        }
+        if let Some(dc) = drag_coefficient {
+            force_properties.drag_coefficient = dc;
+            use_drag = false;
+        }
+        a_priori_satellite.set_force_properties(force_properties);
+        let mut bls = BatchLeastSquares::new(obs, &a_priori_satellite);
+
+        bls.set_output_type(KeplerianType::MeanBrouwerXP);
+        bls.set_estimate_drag(use_drag);
+        bls.set_estimate_srp(use_srp);
+        bls.solve()?;
+        Ok(bls.get_current_estimate().into())
     }
 }

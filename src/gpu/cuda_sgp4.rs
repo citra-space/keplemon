@@ -12,12 +12,12 @@ const SGP4_BATCH_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/sgp4_batch.
 #[derive(Debug, Clone, Copy)]
 pub struct TleDataGpu {
     pub epoch_jd: f64,
-    pub inclination: f64,      // degrees
-    pub raan: f64,             // degrees
+    pub inclination: f64, // degrees
+    pub raan: f64,        // degrees
     pub eccentricity: f64,
-    pub arg_perigee: f64,      // degrees
-    pub mean_anomaly: f64,     // degrees
-    pub mean_motion: f64,      // revs/day
+    pub arg_perigee: f64,  // degrees
+    pub mean_anomaly: f64, // degrees
+    pub mean_motion: f64,  // revs/day
     pub bstar: f64,
     pub ndot: f64,
     pub nddot: f64,
@@ -82,7 +82,7 @@ pub struct Sgp4ParamsGpu {
     pub bstar: f64,
     pub ndot: f64,
     pub nddot: f64,
-    
+
     // Derived constants
     pub a: f64,
     pub alta: f64,
@@ -117,14 +117,14 @@ pub struct Sgp4ParamsGpu {
     pub no_unkozai: f64,
     pub aycof: f64,
     pub delmo_const: f64,
-    
+
     // ═══════════════════════════════════════════════════════════════════
     // DEEP SPACE PARAMETERS
     // ═══════════════════════════════════════════════════════════════════
-    
+
     // Greenwich sidereal time at epoch
     pub gsto: f64,
-    
+
     // Lunar-solar terms (from DSCOM)
     pub e3: f64,
     pub ee2: f64,
@@ -157,14 +157,14 @@ pub struct Sgp4ParamsGpu {
     pub xl4: f64,
     pub zmol: f64,
     pub zmos: f64,
-    
+
     // Secular rates (from DSINIT)
     pub dedt: f64,
     pub didt: f64,
     pub dmdt: f64,
     pub dnodt: f64,
     pub domdt: f64,
-    
+
     // Resonance terms (from DSINIT)
     pub d2201: f64,
     pub d2211: f64,
@@ -184,7 +184,7 @@ pub struct Sgp4ParamsGpu {
     pub xli: f64,
     pub xni: f64,
     pub atime: f64,
-    
+
     // Flags
     pub is_deep_space: i32,
     pub irez: i32,             // 0=none, 1=one-day, 2=half-day resonance
@@ -219,7 +219,7 @@ unsafe impl cudarc::driver::ValidAsZeroBits for Sgp4StateGpu {}
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// SoA output buffers for coalesced GPU memory access
-/// 
+///
 /// This holds separate CUDA buffers for each state component, allowing
 /// coalesced writes when adjacent threads write adjacent array elements.
 /// Uses time-major ordering: buffer[time_idx * n_sats + sat_idx]
@@ -237,32 +237,39 @@ pub struct Sgp4StateSoABuffers {
 
 impl Sgp4StateSoABuffers {
     /// Convert SoA buffers back to AoS vector for compatibility
-    /// 
+    ///
     /// The GPU writes in time-major order (buffer[time_idx * n_sats + sat_idx])
     /// but we return in the same order as the AoS kernel: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
     pub fn to_aos_vec(&self, dev: &std::sync::Arc<cudarc::driver::CudaDevice>) -> Result<Vec<Sgp4StateGpu>, CudaError> {
         // Download all arrays from GPU
-        let x = dev.dtoh_sync_copy(&self.x)
+        let x = dev
+            .dtoh_sync_copy(&self.x)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let y = dev.dtoh_sync_copy(&self.y)
+        let y = dev
+            .dtoh_sync_copy(&self.y)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let z = dev.dtoh_sync_copy(&self.z)
+        let z = dev
+            .dtoh_sync_copy(&self.z)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let vx = dev.dtoh_sync_copy(&self.vx)
+        let vx = dev
+            .dtoh_sync_copy(&self.vx)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let vy = dev.dtoh_sync_copy(&self.vy)
+        let vy = dev
+            .dtoh_sync_copy(&self.vy)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let vz = dev.dtoh_sync_copy(&self.vz)
+        let vz = dev
+            .dtoh_sync_copy(&self.vz)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let error_code = dev.dtoh_sync_copy(&self.error_code)
+        let error_code = dev
+            .dtoh_sync_copy(&self.error_code)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        
+
         // Convert from time-major SoA to sat-major AoS
         // SoA index: time_idx * n_sats + sat_idx
         // AoS index: sat_idx * n_times + time_idx
         let n_results = self.n_sats * self.n_times;
         let mut results = Vec::with_capacity(n_results);
-        
+
         for sat_idx in 0..self.n_sats {
             for time_idx in 0..self.n_times {
                 let soa_idx = time_idx * self.n_sats + sat_idx;
@@ -278,28 +285,35 @@ impl Sgp4StateSoABuffers {
                 });
             }
         }
-        
+
         Ok(results)
     }
-    
+
     /// Get raw SoA arrays (in time-major order) without conversion
-    /// 
+    ///
     /// Returns (x, y, z, vx, vy, vz, error_code) arrays where index = time_idx * n_sats + sat_idx
     pub fn to_soa_arrays(&self, dev: &std::sync::Arc<cudarc::driver::CudaDevice>) -> Result<SoAArrays, CudaError> {
         Ok(SoAArrays {
-            x: dev.dtoh_sync_copy(&self.x)
+            x: dev
+                .dtoh_sync_copy(&self.x)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            y: dev.dtoh_sync_copy(&self.y)
+            y: dev
+                .dtoh_sync_copy(&self.y)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            z: dev.dtoh_sync_copy(&self.z)
+            z: dev
+                .dtoh_sync_copy(&self.z)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vx: dev.dtoh_sync_copy(&self.vx)
+            vx: dev
+                .dtoh_sync_copy(&self.vx)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vy: dev.dtoh_sync_copy(&self.vy)
+            vy: dev
+                .dtoh_sync_copy(&self.vy)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vz: dev.dtoh_sync_copy(&self.vz)
+            vz: dev
+                .dtoh_sync_copy(&self.vz)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            error_code: dev.dtoh_sync_copy(&self.error_code)
+            error_code: dev
+                .dtoh_sync_copy(&self.error_code)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
             n_sats: self.n_sats,
             n_times: self.n_times,
@@ -308,7 +322,7 @@ impl Sgp4StateSoABuffers {
 }
 
 /// Host-side SoA arrays after GPU download
-/// 
+///
 /// All arrays use time-major ordering: array[time_idx * n_sats + sat_idx]
 #[derive(Debug, Clone)]
 pub struct SoAArrays {
@@ -375,7 +389,6 @@ pub struct CudaSgp4Propagator {
     // TWO-KERNEL LAUNCH OPTIMIZATION
     // Partitions satellites by propagator type to eliminate warp divergence
     // ═══════════════════════════════════════════════════════════════════════════════
-
     /// Original indices of near-earth (SGP4) satellites
     sgp4_indices: Vec<usize>,
     /// Original indices of deep-space (SDP4) satellites
@@ -411,28 +424,37 @@ impl CudaSgp4Propagator {
     pub fn new() -> Result<Self, CudaError> {
         let device = CudaDevice::new()?;
         let dev = device.device();
-        
+
         // Load PTX modules
         dev.load_ptx(SGP4_INIT_PTX.into(), "sgp4_init", &["sgp4_init_kernel"])
             .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
-        
+
         dev.load_ptx(
             SGP4_BATCH_PTX.into(),
             "sgp4_batch",
-            &["sgp4_propagate_kernel", "sgp4_propagate_soa_kernel", "sgp4_propagate_soa_indexed_kernel"]
-        ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
-        
+            &[
+                "sgp4_propagate_kernel",
+                "sgp4_propagate_soa_kernel",
+                "sgp4_propagate_soa_indexed_kernel",
+            ],
+        )
+        .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+
         // Cache kernel functions for faster access
-        let init_kernel = dev.get_func("sgp4_init", "sgp4_init_kernel")
+        let init_kernel = dev
+            .get_func("sgp4_init", "sgp4_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
-        
-        let propagate_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_kernel")
+
+        let propagate_kernel = dev
+            .get_func("sgp4_batch", "sgp4_propagate_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
-        
-        let propagate_soa_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_soa_kernel")
+
+        let propagate_soa_kernel = dev
+            .get_func("sgp4_batch", "sgp4_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_kernel not found".into()))?;
 
-        let propagate_soa_indexed_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_soa_indexed_kernel")
+        let propagate_soa_indexed_kernel = dev
+            .get_func("sgp4_batch", "sgp4_propagate_soa_indexed_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_indexed_kernel not found".into()))?;
 
         Ok(Self {
@@ -460,17 +482,17 @@ impl CudaSgp4Propagator {
             cached_soa_sdp4: None,
         })
     }
-    
+
     /// Check if CUDA is available
     pub fn is_cuda_available() -> bool {
         CudaDevice::is_available()
     }
-    
+
     /// Get reference to CUDA device
     pub fn device(&self) -> &CudaDevice {
         &self.device
     }
-    
+
     /// Initialize satellites from TLE data
     ///
     /// Uses two-kernel optimization: partitions satellites by propagator type
@@ -492,7 +514,11 @@ impl CudaSgp4Propagator {
     ///   - `Auto`: Automatic selection based on mean motion (recommended)
     ///   - `ForceSgp4`: Force all satellites to use SGP4 (near-earth)
     ///   - `ForceSdp4`: Force all satellites to use SDP4 (deep-space)
-    pub fn init_satellites_with_override(&mut self, tle_data: &[TleDataGpu], override_mode: PropagatorOverride) -> Result<(), CudaError> {
+    pub fn init_satellites_with_override(
+        &mut self,
+        tle_data: &[TleDataGpu],
+        override_mode: PropagatorOverride,
+    ) -> Result<(), CudaError> {
         self.n_satellites = tle_data.len();
 
         if self.n_satellites == 0 {
@@ -547,10 +573,12 @@ impl CudaSgp4Propagator {
         // ═══════════════════════════════════════════════════════════════════
 
         if !sgp4_tles.is_empty() {
-            let tle_gpu = dev.htod_sync_copy(&sgp4_tles)
+            let tle_gpu = dev
+                .htod_sync_copy(&sgp4_tles)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
-            let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(sgp4_tles.len())
+            let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev
+                .alloc_zeros(sgp4_tles.len())
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
             let block_size = 256u32;
@@ -563,7 +591,9 @@ impl CudaSgp4Propagator {
             };
 
             unsafe {
-                self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, sgp4_tles.len() as i32))
+                self.init_kernel
+                    .clone()
+                    .launch(cfg, (&tle_gpu, &params_gpu, sgp4_tles.len() as i32))
                     .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
 
@@ -571,8 +601,10 @@ impl CudaSgp4Propagator {
 
             // Upload index mapping to GPU for indexed kernel
             let sgp4_indices_i32: Vec<i32> = self.sgp4_indices.iter().map(|&i| i as i32).collect();
-            self.sgp4_indices_gpu = Some(dev.htod_sync_copy(&sgp4_indices_i32)
-                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?);
+            self.sgp4_indices_gpu = Some(
+                dev.htod_sync_copy(&sgp4_indices_i32)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+            );
         } else {
             self.params_sgp4_gpu = None;
             self.sgp4_indices_gpu = None;
@@ -583,10 +615,12 @@ impl CudaSgp4Propagator {
         // ═══════════════════════════════════════════════════════════════════
 
         if !sdp4_tles.is_empty() {
-            let tle_gpu = dev.htod_sync_copy(&sdp4_tles)
+            let tle_gpu = dev
+                .htod_sync_copy(&sdp4_tles)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
-            let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(sdp4_tles.len())
+            let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev
+                .alloc_zeros(sdp4_tles.len())
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
             let block_size = 256u32;
@@ -599,7 +633,9 @@ impl CudaSgp4Propagator {
             };
 
             unsafe {
-                self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, sdp4_tles.len() as i32))
+                self.init_kernel
+                    .clone()
+                    .launch(cfg, (&tle_gpu, &params_gpu, sdp4_tles.len() as i32))
                     .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
 
@@ -607,8 +643,10 @@ impl CudaSgp4Propagator {
 
             // Upload index mapping to GPU for indexed kernel
             let sdp4_indices_i32: Vec<i32> = self.sdp4_indices.iter().map(|&i| i as i32).collect();
-            self.sdp4_indices_gpu = Some(dev.htod_sync_copy(&sdp4_indices_i32)
-                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?);
+            self.sdp4_indices_gpu = Some(
+                dev.htod_sync_copy(&sdp4_indices_i32)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+            );
         } else {
             self.params_sdp4_gpu = None;
             self.sdp4_indices_gpu = None;
@@ -618,10 +656,12 @@ impl CudaSgp4Propagator {
         // ALSO INIT LEGACY UNIFIED BUFFER (for backward compatibility)
         // ═══════════════════════════════════════════════════════════════════
 
-        let tle_gpu = dev.htod_sync_copy(tle_data)
+        let tle_gpu = dev
+            .htod_sync_copy(tle_data)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
-        let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev.alloc_zeros(self.n_satellites)
+        let params_gpu: CudaSlice<Sgp4ParamsGpu> = dev
+            .alloc_zeros(self.n_satellites)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         let block_size = 256u32;
@@ -634,7 +674,9 @@ impl CudaSgp4Propagator {
         };
 
         unsafe {
-            self.init_kernel.clone().launch(cfg, (&tle_gpu, &params_gpu, self.n_satellites as i32))
+            self.init_kernel
+                .clone()
+                .launch(cfg, (&tle_gpu, &params_gpu, self.n_satellites as i32))
                 .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
@@ -692,42 +734,48 @@ impl CudaSgp4Propagator {
 
         // Update unified params buffer (for backward compatibility)
         if let Some(params_gpu) = &self.params_gpu {
-            let mut params = dev.dtoh_sync_copy(params_gpu)
+            let mut params = dev
+                .dtoh_sync_copy(params_gpu)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
             for p in params.iter_mut() {
                 p.force_near_earth = force_value;
             }
 
-            let new_params_gpu = dev.htod_sync_copy(&params)
+            let new_params_gpu = dev
+                .htod_sync_copy(&params)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.params_gpu = Some(new_params_gpu);
         }
 
         // Update SGP4 partition
         if let Some(params_sgp4) = &self.params_sgp4_gpu {
-            let mut params = dev.dtoh_sync_copy(params_sgp4)
+            let mut params = dev
+                .dtoh_sync_copy(params_sgp4)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
             for p in params.iter_mut() {
                 p.force_near_earth = force_value;
             }
 
-            let new_params_gpu = dev.htod_sync_copy(&params)
+            let new_params_gpu = dev
+                .htod_sync_copy(&params)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.params_sgp4_gpu = Some(new_params_gpu);
         }
 
         // Update SDP4 partition
         if let Some(params_sdp4) = &self.params_sdp4_gpu {
-            let mut params = dev.dtoh_sync_copy(params_sdp4)
+            let mut params = dev
+                .dtoh_sync_copy(params_sdp4)
                 .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
             for p in params.iter_mut() {
                 p.force_near_earth = force_value;
             }
 
-            let new_params_gpu = dev.htod_sync_copy(&params)
+            let new_params_gpu = dev
+                .htod_sync_copy(&params)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.params_sdp4_gpu = Some(new_params_gpu);
         }
@@ -740,10 +788,10 @@ impl CudaSgp4Propagator {
     }
 
     /// Propagate all initialized satellites to given Julian Date times
-    /// 
+    ///
     /// # Arguments
     /// * `jd_times` - Array of Julian Dates to propagate to
-    /// 
+    ///
     /// # Returns
     /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
     /// The kernel internally computes tsince for each satellite based on its TLE epoch.
@@ -751,118 +799,130 @@ impl CudaSgp4Propagator {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
-        
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
-        
+
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
+
         let dev = self.device.device();
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
-        
+
         // Always upload times to GPU (caching requires value comparison which is expensive)
         // The time array is typically small, so the overhead is minimal
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        
+
         // Reuse output buffer if same size, otherwise allocate new
         if self.cached_n_results != n_results || self.cached_states_gpu.is_none() {
-            let new_states_gpu: CudaSlice<Sgp4StateGpu> = dev.alloc_zeros(n_results)
+            let new_states_gpu: CudaSlice<Sgp4StateGpu> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.cached_states_gpu = Some(new_states_gpu);
             self.cached_n_results = n_results;
         }
         let states_gpu = self.cached_states_gpu.as_ref().unwrap();
-        
+
         // Launch config: 2D grid (satellites x times)
         // Use 16x16 = 256 threads per block - balanced for various batch sizes
         let block_x = 16u32;
         let block_y = 16u32;
         let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
         let grid_y = (n_times as u32 + block_y - 1) / block_y;
-        
+
         let cfg = LaunchConfig {
             grid_dim: (grid_x, grid_y, 1),
             block_dim: (block_x, block_y, 1),
             shared_mem_bytes: 0,
         };
-        
+
         // Launch with cached kernel function
         unsafe {
-            self.propagate_kernel.clone().launch(
-                cfg, 
-                (params_gpu, &times_gpu, states_gpu, self.n_satellites as i32, n_times as i32)
-            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            self.propagate_kernel
+                .clone()
+                .launch(
+                    cfg,
+                    (
+                        params_gpu,
+                        &times_gpu,
+                        states_gpu,
+                        self.n_satellites as i32,
+                        n_times as i32,
+                    ),
+                )
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
-        
+
         // Sync and copy results back
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
-        
-        let results = dev.dtoh_sync_copy(states_gpu)
+
+        let results = dev
+            .dtoh_sync_copy(states_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        
+
         Ok(results)
     }
-    
+
     /// Pre-load Julian Date times to GPU for repeated propagations
-    /// 
+    ///
     /// Use this when you want to propagate multiple satellite sets to the same times.
     /// After calling this, propagate() will reuse the cached times without re-uploading.
     pub fn cache_times(&mut self, jd_times: &[f64]) -> Result<(), CudaError> {
         let dev = self.device.device();
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
         self.cached_times_gpu = Some(times_gpu);
         self.cached_n_times = jd_times.len();
         Ok(())
     }
-    
+
     /// Clear cached times to free GPU memory
     pub fn clear_time_cache(&mut self) {
         self.cached_times_gpu = None;
         self.cached_n_times = 0;
     }
-    
+
     /// Get initialized SGP4 parameters from GPU for debugging
-    /// 
+    ///
     /// This copies the initialized parameters back from GPU memory,
     /// which includes all the computed secular rates, resonance terms, etc.
     pub fn get_params_debug(&self) -> Result<Vec<Sgp4ParamsGpu>, CudaError> {
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
-        
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
+
         let dev = self.device.device();
-        let params = dev.dtoh_sync_copy(params_gpu)
+        let params = dev
+            .dtoh_sync_copy(params_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        
+
         Ok(params)
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════════════
     // SoA (STRUCT OF ARRAYS) PROPAGATION METHODS
     // ═══════════════════════════════════════════════════════════════════════════════
-    
+
     /// Propagate all initialized satellites to given Julian Date times using SoA kernel
-    /// 
+    ///
     /// This uses the optimized SoA (Struct of Arrays) kernel which provides:
     /// - Coalesced memory writes (adjacent threads write adjacent memory)
     /// - Shared memory caching for time values
     /// - Better GPU memory bandwidth utilization
-    /// 
+    ///
     /// # Arguments
     /// * `jd_times` - Array of Julian Dates to propagate to
-    /// 
+    ///
     /// # Returns
     /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
     /// (Same ordering as the AoS kernel for compatibility)
     pub fn propagate_soa(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
         // Get SoA arrays then convert to AoS
         let soa = self.propagate_soa_arrays(jd_times)?;
-        
+
         // Convert from time-major SoA to sat-major AoS
         let n_results = soa.n_sats * soa.n_times;
         let mut results = Vec::with_capacity(n_results);
-        
+
         for sat_idx in 0..soa.n_sats {
             for time_idx in 0..soa.n_times {
                 let soa_idx = time_idx * soa.n_sats + sat_idx;
@@ -878,10 +938,10 @@ impl CudaSgp4Propagator {
                 });
             }
         }
-        
+
         Ok(results)
     }
-    
+
     /// Propagate using SoA kernel and return raw SoA arrays
     ///
     /// Uses two-kernel optimization with GPU-side scatter:
@@ -901,7 +961,8 @@ impl CudaSgp4Propagator {
         let dev = self.device.device();
 
         // Upload times to GPU
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate or reuse shared output buffers (both partitions write here)
@@ -912,13 +973,27 @@ impl CudaSgp4Propagator {
 
         if need_realloc {
             self.cached_soa_buffers = Some(CachedSoABuffers {
-                x: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                y: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                z: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                vx: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                vy: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                vz: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                error_code: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                x: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                y: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                z: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vx: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vy: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vz: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                error_code: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
                 n_results,
             });
         }
@@ -949,19 +1024,26 @@ impl CudaSgp4Propagator {
             let packed_dims: i64 = ((n_sgp4 as i64) << 32) | (self.n_satellites as i64);
 
             unsafe {
-                self.propagate_soa_indexed_kernel.clone().launch(
-                    cfg,
-                    (
-                        params_sgp4,
-                        &times_gpu,
-                        indices_gpu,
-                        &soa.x, &soa.y, &soa.z,
-                        &soa.vx, &soa.vy, &soa.vz,
-                        &soa.error_code,
-                        packed_dims,
-                        n_times as i32,
+                self.propagate_soa_indexed_kernel
+                    .clone()
+                    .launch(
+                        cfg,
+                        (
+                            params_sgp4,
+                            &times_gpu,
+                            indices_gpu,
+                            &soa.x,
+                            &soa.y,
+                            &soa.z,
+                            &soa.vx,
+                            &soa.vy,
+                            &soa.vz,
+                            &soa.error_code,
+                            packed_dims,
+                            n_times as i32,
+                        ),
                     )
-                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
         }
 
@@ -988,19 +1070,26 @@ impl CudaSgp4Propagator {
             let packed_dims: i64 = ((n_sdp4 as i64) << 32) | (self.n_satellites as i64);
 
             unsafe {
-                self.propagate_soa_indexed_kernel.clone().launch(
-                    cfg,
-                    (
-                        params_sdp4,
-                        &times_gpu,
-                        indices_gpu,
-                        &soa.x, &soa.y, &soa.z,
-                        &soa.vx, &soa.vy, &soa.vz,
-                        &soa.error_code,
-                        packed_dims,
-                        n_times as i32,
+                self.propagate_soa_indexed_kernel
+                    .clone()
+                    .launch(
+                        cfg,
+                        (
+                            params_sdp4,
+                            &times_gpu,
+                            indices_gpu,
+                            &soa.x,
+                            &soa.y,
+                            &soa.z,
+                            &soa.vx,
+                            &soa.vy,
+                            &soa.vz,
+                            &soa.error_code,
+                            packed_dims,
+                            n_times as i32,
+                        ),
                     )
-                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
         }
 
@@ -1012,13 +1101,27 @@ impl CudaSgp4Propagator {
         // SINGLE DOWNLOAD - results are already in correct order!
         // ═══════════════════════════════════════════════════════════════════
 
-        let out_x = dev.dtoh_sync_copy(&soa.x).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let out_y = dev.dtoh_sync_copy(&soa.y).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let out_z = dev.dtoh_sync_copy(&soa.z).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let out_vx = dev.dtoh_sync_copy(&soa.vx).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let out_vy = dev.dtoh_sync_copy(&soa.vy).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let out_vz = dev.dtoh_sync_copy(&soa.vz).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let out_error = dev.dtoh_sync_copy(&soa.error_code).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_x = dev
+            .dtoh_sync_copy(&soa.x)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_y = dev
+            .dtoh_sync_copy(&soa.y)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_z = dev
+            .dtoh_sync_copy(&soa.z)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_vx = dev
+            .dtoh_sync_copy(&soa.vx)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_vy = dev
+            .dtoh_sync_copy(&soa.vy)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_vz = dev
+            .dtoh_sync_copy(&soa.vz)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+        let out_error = dev
+            .dtoh_sync_copy(&soa.error_code)
+            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
         Ok(SoAArrays {
             x: out_x,
@@ -1032,18 +1135,18 @@ impl CudaSgp4Propagator {
             n_times,
         })
     }
-    
+
     /// Propagate using SoA kernel and copy results directly to provided arrays
-    /// 
+    ///
     /// This is the most efficient method when you need raw arrays, as it avoids
     /// intermediate allocations and copies.
-    /// 
+    ///
     /// # Arguments
     /// * `jd_times` - Julian Dates to propagate to
     /// * `out_x`, `out_y`, `out_z` - Position output arrays (must be n_sats * n_times)
     /// * `out_vx`, `out_vy`, `out_vz` - Velocity output arrays
     /// * `out_error` - Error code output array
-    /// 
+    ///
     /// Output arrays use time-major ordering: array[time_idx * n_sats + sat_idx]
     pub fn propagate_soa_into(
         &mut self,
@@ -1059,96 +1162,117 @@ impl CudaSgp4Propagator {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
-        
+
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
-        
+
         // Validate output array sizes
-        if out_x.len() < n_results || out_y.len() < n_results || out_z.len() < n_results
-            || out_vx.len() < n_results || out_vy.len() < n_results || out_vz.len() < n_results
+        if out_x.len() < n_results
+            || out_y.len() < n_results
+            || out_z.len() < n_results
+            || out_vx.len() < n_results
+            || out_vy.len() < n_results
+            || out_vz.len() < n_results
             || out_error.len() < n_results
         {
-            return Err(CudaError::InvalidParameter(
-                format!("Output arrays must have at least {} elements", n_results)
-            ));
+            return Err(CudaError::InvalidParameter(format!(
+                "Output arrays must have at least {} elements",
+                n_results
+            )));
         }
-        
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
-        
+
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
+
         let dev = self.device.device();
-        
+
         // Upload times to GPU
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        
+
         // Allocate or reuse SoA output buffers
         let need_realloc = match &self.cached_soa_buffers {
             Some(buffers) => buffers.n_results != n_results,
             None => true,
         };
-        
+
         if need_realloc {
-            let x: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let x: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let y: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let y: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let z: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let z: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let vx: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let vx: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let vy: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let vy: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let vz: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let vz: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let error_code: CudaSlice<i32> = dev.alloc_zeros(n_results)
+            let error_code: CudaSlice<i32> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            
+
             self.cached_soa_buffers = Some(CachedSoABuffers {
-                x, y, z, vx, vy, vz, error_code,
+                x,
+                y,
+                z,
+                vx,
+                vy,
+                vz,
+                error_code,
                 n_results,
             });
         }
-        
+
         let soa = self.cached_soa_buffers.as_ref().unwrap();
-        
+
         // Launch config
         let block_x = 16u32;
         let block_y = 16u32;
         let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
         let grid_y = (n_times as u32 + block_y - 1) / block_y;
         let shared_mem_bytes = 256 * std::mem::size_of::<f64>() as u32;
-        
+
         let cfg = LaunchConfig {
             grid_dim: (grid_x, grid_y, 1),
             block_dim: (block_x, block_y, 1),
             shared_mem_bytes,
         };
-        
+
         // Launch SoA kernel
         unsafe {
-            self.propagate_soa_kernel.clone().launch(
-                cfg,
-                (
-                    params_gpu,
-                    &times_gpu,
-                    &soa.x,
-                    &soa.y,
-                    &soa.z,
-                    &soa.vx,
-                    &soa.vy,
-                    &soa.vz,
-                    &soa.error_code,
-                    self.n_satellites as i32,
-                    n_times as i32,
+            self.propagate_soa_kernel
+                .clone()
+                .launch(
+                    cfg,
+                    (
+                        params_gpu,
+                        &times_gpu,
+                        &soa.x,
+                        &soa.y,
+                        &soa.z,
+                        &soa.vx,
+                        &soa.vy,
+                        &soa.vz,
+                        &soa.error_code,
+                        self.n_satellites as i32,
+                        n_times as i32,
+                    ),
                 )
-            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
-        
+
         // Sync and copy results directly to output arrays
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
-        
+
         // Copy from GPU to provided arrays
         dev.dtoh_sync_copy_into(&soa.x, out_x)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
@@ -1164,7 +1288,7 @@ impl CudaSgp4Propagator {
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
         dev.dtoh_sync_copy_into(&soa.error_code, out_error)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        
+
         Ok(())
     }
 
@@ -1210,10 +1334,7 @@ impl CudaSgp4Propagator {
     ///
     /// # Returns
     /// GPU-resident SoA buffers in time-major order: buffer[time_idx * n_sats + sat_idx]
-    pub fn propagate_soa_gpu_resident(
-        &mut self,
-        jd_times: &[f64],
-    ) -> Result<Sgp4StateSoABuffers, CudaError> {
+    pub fn propagate_soa_gpu_resident(&mut self, jd_times: &[f64]) -> Result<Sgp4StateSoABuffers, CudaError> {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
@@ -1225,7 +1346,8 @@ impl CudaSgp4Propagator {
 
         // Upload times to GPU (reuse cached buffer if possible)
         if self.cached_n_times != n_times || self.cached_times_gpu.is_none() {
-            let times_gpu = dev.htod_sync_copy(jd_times)
+            let times_gpu = dev
+                .htod_sync_copy(jd_times)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.cached_times_gpu = Some(times_gpu);
             self.cached_n_times = n_times;
@@ -1239,23 +1361,36 @@ impl CudaSgp4Propagator {
         };
 
         if need_realloc {
-            let x: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let x: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let y: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let y: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let z: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let z: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let vx: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let vx: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let vy: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let vy: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let vz: CudaSlice<f64> = dev.alloc_zeros(n_results)
+            let vz: CudaSlice<f64> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            let error_code: CudaSlice<i32> = dev.alloc_zeros(n_results)
+            let error_code: CudaSlice<i32> = dev
+                .alloc_zeros(n_results)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
             self.cached_soa_buffers = Some(CachedSoABuffers {
-                x, y, z, vx, vy, vz, error_code,
+                x,
+                y,
+                z,
+                vx,
+                vy,
+                vz,
+                error_code,
                 n_results,
             });
         }
@@ -1286,19 +1421,26 @@ impl CudaSgp4Propagator {
             let packed_dims: i64 = ((n_sgp4 as i64) << 32) | (self.n_satellites as i64);
 
             unsafe {
-                self.propagate_soa_indexed_kernel.clone().launch(
-                    cfg,
-                    (
-                        params_sgp4,
-                        times_gpu,
-                        indices_gpu,
-                        &soa.x, &soa.y, &soa.z,
-                        &soa.vx, &soa.vy, &soa.vz,
-                        &soa.error_code,
-                        packed_dims,
-                        n_times as i32,
+                self.propagate_soa_indexed_kernel
+                    .clone()
+                    .launch(
+                        cfg,
+                        (
+                            params_sgp4,
+                            times_gpu,
+                            indices_gpu,
+                            &soa.x,
+                            &soa.y,
+                            &soa.z,
+                            &soa.vx,
+                            &soa.vy,
+                            &soa.vz,
+                            &soa.error_code,
+                            packed_dims,
+                            n_times as i32,
+                        ),
                     )
-                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
         }
 
@@ -1320,19 +1462,26 @@ impl CudaSgp4Propagator {
             let packed_dims: i64 = ((n_sdp4 as i64) << 32) | (self.n_satellites as i64);
 
             unsafe {
-                self.propagate_soa_indexed_kernel.clone().launch(
-                    cfg,
-                    (
-                        params_sdp4,
-                        times_gpu,
-                        indices_gpu,
-                        &soa.x, &soa.y, &soa.z,
-                        &soa.vx, &soa.vy, &soa.vz,
-                        &soa.error_code,
-                        packed_dims,
-                        n_times as i32,
+                self.propagate_soa_indexed_kernel
+                    .clone()
+                    .launch(
+                        cfg,
+                        (
+                            params_sdp4,
+                            times_gpu,
+                            indices_gpu,
+                            &soa.x,
+                            &soa.y,
+                            &soa.z,
+                            &soa.vx,
+                            &soa.vy,
+                            &soa.vz,
+                            &soa.error_code,
+                            packed_dims,
+                            n_times as i32,
+                        ),
                     )
-                ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
         }
 
