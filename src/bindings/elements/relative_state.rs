@@ -1,6 +1,6 @@
 use super::PyCartesianVector;
-use crate::elements::RelativeState;
 use crate::bindings::time::PyEpoch;
+use crate::elements::RelativeState;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 

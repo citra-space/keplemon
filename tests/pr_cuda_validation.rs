@@ -194,7 +194,8 @@ fn test_pr_cuda_validation() {
     print_residual_row("MEO", &meo_stats);
     print_residual_row("GEO", &geo_stats);
     println!("│                                                                          │");
-    println!("│ Timing:  CPU = {:.2} ms  │  GPU = {:.2} ms  │  Speedup = {:.2}x          │",
+    println!(
+        "│ Timing:  CPU = {:.2} ms  │  GPU = {:.2} ms  │  Speedup = {:.2}x          │",
         cpu_time.as_secs_f64() * 1000.0,
         gpu_time.as_secs_f64() * 1000.0,
         cpu_time.as_secs_f64() / gpu_time.as_secs_f64()
@@ -232,13 +233,15 @@ fn test_pr_cuda_validation() {
 
     // Mode 1: CPU-copy (existing API)
     let cpu_copy_start = Instant::now();
-    let cpu_copy_results = gpu.propagate_soa_arrays(&jd_times)
+    let cpu_copy_results = gpu
+        .propagate_soa_arrays(&jd_times)
         .expect("propagate_soa_arrays failed");
     let cpu_copy_time = cpu_copy_start.elapsed();
 
     // Mode 2: GPU-resident (new API)
     let gpu_resident_start = Instant::now();
-    let gpu_resident = gpu.propagate_soa_gpu_resident(&jd_times)
+    let gpu_resident = gpu
+        .propagate_soa_gpu_resident(&jd_times)
         .expect("propagate_soa_gpu_resident failed");
     let gpu_resident_time = gpu_resident_start.elapsed();
 
@@ -267,12 +270,19 @@ fn test_pr_cuda_validation() {
     println!("│                                                                          │");
     println!("│ API Mode              │ Time (ms) │ Result                               │");
     println!("│───────────────────────┼───────────┼──────────────────────────────────────│");
-    println!("│ CPU-copy (existing)   │   {:.3}   │ Returns Vec<f64> on host             │",
-        cpu_copy_time.as_secs_f64() * 1000.0);
-    println!("│ GPU-resident (new)    │   {:.3}   │ Returns CudaSlice<f64> on device     │",
-        gpu_resident_time.as_secs_f64() * 1000.0);
+    println!(
+        "│ CPU-copy (existing)   │   {:.3}   │ Returns Vec<f64> on host             │",
+        cpu_copy_time.as_secs_f64() * 1000.0
+    );
+    println!(
+        "│ GPU-resident (new)    │   {:.3}   │ Returns CudaSlice<f64> on device     │",
+        gpu_resident_time.as_secs_f64() * 1000.0
+    );
     println!("│                       │           │                                      │");
-    println!("│ Max difference: {:.3e} km (bit-for-bit identical)                       │", max_diff);
+    println!(
+        "│ Max difference: {:.3e} km (bit-for-bit identical)                       │",
+        max_diff
+    );
     println!("└──────────────────────────────────────────────────────────────────────────┘");
 
     assert!(

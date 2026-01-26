@@ -13,48 +13,45 @@ impl CudaDevice {
     pub fn new() -> Result<Self, CudaError> {
         Self::new_with_device_id(0)
     }
-    
+
     /// Create CUDA device with specific device ID
     pub fn new_with_device_id(device_id: usize) -> Result<Self, CudaError> {
-        let device = CudarcDevice::new(device_id)
-            .map_err(|e| CudaError::DeviceInitialization(e.to_string()))?;
-        
-        Ok(Self {
-            device,
-        })
+        let device = CudarcDevice::new(device_id).map_err(|e| CudaError::DeviceInitialization(e.to_string()))?;
+
+        Ok(Self { device })
     }
-    
+
     /// Get reference to the underlying device
     pub fn device(&self) -> &Arc<CudarcDevice> {
         &self.device
     }
-    
+
     /// Calculate optimal launch configuration for given number of elements
     pub fn launch_config_1d(num_elements: usize) -> LaunchConfig {
         let block_size = 256;
         let grid_size = (num_elements as u32 + block_size - 1) / block_size;
-        
+
         LaunchConfig {
             grid_dim: (grid_size, 1, 1),
             block_dim: (block_size, 1, 1),
             shared_mem_bytes: 0,
         }
     }
-    
+
     /// Calculate optimal launch configuration for 2D grid (satellites x times)
     pub fn launch_config_2d(n_sats: usize, n_times: usize) -> LaunchConfig {
         let block_x = 16;
         let block_y = 16;
         let grid_x = (n_sats as u32 + block_x - 1) / block_x;
         let grid_y = (n_times as u32 + block_y - 1) / block_y;
-        
+
         LaunchConfig {
             grid_dim: (grid_x, grid_y, 1),
             block_dim: (block_x, block_y, 1),
             shared_mem_bytes: 0,
         }
     }
-    
+
     /// Check if CUDA is available on this system
     pub fn is_available() -> bool {
         CudarcDevice::count().is_ok()

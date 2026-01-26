@@ -3,6 +3,7 @@ use crate::bindings::elements::{
     PyBoreToBodyAngles, PyCartesianState, PyEphemeris, PyGeodeticPosition, PyKeplerianState, PyOrbitPlotData,
     PyRelativeState, PyTLE,
 };
+use crate::bindings::estimation::{PyObservationAssociation, PyObservationCollection};
 use crate::bindings::events::{PyCloseApproach, PyHorizonAccessReport, PyManeuverEvent, PyProximityReport};
 use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
@@ -240,7 +241,7 @@ impl PySatellite {
     ) -> Option<PyProximityReport> {
         let start_epoch: Epoch = start_epoch.into();
         let end_epoch: Epoch = end_epoch.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_proximity_report(other.inner_mut(), start_epoch, end_epoch, distance_threshold)
                 .map(PyProximityReport::from)
@@ -258,9 +259,15 @@ impl PySatellite {
     ) -> Option<PyManeuverEvent> {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
-                .get_maneuver_event(future_sat.inner_mut(), start, end, distance_threshold, velocity_threshold)
+                .get_maneuver_event(
+                    future_sat.inner_mut(),
+                    start,
+                    end,
+                    distance_threshold,
+                    velocity_threshold,
+                )
                 .map(PyManeuverEvent::from)
         })
     }
@@ -278,10 +285,19 @@ impl PySatellite {
         let observatories: Vec<Observatory> = observatories.into_iter().map(Observatory::from).collect();
         let start: Epoch = start.into();
         let end: Epoch = end.into();
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner
                 .get_observatory_access_report(observatories, start, end, min_el, min_duration)
                 .map(PyHorizonAccessReport::from)
         })
+    }
+
+    pub fn get_associations(&self, collections: Vec<PyObservationCollection>) -> Vec<PyObservationAssociation> {
+        let collections: Vec<_> = collections.iter().map(|c| c.inner().clone()).collect();
+        self.inner
+            .get_associations(&collections)
+            .into_iter()
+            .map(PyObservationAssociation::from)
+            .collect()
     }
 }

@@ -828,7 +828,7 @@ fn hermite_interpolate(a: &CartesianState, b: &CartesianState, t: Epoch) -> Cart
 }
 
 impl Ephemeris {
-    fn get_epoch_range(&self) -> Option<(Epoch, Epoch)> {
+    pub fn get_epoch_range(&self) -> Option<(Epoch, Epoch)> {
         let states = self.handle.states.read().ok()?;
         let start = states.first()?.epoch;
         let end = states.last()?.epoch;

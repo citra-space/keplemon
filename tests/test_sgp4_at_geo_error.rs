@@ -8,15 +8,15 @@
 //!
 //! This test measures the error from incorrectly using SGP4 for GEO satellites.
 
-use keplemon::elements::TLE;
 use keplemon::bodies::Satellite;
+use keplemon::elements::TLE;
 use keplemon::time::TimeSpan;
 
 /// GEO satellite: TDRS 3
 const GEO_TLE: (&str, &str, &str) = (
     "TDRS 3",
     "1 19548U 88091B   26008.31539492 -.00000299  00000+0  00000+0 0  9994",
-    "2 19548  12.7229 342.0612 0044050 345.9566 204.1506  1.00262839123781"
+    "2 19548  12.7229 342.0612 0044050 345.9566 204.1506  1.00262839123781",
 );
 
 /// To test SGP4 at GEO, we'll artificially increase mean motion to force SGP4 selection,
@@ -42,13 +42,12 @@ fn create_forced_sgp4_tle(_original: &TLE) -> TLE {
     line2 = chars.into_iter().collect();
 
     // Recalculate checksum (last character)
-    let checksum = calculate_checksum(&line2[..line2.len()-1]);
+    let checksum = calculate_checksum(&line2[..line2.len() - 1]);
     let mut chars: Vec<char> = line2.chars().collect();
     chars[68] = std::char::from_digit(checksum as u32, 10).unwrap();
     line2 = chars.into_iter().collect();
 
-    TLE::from_three_lines(name, line1, &line2)
-        .expect("Failed to create modified TLE")
+    TLE::from_three_lines(name, line1, &line2).expect("Failed to create modified TLE")
 }
 
 /// Calculate TLE checksum
@@ -67,12 +66,11 @@ fn calculate_checksum(line: &str) -> u8 {
 
 /// Compute position error between two states
 #[allow(dead_code)]
-fn position_error(state1: &keplemon::elements::CartesianState,
-                  state2: &keplemon::elements::CartesianState) -> f64 {
+fn position_error(state1: &keplemon::elements::CartesianState, state2: &keplemon::elements::CartesianState) -> f64 {
     let dx = state1.position[0] - state2.position[0];
     let dy = state1.position[1] - state2.position[1];
     let dz = state1.position[2] - state2.position[2];
-    (dx*dx + dy*dy + dz*dz).sqrt()
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 #[test]
@@ -82,8 +80,7 @@ fn test_sgp4_error_at_geo() {
     println!("{}", "=".repeat(80));
 
     // Parse original GEO TLE (will use SDP4)
-    let geo_tle = TLE::from_three_lines(GEO_TLE.0, GEO_TLE.1, GEO_TLE.2)
-        .expect("Failed to parse GEO TLE");
+    let geo_tle = TLE::from_three_lines(GEO_TLE.0, GEO_TLE.1, GEO_TLE.2).expect("Failed to parse GEO TLE");
     let geo_sat = Satellite::from(geo_tle.clone());
 
     println!("\nSatellite: {}", GEO_TLE.0);
@@ -128,8 +125,10 @@ fn test_sgp4_error_at_geo() {
     println!("\n{}", "-".repeat(80));
     println!("SDP4 Propagation (Correct)");
     println!("{}", "-".repeat(80));
-    println!("{:>10} | {:>12} | {:>12} | {:>12} | {:>8}",
-             "Time", "X (km)", "Y (km)", "Z (km)", "R (km)");
+    println!(
+        "{:>10} | {:>12} | {:>12} | {:>12} | {:>8}",
+        "Time", "X (km)", "Y (km)", "Z (km)", "R (km)"
+    );
     println!("{}", "-".repeat(80));
 
     let mut positions = Vec::new();
@@ -137,8 +136,10 @@ fn test_sgp4_error_at_geo() {
         let epoch = base_epoch + *delta_t;
         if let Some(state) = geo_sat.get_state_at_epoch(epoch) {
             let r = (state.position[0].powi(2) + state.position[1].powi(2) + state.position[2].powi(2)).sqrt();
-            println!("{:>10} | {:>12.3} | {:>12.3} | {:>12.3} | {:>8.1}",
-                     label, state.position[0], state.position[1], state.position[2], r);
+            println!(
+                "{:>10} | {:>12.3} | {:>12.3} | {:>12.3} | {:>8.1}",
+                label, state.position[0], state.position[1], state.position[2], r
+            );
             positions.push(state);
         }
     }
@@ -182,7 +183,10 @@ fn test_sgp4_error_at_geo() {
     println!("{}", "=".repeat(80));
 
     println!("\nThe implementation correctly uses SDP4 for this satellite.");
-    println!("Mean motion: {:.8} < 6.4 rev/day → SDP4 selected ✓", geo_tle.get_mean_motion());
+    println!(
+        "Mean motion: {:.8} < 6.4 rev/day → SDP4 selected ✓",
+        geo_tle.get_mean_motion()
+    );
 }
 
 #[test]
@@ -195,24 +199,36 @@ fn test_propagator_selection() {
     let leo_tle = TLE::from_three_lines(
         "ISS (ZARYA)",
         "1 25544U 98067A   25105.52083333  .00012345  00000+0  22013-3 0  9991",
-        "2 25544  51.6456 339.5765 0003456  35.8734  85.9834 15.48919755123456"
-    ).expect("Failed to parse LEO TLE");
+        "2 25544  51.6456 339.5765 0003456  35.8734  85.9834 15.48919755123456",
+    )
+    .expect("Failed to parse LEO TLE");
 
     // GEO satellite
-    let geo_tle = TLE::from_three_lines(GEO_TLE.0, GEO_TLE.1, GEO_TLE.2)
-        .expect("Failed to parse GEO TLE");
+    let geo_tle = TLE::from_three_lines(GEO_TLE.0, GEO_TLE.1, GEO_TLE.2).expect("Failed to parse GEO TLE");
 
     println!("\nLEO Satellite: ISS");
     println!("  Mean motion: {:.8} rev/day", leo_tle.get_mean_motion());
     println!("  Period: {:.1} minutes", 1440.0 / leo_tle.get_mean_motion());
-    println!("  Propagator: {} (period < 225 min)",
-             if leo_tle.get_mean_motion() > 6.4 { "SGP4" } else { "SDP4" });
+    println!(
+        "  Propagator: {} (period < 225 min)",
+        if leo_tle.get_mean_motion() > 6.4 {
+            "SGP4"
+        } else {
+            "SDP4"
+        }
+    );
 
     println!("\nGEO Satellite: TDRS 3");
     println!("  Mean motion: {:.8} rev/day", geo_tle.get_mean_motion());
     println!("  Period: {:.1} minutes", 1440.0 / geo_tle.get_mean_motion());
-    println!("  Propagator: {} (period ≥ 225 min)",
-             if geo_tle.get_mean_motion() > 6.4 { "SGP4" } else { "SDP4" });
+    println!(
+        "  Propagator: {} (period ≥ 225 min)",
+        if geo_tle.get_mean_motion() > 6.4 {
+            "SGP4"
+        } else {
+            "SDP4"
+        }
+    );
 
     // Verify correct selection
     assert!(leo_tle.get_mean_motion() > 6.4, "LEO should use SGP4");

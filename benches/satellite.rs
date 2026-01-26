@@ -80,6 +80,41 @@ fn bench_get_body_angles(c: &mut Criterion) {
     });
 }
 
+fn bench_state_at_epoch_comparison(c: &mut Criterion) {
+    let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+    let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+    let tle = TLE::from_lines("ISS", line_1, Some(line_2)).expect("failed to parse TLE");
+    let mut sat_with_cache = Satellite::from(tle.clone());
+    let sat_no_cache = Satellite::from(tle);
+
+    // Cache ephemeris covering a 1-hour window
+    let start = Epoch::from_iso("2020-07-18T12:00:00.000000Z", TimeSystem::UTC);
+    let end = Epoch::from_iso("2020-07-18T13:00:00.000000Z", TimeSystem::UTC);
+    let step = TimeSpan::from_seconds(10.0);
+    sat_with_cache
+        .get_ephemeris(start, end, step)
+        .expect("failed to cache ephemeris");
+
+    // Query epoch in the middle of the cached range
+    let query_epoch = Epoch::from_iso("2020-07-18T12:30:00.000000Z", TimeSystem::UTC);
+
+    let mut group = c.benchmark_group("state_at_epoch");
+
+    group.bench_function("get_state_at_epoch (propagator)", |b| {
+        b.iter(|| {
+            let _ = sat_no_cache.get_state_at_epoch(query_epoch);
+        });
+    });
+
+    group.bench_function("interpolate_state_at_epoch (cached)", |b| {
+        b.iter(|| {
+            let _ = sat_with_cache.interpolate_state_at_epoch(query_epoch);
+        });
+    });
+
+    group.finish();
+}
+
 fn bench_get_observatory_access_report(c: &mut Criterion) {
     let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
     let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
@@ -99,13 +134,8 @@ fn bench_get_observatory_access_report(c: &mut Criterion) {
         b.iter_batched(
             || base_sat.clone(),
             |mut sat| {
-                let _ = sat.get_observatory_access_report(
-                    observatories.clone(),
-                    start,
-                    end,
-                    min_elevation,
-                    min_duration,
-                );
+                let _ =
+                    sat.get_observatory_access_report(observatories.clone(), start, end, min_elevation, min_duration);
             },
             BatchSize::LargeInput,
         );
@@ -118,6 +148,7 @@ criterion_group!(
     bench_get_close_approach,
     bench_get_relative_state,
     bench_get_body_angles,
+    bench_state_at_epoch_comparison,
     bench_get_observatory_access_report
 );
 criterion_main!(benches);

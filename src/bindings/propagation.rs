@@ -1,13 +1,13 @@
+mod batch_propagator;
 mod force_properties;
 mod inertial_propagator;
 mod sgp4_output;
-mod batch_propagator;
 
 use crate::propagation::{b_star_to_drag_coefficient, drag_coefficient_to_b_star};
+pub use batch_propagator::{PyBatchPropagator, PyPropagationBackend};
 pub use force_properties::PyForceProperties;
 pub use inertial_propagator::PyInertialPropagator;
 pub use sgp4_output::PySGP4Output;
-pub use batch_propagator::{PyBatchPropagator, PyPropagationBackend};
 
 use pyo3::prelude::*;
 use pyo3::py_run;

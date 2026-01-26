@@ -41,9 +41,5 @@ fn bench_get_ca_report_vs_many(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_from_tle_catalog,
-    bench_get_ca_report_vs_many,
-);
+criterion_group!(benches, bench_from_tle_catalog, bench_get_ca_report_vs_many,);
 criterion_main!(benches);

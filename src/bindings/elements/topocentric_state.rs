@@ -1,8 +1,8 @@
 use super::{PyHorizonState, PyTopocentricElements};
 use crate::bindings::bodies::PyObservatory;
+use crate::bindings::time::PyEpoch;
 use crate::bodies::Observatory;
 use crate::elements::TopocentricState;
-use crate::bindings::time::PyEpoch;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 
@@ -50,8 +50,7 @@ impl PyTopocentricState {
     #[staticmethod]
     #[pyo3(name = "from_horizon_state")]
     pub fn py_from_horizon_state(state: &PyHorizonState, observer: &PyObservatory) -> PyResult<Self> {
-        Self::from_horizon_state(state, observer.inner())
-            .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+        Self::from_horizon_state(state, observer.inner()).map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
     }
 
     #[getter]

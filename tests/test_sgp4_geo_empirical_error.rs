@@ -26,17 +26,17 @@ const GEO_TLES: &[(&str, &str, &str)] = &[
     (
         "TDRS 3",
         "1 19548U 88091B   26008.31539492 -.00000299  00000+0  00000+0 0  9994",
-        "2 19548  12.7229 342.0612 0044050 345.9566 204.1506  1.00262839123781"
+        "2 19548  12.7229 342.0612 0044050 345.9566 204.1506  1.00262839123781",
     ),
     (
         "LES-5",
         "1 02866U 67066E   25105.31584826 -.00000071  00000+0  00000+0 0  9994",
-        "2 02866   1.6557 113.0780 0054733 189.7818 318.7327  1.09425579126352"
+        "2 02866   1.6557 113.0780 0054733 189.7818 318.7327  1.09425579126352",
     ),
     (
         "SKYNET 4C",
         "1 20776U 90079A   26008.60325894  .00000127  00000+0  00000+0 0  9998",
-        "2 20776  13.3902 350.9041 0003547 300.8791  66.8764  1.00271932129296"
+        "2 20776  13.3902 350.9041 0003547 300.8791  66.8764  1.00271932129296",
     ),
 ];
 
@@ -69,10 +69,9 @@ fn test_sgp4_geo_empirical_error() {
     println!("{}", "=".repeat(80));
 
     // Parse GEO TLEs
-    let tles: Vec<TLE> = GEO_TLES.iter()
-        .filter_map(|(name, line1, line2)| {
-            TLE::from_three_lines(name, line1, line2).ok()
-        })
+    let tles: Vec<TLE> = GEO_TLES
+        .iter()
+        .filter_map(|(name, line1, line2)| TLE::from_three_lines(name, line1, line2).ok())
         .collect();
 
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
@@ -80,8 +79,13 @@ fn test_sgp4_geo_empirical_error() {
     println!("\nTest satellites:");
     for (i, tle) in tles.iter().enumerate() {
         let period = 1440.0 / tle.get_mean_motion();
-        println!("  {} - {}: {:.2} rev/day ({:.0} min period)",
-                 i+1, GEO_TLES[i].0, tle.get_mean_motion(), period);
+        println!(
+            "  {} - {}: {:.2} rev/day ({:.0} min period)",
+            i + 1,
+            GEO_TLES[i].0,
+            tle.get_mean_motion(),
+            period
+        );
     }
 
     // Define test times
@@ -110,7 +114,8 @@ fn test_sgp4_geo_empirical_error() {
     propagator_sdp4.init_satellites(&tle_data_gpu)
         .expect("Failed to initialize with SDP4");
 
-    let sdp4_results = propagator_sdp4.propagate_soa_arrays(&times)
+    let sdp4_results = propagator_sdp4
+        .propagate_soa_arrays(&times)
         .expect("SDP4 propagation failed");
 
     // ========================================================================
@@ -123,10 +128,12 @@ fn test_sgp4_geo_empirical_error() {
         .expect("Failed to initialize");
 
     // *** NEW: Use force_near_earth override to actually force SGP4 behavior ***
-    propagator_sgp4.set_force_near_earth_override(true)
+    propagator_sgp4
+        .set_force_near_earth_override(true)
         .expect("Failed to set force_near_earth override");
 
-    let sgp4_results = propagator_sgp4.propagate_soa_arrays(&times)
+    let sgp4_results = propagator_sgp4
+        .propagate_soa_arrays(&times)
         .expect("Forced SGP4 propagation failed");
 
     // ========================================================================
@@ -136,8 +143,10 @@ fn test_sgp4_geo_empirical_error() {
     println!("Position Errors: SGP4 (wrong) vs SDP4 (correct) at GEO");
     println!("{}", "=".repeat(80));
 
-    println!("\n{:>12} | {:>20} | {:>20} | {:>20}",
-             "Time", "TDRS 3 Error (km)", "LES-5 Error (km)", "SKYNET 4C Error (km)");
+    println!(
+        "\n{:>12} | {:>20} | {:>20} | {:>20}",
+        "Time", "TDRS 3 Error (km)", "LES-5 Error (km)", "SKYNET 4C Error (km)"
+    );
     println!("{}", "-".repeat(80));
 
     let mut max_errors: Vec<f64> = vec![0.0; tles.len()];
@@ -165,7 +174,7 @@ fn test_sgp4_geo_empirical_error() {
             let dx = sgp4_x - sdp4_x;
             let dy = sgp4_y - sdp4_y;
             let dz = sgp4_z - sdp4_z;
-            let error_km = (dx*dx + dy*dy + dz*dz).sqrt();
+            let error_km = (dx * dx + dy * dy + dz * dz).sqrt();
 
             max_errors[sat_idx] = max_errors[sat_idx].max(error_km);
 
@@ -203,7 +212,7 @@ fn test_sgp4_geo_empirical_error() {
                 let dx = sgp4_results.x[idx] - sdp4_results.x[idx];
                 let dy = sgp4_results.y[idx] - sdp4_results.y[idx];
                 let dz = sgp4_results.z[idx] - sdp4_results.z[idx];
-                (dx*dx + dy*dy + dz*dz).sqrt()
+                (dx * dx + dy * dy + dz * dz).sqrt()
             })
             .collect();
 
@@ -216,14 +225,8 @@ fn test_sgp4_geo_empirical_error() {
         println!("\nAverage error at 1 day: {:.2} km/day", avg_one_day_error);
 
         // Check for typical vs. resonance-affected errors
-        let typical_errors: Vec<f64> = one_day_errors.iter()
-            .filter(|&&e| e < 100.0)
-            .copied()
-            .collect();
-        let resonance_errors: Vec<f64> = one_day_errors.iter()
-            .filter(|&&e| e >= 100.0)
-            .copied()
-            .collect();
+        let typical_errors: Vec<f64> = one_day_errors.iter().filter(|&&e| e < 100.0).copied().collect();
+        let resonance_errors: Vec<f64> = one_day_errors.iter().filter(|&&e| e >= 100.0).copied().collect();
 
         if !typical_errors.is_empty() {
             let avg_typical = typical_errors.iter().sum::<f64>() / typical_errors.len() as f64;
@@ -262,15 +265,19 @@ fn test_sgp4_geo_empirical_error() {
     println!("{}", "=".repeat(80));
 
     // Assert that we see meaningful errors (override is working)
-    assert!(has_significant_errors,
-            "Expected significant errors (>1 km) when forcing SGP4 for GEO satellites");
+    assert!(
+        has_significant_errors,
+        "Expected significant errors (>1 km) when forcing SGP4 for GEO satellites"
+    );
 
     // Assert errors are in reasonable range for typical GEO (non-resonance)
     // Resonance-affected satellites (like LES-5 near 24-hour) can have much larger errors
     let max_error = max_errors.iter().copied().fold(0.0, f64::max);
-    assert!(max_error < 2000.0,
-            "Errors should not exceed 2000 km for 30-day propagation (got max: {:.1} km)",
-            max_error);
+    assert!(
+        max_error < 2000.0,
+        "Errors should not exceed 2000 km for 30-day propagation (got max: {:.1} km)",
+        max_error
+    );
 
     println!("\n✓ Test passed: force_near_earth override is working correctly!");
     println!("  Demonstrated real SGP4 vs SDP4 errors at GEO altitudes.");

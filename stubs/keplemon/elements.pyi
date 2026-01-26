@@ -4,6 +4,7 @@ from typing import Optional
 
 from keplemon.time import Epoch
 from keplemon.enums import Classification, KeplerianType, ReferenceFrame
+from keplemon.estimation import Observation
 from keplemon.events import CloseApproach
 from keplemon.bodies import Observatory
 
@@ -273,7 +274,46 @@ class TLE:
         """
         ...
 
-    def get_state_at_epoch(self, epoch: Epoch) -> CartesianState: ...
+    def get_state_at_epoch(self, epoch: Epoch) -> CartesianState:
+        """
+        Get a Cartesian state at a specific epoch by propagating the TLE.
+
+        Args:
+            epoch: The epoch at which to get the state
+
+        Returns:
+            CartesianState in TEME frame at the specified epoch
+        """
+        ...
+
+    def get_keplerian_state_at_epoch(self, epoch: Epoch) -> KeplerianState:
+        """
+        Get a Keplerian state at a specific epoch by propagating the TLE.
+
+        Returns mean elements appropriate to the TLE type (Kozai for SGP4, Brouwer for XP).
+
+        Args:
+            epoch: The epoch at which to get the state
+
+        Returns:
+            KeplerianState in TEME frame at the specified epoch
+        """
+        ...
+
+    def get_observation_at_epoch(self, epoch: Epoch) -> Observation:
+        """
+        Get an observation at a specific epoch.
+
+        Creates an observation from the TLE's propagated state at the given epoch,
+        useful for batch least squares fitting of multiple TLEs.
+
+        Args:
+            epoch: The epoch at which to generate the observation
+
+        Returns:
+            Observation derived from this TLE at the given epoch
+        """
+        ...
 
 class SphericalVector:
     """

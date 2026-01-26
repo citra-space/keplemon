@@ -1,7 +1,8 @@
 use super::{PyCartesianState, PyKeplerianState};
+use crate::bindings::enums::{PyClassification, PyKeplerianType};
+use crate::bindings::estimation::PyObservation;
 use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::PyEpoch;
-use crate::bindings::enums::{PyClassification, PyKeplerianType};
 use crate::elements::TLE;
 use crate::enums::Classification;
 use crate::propagation::ForceProperties;
@@ -38,11 +39,11 @@ impl PyTLE {
     }
 
     /// Create a TLE from Keplerian elements
-    /// 
+    ///
     /// This allows creating TLE objects from orbital elements (COE) instead of
     /// TLE line strings. The resulting TLE can be used with batch propagation
     /// including CUDA-accelerated SGP4.
-    /// 
+    ///
     /// # Arguments
     /// * `keplerian_state` - Orbital state with epoch and Keplerian elements
     /// * `norad_id` - NORAD catalog ID (use 99999 for analyst objects)
@@ -50,7 +51,7 @@ impl PyTLE {
     /// * `classification` - Security classification (default: Unclassified)
     /// * `designator` - International designator (default: empty)
     /// * `force_properties` - Atmospheric drag/SRP properties (optional)
-    /// 
+    ///
     /// # Returns
     /// TLE object that can be propagated using SGP4 (CPU or CUDA)
     #[staticmethod]
@@ -67,13 +68,11 @@ impl PyTLE {
             .map(Classification::from)
             .unwrap_or(Classification::Unclassified);
         let designator = designator.unwrap_or_default();
-        let force_properties: ForceProperties = force_properties
-            .map(ForceProperties::from)
-            .unwrap_or_default();
-        
+        let force_properties: ForceProperties = force_properties.map(ForceProperties::from).unwrap_or_default();
+
         // Generate a unique satellite ID if not provided via name
         let satellite_id = name.clone().unwrap_or_else(|| format!("SAT-{}", norad_id));
-        
+
         match TLE::new(
             satellite_id,
             norad_id,
@@ -204,13 +203,13 @@ impl PyTLE {
     }
 
     /// Propagate multiple TLEs to multiple epochs using batch propagation
-    /// 
+    ///
     /// GPU acceleration is used automatically when beneficial based on problem size.
-    /// 
+    ///
     /// # Arguments
     /// * `tles` - List of TLEs to propagate
     /// * `epochs` - List of epochs to propagate to
-    /// 
+    ///
     /// # Returns
     /// 2D list of states: result[sat_idx][epoch_idx]
     #[staticmethod]
@@ -222,18 +221,13 @@ impl PyTLE {
     ) -> PyResult<Vec<Vec<PyCartesianState>>> {
         let tles: Vec<TLE> = tles.into_iter().map(|tle| tle.into()).collect();
         let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
-        
-        py.allow_threads(|| {
+
+        py.detach(|| {
             TLE::propagate_batch(&tles, &epochs)
                 .map(|results| {
                     results
                         .into_iter()
-                        .map(|sat_states| {
-                            sat_states
-                                .into_iter()
-                                .map(PyCartesianState::from)
-                                .collect()
-                        })
+                        .map(|sat_states| sat_states.into_iter().map(PyCartesianState::from).collect())
                         .collect()
                 })
                 .map_err(|e| PyValueError::new_err(e))
@@ -241,32 +235,67 @@ impl PyTLE {
     }
 
     /// Propagate a single TLE to multiple epochs
-    /// 
+    ///
     /// Automatically uses GPU if the number of epochs is large enough.
-    /// 
+    ///
     /// # Arguments
     /// * `epochs` - List of epochs to propagate to
-    /// 
+    ///
     /// # Returns
     /// List of states, one for each epoch
     #[pyo3(signature = (epochs))]
-    pub fn propagate_to_epochs(
-        &self,
-        py: Python<'_>,
-        epochs: Vec<PyEpoch>,
-    ) -> PyResult<Vec<PyCartesianState>> {
+    pub fn propagate_to_epochs(&self, py: Python<'_>, epochs: Vec<PyEpoch>) -> PyResult<Vec<PyCartesianState>> {
         let epochs: Vec<crate::time::Epoch> = epochs.into_iter().map(|e| e.into()).collect();
-        
-        py.allow_threads(|| {
+
+        py.detach(|| {
             self.inner
                 .propagate_to_epochs(&epochs)
-                .map(|states| {
-                    states
-                        .into_iter()
-                        .map(PyCartesianState::from)
-                        .collect()
-                })
+                .map(|states| states.into_iter().map(PyCartesianState::from).collect())
                 .map_err(|e| PyValueError::new_err(e))
         })
+    }
+
+    /// Get an observation at a specific epoch
+    ///
+    /// Creates an observation from the TLE's propagated state at the given epoch,
+    /// useful for batch least squares fitting of multiple TLEs.
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch at which to generate the observation
+    pub fn get_observation_at_epoch(&self, epoch: PyEpoch) -> PyResult<PyObservation> {
+        self.inner
+            .get_observation_at_epoch(epoch.into())
+            .map(PyObservation::from)
+            .map_err(PyValueError::new_err)
+    }
+
+    /// Get a Cartesian state at a specific epoch by propagating the TLE
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch at which to get the state
+    ///
+    /// # Returns
+    /// CartesianState in TEME frame at the specified epoch
+    pub fn get_state_at_epoch(&self, epoch: PyEpoch) -> PyResult<PyCartesianState> {
+        self.inner
+            .get_cartesian_state_at_epoch(epoch.into())
+            .map(PyCartesianState::from)
+            .map_err(PyValueError::new_err)
+    }
+
+    /// Get a Keplerian state at a specific epoch by propagating the TLE
+    ///
+    /// Returns mean elements appropriate to the TLE type (Kozai for SGP4, Brouwer for XP).
+    ///
+    /// # Arguments
+    /// * `epoch` - The epoch at which to get the state
+    ///
+    /// # Returns
+    /// KeplerianState in TEME frame at the specified epoch
+    pub fn get_keplerian_state_at_epoch(&self, epoch: PyEpoch) -> PyResult<PyKeplerianState> {
+        self.inner
+            .get_keplerian_state_at_epoch(epoch.into())
+            .map(PyKeplerianState::from)
+            .map_err(PyValueError::new_err)
     }
 }

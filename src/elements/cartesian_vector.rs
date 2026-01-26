@@ -1,11 +1,22 @@
 use super::SphericalVector;
 use nalgebra::Vector3;
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, Index, IndexMut, Mul, Sub};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CartesianVector {
     n_vector: Vector3<f64>,
 }
+
+impl Hash for CartesianVector {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.n_vector[0].to_bits().hash(state);
+        self.n_vector[1].to_bits().hash(state);
+        self.n_vector[2].to_bits().hash(state);
+    }
+}
+
+impl Eq for CartesianVector {}
 
 impl Mul<f64> for CartesianVector {
     type Output = Self;

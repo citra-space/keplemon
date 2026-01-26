@@ -1,5 +1,5 @@
-use crate::events::CloseApproach;
 use crate::bindings::time::PyEpoch;
+use crate::events::CloseApproach;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 

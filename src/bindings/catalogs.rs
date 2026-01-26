@@ -3,7 +3,6 @@ use pyo3::prelude::*;
 use pyo3::py_run;
 pub use tle_catalog::PyTLECatalog;
 
-
 pub fn register_catalogs(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let catalogs = PyModule::new(parent_module.py(), "catalogs")?;
     catalogs.add_class::<PyTLECatalog>()?;

@@ -1,6 +1,6 @@
 use super::PyCartesianVector;
-use crate::elements::TopocentricElements;
 use crate::bindings::time::PyEpoch;
+use crate::elements::TopocentricElements;
 use crate::time::Epoch;
 use pyo3::prelude::*;
 

@@ -106,12 +106,7 @@ impl PyTimeComponents {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "TimeComponents(year={}, month={}, day={}, hour={}, minute={}, second={})",
-            self.inner.year,
-            self.inner.month,
-            self.inner.day,
-            self.inner.hour,
-            self.inner.minute,
-            self.inner.second
+            self.inner.year, self.inner.month, self.inner.day, self.inner.hour, self.inner.minute, self.inner.second
         ))
     }
 
