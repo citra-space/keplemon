@@ -16,7 +16,7 @@
 #![cfg(feature = "cuda")]
 
 use keplemon::elements::TLE;
-use keplemon::gpu::{CudaSgp4Propagator, cuda_sgp4::TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, cuda_tle::TleDataGpu};
 use keplemon::time::{Epoch, TimeSpan};
 
 const JD_1950: f64 = 2433281.5;
@@ -59,7 +59,7 @@ fn tle_to_gpu(tle: &TLE) -> TleDataGpu {
 
 #[test]
 fn test_sgp4_geo_empirical_error() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping SGP4 at GEO error test");
         return;
     }
@@ -105,7 +105,7 @@ fn test_sgp4_geo_empirical_error() {
     // CORRECT: SDP4 (deep-space propagator) - REFERENCE
     // ========================================================================
     println!("\nPropagating with SDP4 (correct for GEO)...");
-    let mut propagator_sdp4 = CudaSgp4Propagator::new()
+    let mut propagator_sdp4 = CudaTlePropagator::new()
         .expect("Failed to create GPU propagator");
     propagator_sdp4.init_satellites(&tle_data_gpu)
         .expect("Failed to initialize with SDP4");
@@ -117,7 +117,7 @@ fn test_sgp4_geo_empirical_error() {
     // WRONG: SGP4 (near-earth propagator forced on GEO satellites)
     // ========================================================================
     println!("Propagating with forced SGP4 (incorrect for GEO)...");
-    let mut propagator_sgp4 = CudaSgp4Propagator::new()
+    let mut propagator_sgp4 = CudaTlePropagator::new()
         .expect("Failed to create GPU propagator");
     propagator_sgp4.init_satellites(&tle_data_gpu)
         .expect("Failed to initialize");

@@ -1,16 +1,16 @@
-// SGP4 Type Definitions for CUDA
-// Shared structures between CUDA and Rust
+// TLE Propagator Type Definitions for CUDA
+// Shared structures between CUDA and Rust for SGP4/SDP4 propagation
 // IMPORTANT: These must match the Rust structs exactly!
 
-#ifndef SGP4_TYPES_CUH
-#define SGP4_TYPES_CUH
+#ifndef TLE_PROPAGATOR_TYPES_CUH
+#define TLE_PROPAGATOR_TYPES_CUH
 
 // Raw TLE data input (from Rust)
 // Size: 10 doubles = 80 bytes
 struct TleData {
     double epoch_jd;
     double inclination;      // degrees
-    double raan;             // degrees  
+    double raan;             // degrees
     double eccentricity;
     double arg_perigee;      // degrees
     double mean_anomaly;     // degrees
@@ -20,7 +20,7 @@ struct TleData {
     double nddot;            // second derivative of mean motion
 };
 
-// Precomputed SGP4 parameters (after initialization)
+// Precomputed SGP4/SDP4 parameters (after initialization)
 // Must match Rust Sgp4ParamsGpu exactly
 struct Sgp4Params {
     // TLE epoch and elements (in radians and native units) - 10 doubles
@@ -34,7 +34,7 @@ struct Sgp4Params {
     double bstar;
     double ndot;
     double nddot;
-    
+
     // Derived initialization constants - 30 doubles
     double a;
     double alta;
@@ -69,14 +69,14 @@ struct Sgp4Params {
     double no_unkozai;
     double aycof;
     double delmo_const;
-    
+
     // ═══════════════════════════════════════════════════════════════════
-    // DEEP SPACE PARAMETERS
+    // DEEP SPACE PARAMETERS (SDP4)
     // ═══════════════════════════════════════════════════════════════════
-    
+
     // Greenwich sidereal time at epoch
     double gsto;
-    
+
     // Lunar-solar terms (from DSCOM)
     double e3;
     double ee2;
@@ -109,14 +109,14 @@ struct Sgp4Params {
     double xl4;
     double zmol;
     double zmos;
-    
+
     // Secular rates (from DSINIT)
     double dedt;
     double didt;
     double dmdt;
     double dnodt;
     double domdt;
-    
+
     // Resonance terms (from DSINIT)
     double d2201;
     double d2211;
@@ -136,7 +136,7 @@ struct Sgp4Params {
     double xli;
     double xni;
     double atime;
-    
+
     // Flags
     int is_deep_space;
     int irez;                // 0=none, 1=one-day, 2=half-day resonance
@@ -171,4 +171,4 @@ struct Sgp4StateSoA {
     int* error_code;    // [n_sats * n_times] Error codes
 };
 
-#endif // SGP4_TYPES_CUH
+#endif // TLE_PROPAGATOR_TYPES_CUH

@@ -1,11 +1,14 @@
-//! CUDA SGP4 batch propagator implementation
+//! CUDA TLE-based batch propagator implementation
+//!
+//! This module provides GPU-accelerated propagation for TLE-based orbits,
+//! supporting both SGP4 (near-earth) and SDP4 (deep-space) algorithms.
 
 use super::device::{CudaDevice, CudaError};
 use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 
 // Include the PTX at compile time
-const SGP4_INIT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/sgp4_init.ptx"));
-const SGP4_BATCH_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/sgp4_batch.ptx"));
+const TLE_PROPAGATOR_INIT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/tle_propagator_init.ptx"));
+const TLE_PROPAGATOR_BATCH_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/tle_propagator_batch.ptx"));
 
 /// Raw TLE data that matches CUDA structure
 #[repr(C)]
@@ -35,6 +38,77 @@ pub enum PropagatorOverride {
     ForceSgp4,
     /// Force all satellites to use SDP4 (deep-space propagator)
     ForceSdp4,
+}
+
+/// Propagator type for satellite classification
+///
+/// Used to determine which propagation algorithm to use for each satellite.
+/// The selection is based on orbital characteristics and TLE metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PropagatorType {
+    /// Standard SGP4 for near-earth orbits (period < 225 min)
+    /// Achieves ~83x GPU speedup
+    Sgp4,
+    /// SDP4 for deep-space orbits (period >= 225 min)
+    /// Limited to ~1.6x GPU speedup due to iterative resonance loops
+    Sdp4,
+    /// SGP4-XP for enhanced GEO/MEO propagation (ephemeris type 4)
+    /// Not yet implemented - reserved for future use
+    Sgp4Xp,
+    /// GEO Analytical propagator (ECI-based, no TLE constraints)
+    /// Achieves ~80x GPU speedup, comparable to SGP4
+    GeoAnalytical,
+}
+
+impl PropagatorType {
+    /// Determine the recommended propagator type for a TLE
+    ///
+    /// Selection logic:
+    /// - ephemeris_type == 4 → SGP4-XP (when available)
+    /// - period >= 225 min → SDP4 (standard) or GeoAnalytical (when enabled)
+    /// - period < 225 min → SGP4
+    pub fn for_tle(mean_motion: f64, ephemeris_type: Option<u8>) -> Self {
+        // Check for SGP4-XP TLEs first (ephemeris type 4)
+        if ephemeris_type == Some(4) {
+            // SGP4-XP not yet implemented, fall back to SDP4
+            return PropagatorType::Sdp4;
+        }
+
+        // Check orbital period (225 min threshold = 6.4 rev/day)
+        if mean_motion > DEEP_SPACE_MEAN_MOTION_THRESHOLD {
+            PropagatorType::Sgp4
+        } else {
+            PropagatorType::Sdp4
+        }
+    }
+
+    /// Determine propagator type with GEO analytical option
+    ///
+    /// When `prefer_geo_analytical` is true, deep-space satellites will use
+    /// the GEO analytical propagator instead of SDP4 for better GPU performance.
+    pub fn for_tle_with_geo_option(
+        mean_motion: f64,
+        ephemeris_type: Option<u8>,
+        prefer_geo_analytical: bool,
+    ) -> Self {
+        // Check for SGP4-XP TLEs first (ephemeris type 4)
+        if ephemeris_type == Some(4) {
+            // SGP4-XP not yet implemented, fall back to appropriate propagator
+            if prefer_geo_analytical {
+                return PropagatorType::GeoAnalytical;
+            }
+            return PropagatorType::Sdp4;
+        }
+
+        // Check orbital period
+        if mean_motion > DEEP_SPACE_MEAN_MOTION_THRESHOLD {
+            PropagatorType::Sgp4
+        } else if prefer_geo_analytical {
+            PropagatorType::GeoAnalytical
+        } else {
+            PropagatorType::Sdp4
+        }
+    }
 }
 
 // Julian Date epoch for 1950-01-01 00:00:00 UTC
@@ -351,7 +425,7 @@ const DEEP_SPACE_MEAN_MOTION_THRESHOLD: f64 = 6.4; // rev/day
 /// processing mixed LEO/GEO satellite constellations. Near-earth satellites
 /// (SGP4) and deep-space satellites (SDP4) are partitioned and processed
 /// separately, then results are merged back in original order.
-pub struct CudaSgp4Propagator {
+pub struct CudaTlePropagator {
     device: CudaDevice,
     n_satellites: usize,
     #[allow(dead_code)]
@@ -406,33 +480,33 @@ struct CachedSoABuffers {
     n_results: usize,
 }
 
-impl CudaSgp4Propagator {
+impl CudaTlePropagator {
     /// Create a new CUDA SGP4 propagator
     pub fn new() -> Result<Self, CudaError> {
         let device = CudaDevice::new()?;
         let dev = device.device();
         
         // Load PTX modules
-        dev.load_ptx(SGP4_INIT_PTX.into(), "sgp4_init", &["sgp4_init_kernel"])
+        dev.load_ptx(TLE_PROPAGATOR_INIT_PTX.into(), "tle_propagator_init", &["sgp4_init_kernel"])
             .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
-        
+
         dev.load_ptx(
-            SGP4_BATCH_PTX.into(),
-            "sgp4_batch",
+            TLE_PROPAGATOR_BATCH_PTX.into(),
+            "tle_propagator_batch",
             &["sgp4_propagate_kernel", "sgp4_propagate_soa_kernel", "sgp4_propagate_soa_indexed_kernel"]
         ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
-        
+
         // Cache kernel functions for faster access
-        let init_kernel = dev.get_func("sgp4_init", "sgp4_init_kernel")
+        let init_kernel = dev.get_func("tle_propagator_init", "sgp4_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
-        
-        let propagate_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_kernel")
+
+        let propagate_kernel = dev.get_func("tle_propagator_batch", "sgp4_propagate_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
-        
-        let propagate_soa_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_soa_kernel")
+
+        let propagate_soa_kernel = dev.get_func("tle_propagator_batch", "sgp4_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_kernel not found".into()))?;
 
-        let propagate_soa_indexed_kernel = dev.get_func("sgp4_batch", "sgp4_propagate_soa_indexed_kernel")
+        let propagate_soa_indexed_kernel = dev.get_func("tle_propagator_batch", "sgp4_propagate_soa_indexed_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_indexed_kernel not found".into()))?;
 
         Ok(Self {
@@ -667,9 +741,9 @@ impl CudaSgp4Propagator {
     ///
     /// # Example
     /// ```no_run
-    /// # use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+    /// # use keplemon::gpu::{CudaTlePropagator, TleDataGpu};
     /// # let tle_data: Vec<TleDataGpu> = vec![];
-    /// let mut propagator = CudaSgp4Propagator::new()?;
+    /// let mut propagator = CudaTlePropagator::new()?;
     /// propagator.init_satellites(&tle_data)?;
     ///
     /// // Force all satellites to use SGP4 (for error analysis)
@@ -1180,10 +1254,10 @@ impl CudaSgp4Propagator {
     ///
     /// # Example
     /// ```no_run
-    /// # use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+    /// # use keplemon::gpu::{CudaTlePropagator, TleDataGpu};
     /// # let tle_data: Vec<TleDataGpu> = vec![];
     /// # let times: Vec<f64> = vec![2459945.5];
-    /// let mut propagator = CudaSgp4Propagator::new()?;
+    /// let mut propagator = CudaTlePropagator::new()?;
     /// propagator.init_satellites(&tle_data)?;
     ///
     /// // Option 1: CPU-resident (existing API)
@@ -1361,10 +1435,10 @@ impl CudaSgp4Propagator {
     ///
     /// # Example
     /// ```no_run
-    /// # use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+    /// # use keplemon::gpu::{CudaTlePropagator, TleDataGpu};
     /// # let tle_data: Vec<TleDataGpu> = vec![];
     /// # let times: Vec<f64> = vec![2459945.5];
-    /// let mut propagator = CudaSgp4Propagator::new()?;
+    /// let mut propagator = CudaTlePropagator::new()?;
     /// propagator.init_satellites(&tle_data)?;
     /// let gpu_states = propagator.propagate_soa_gpu_resident(&times)?;
     ///
@@ -1382,3 +1456,4 @@ impl CudaSgp4Propagator {
         self.cached_soa_buffers = None;
     }
 }
+

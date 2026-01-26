@@ -5,7 +5,7 @@
 #![cfg(feature = "cuda")]
 
 use keplemon::catalogs::TLECatalog;
-use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, TleDataGpu};
 use std::time::Instant;
 
 fn load_tles(n: usize) -> Vec<TleDataGpu> {
@@ -28,7 +28,7 @@ fn quick_timing_comparison() {
     println!("Time steps: {}", n_times);
     println!("Iterations: {}", n_iters);
     
-    let mut propagator = CudaSgp4Propagator::new()
+    let mut propagator = CudaTlePropagator::new()
         .expect("Failed to create propagator");
     propagator.init_satellites(&tles)
         .expect("Failed to init satellites");

@@ -1,9 +1,11 @@
-// SGP4 Batch Propagation Kernel
-// Main propagation kernel based on Vallado's SGP4 algorithm
+// TLE Propagator Batch Propagation Kernel
+// Main propagation kernel based on Vallado's SGP4/SDP4 algorithm
+// Dispatches to SGP4 (near-earth) or SDP4 (deep-space) based on orbital period
 
-#include "sgp4_types.cuh"
-#include "sgp4_constants.cuh"
-#include "sgp4_deepspace.cuh"
+#include "tle_propagator_types.cuh"
+#include "tle_propagator_constants.cuh"
+#include "sgp4_propagate.cuh"
+#include "sdp4_propagate.cuh"
 #include <stdio.h>
 
 // Debug output disabled for production performance

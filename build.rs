@@ -66,10 +66,31 @@ fn main() {
 
 #[cfg(feature = "cuda")]
 fn compile_cuda_kernels() {
-    println!("cargo:rerun-if-changed=kernels/sgp4_init.cu");
-    println!("cargo:rerun-if-changed=kernels/sgp4_batch.cu");
-    println!("cargo:rerun-if-changed=kernels/sgp4_types.cuh");
-    println!("cargo:rerun-if-changed=kernels/sgp4_constants.cuh");
+    // TLE propagator files (SGP4/SDP4)
+    println!("cargo:rerun-if-changed=kernels/tle_propagator_init.cu");
+    println!("cargo:rerun-if-changed=kernels/tle_propagator_batch.cu");
+    println!("cargo:rerun-if-changed=kernels/tle_propagator_types.cuh");
+    println!("cargo:rerun-if-changed=kernels/tle_propagator_constants.cuh");
+
+    // SGP4 module (near-earth)
+    println!("cargo:rerun-if-changed=kernels/sgp4_propagate.cuh");
+    println!("cargo:rerun-if-changed=kernels/sgp4_init.cuh");
+
+    // SDP4 module (deep-space)
+    println!("cargo:rerun-if-changed=kernels/sdp4_propagate.cuh");
+    println!("cargo:rerun-if-changed=kernels/sdp4_init.cuh");
+    println!("cargo:rerun-if-changed=kernels/sdp4_deepspace.cuh");
+
+    // GEO numerical propagator files
+    println!("cargo:rerun-if-changed=kernels/geo_numerical.cu");
+    println!("cargo:rerun-if-changed=kernels/geo_numerical.cuh");
+    println!("cargo:rerun-if-changed=kernels/geo_types.cuh");
+    println!("cargo:rerun-if-changed=kernels/geo_constants.cuh");
+
+    // SDP4 interpolated propagator files
+    println!("cargo:rerun-if-changed=kernels/sdp4_interpolated.cu");
+    println!("cargo:rerun-if-changed=kernels/sdp4_interpolated.cuh");
+    println!("cargo:rerun-if-changed=kernels/sdp4_interpolated_types.cuh");
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
 
@@ -93,22 +114,38 @@ fn compile_cuda_kernels() {
 
         // Create empty stub PTX files so include_str! doesn't fail
         let stub_ptx = "// CUDA kernels not compiled - nvcc not available\n";
-        fs::write(format!("{}/sgp4_init.ptx", out_dir), stub_ptx).expect("Failed to write stub sgp4_init.ptx");
-        fs::write(format!("{}/sgp4_batch.ptx", out_dir), stub_ptx).expect("Failed to write stub sgp4_batch.ptx");
+        fs::write(format!("{}/tle_propagator_init.ptx", out_dir), stub_ptx).expect("Failed to write stub tle_propagator_init.ptx");
+        fs::write(format!("{}/tle_propagator_batch.ptx", out_dir), stub_ptx).expect("Failed to write stub tle_propagator_batch.ptx");
+        fs::write(format!("{}/geo_numerical.ptx", out_dir), stub_ptx).expect("Failed to write stub geo_numerical.ptx");
+        fs::write(format!("{}/sdp4_interpolated.ptx", out_dir), stub_ptx).expect("Failed to write stub sdp4_interpolated.ptx");
 
         return;
     }
 
     let nvcc_cmd = if nvcc.exists() { nvcc.to_str().unwrap() } else { "nvcc" };
 
-    // Compile initialization kernel
-    compile_kernel(nvcc_cmd, "kernels/sgp4_init.cu", &format!("{}/sgp4_init.ptx", out_dir));
+    // Compile TLE propagator initialization kernel (SGP4/SDP4)
+    compile_kernel(nvcc_cmd, "kernels/tle_propagator_init.cu", &format!("{}/tle_propagator_init.ptx", out_dir));
 
-    // Compile batch propagation kernel
+    // Compile TLE propagator batch propagation kernel (SGP4/SDP4)
     compile_kernel(
         nvcc_cmd,
-        "kernels/sgp4_batch.cu",
-        &format!("{}/sgp4_batch.ptx", out_dir),
+        "kernels/tle_propagator_batch.cu",
+        &format!("{}/tle_propagator_batch.ptx", out_dir),
+    );
+
+    // Compile GEO numerical propagation kernel
+    compile_kernel(
+        nvcc_cmd,
+        "kernels/geo_numerical.cu",
+        &format!("{}/geo_numerical.ptx", out_dir),
+    );
+
+    // Compile SDP4 interpolated propagation kernel
+    compile_kernel(
+        nvcc_cmd,
+        "kernels/sdp4_interpolated.cu",
+        &format!("{}/sdp4_interpolated.ptx", out_dir),
     );
 
     println!("cargo:info=CUDA kernels compiled successfully");

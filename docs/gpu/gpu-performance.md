@@ -171,9 +171,9 @@ Even with two-kernel partitioning, internal branches remain:
 ### Standard API (with GPU-to-CPU transfer)
 
 ```rust
-use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, TleDataGpu};
 
-let mut propagator = CudaSgp4Propagator::new()?;
+let mut propagator = CudaTlePropagator::new()?;
 propagator.init_satellites(&tle_data)?;
 
 // Returns Vec<f64> arrays on CPU

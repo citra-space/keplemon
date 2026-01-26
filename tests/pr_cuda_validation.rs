@@ -14,7 +14,7 @@
 
 use keplemon::bodies::Satellite;
 use keplemon::elements::TLE;
-use keplemon::gpu::{cuda_sgp4::TleDataGpu, CudaSgp4Propagator};
+use keplemon::gpu::{cuda_tle::TleDataGpu, CudaTlePropagator};
 use keplemon::time::{Epoch, TimeSpan};
 use std::time::Instant;
 
@@ -85,7 +85,7 @@ fn compute_altitude(mean_motion: f64) -> f64 {
 
 #[test]
 fn test_pr_cuda_validation() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping PR validation test");
         return;
     }
@@ -173,7 +173,7 @@ fn test_pr_cuda_validation() {
         })
         .collect();
 
-    let mut gpu = CudaSgp4Propagator::new().expect("Failed to create GPU propagator");
+    let mut gpu = CudaTlePropagator::new().expect("Failed to create GPU propagator");
     gpu.init_satellites(&tle_gpu)
         .expect("Failed to init satellites");
 
@@ -294,7 +294,7 @@ fn test_pr_cuda_validation() {
 
 fn compute_residuals(
     cpu_results: &[Vec<Option<keplemon::elements::CartesianState>>],
-    gpu_results: &[keplemon::gpu::cuda_sgp4::Sgp4StateGpu],
+    gpu_results: &[keplemon::gpu::cuda_tle::Sgp4StateGpu],
     regimes: &[&str],
     target_regime: &str,
     n_times: usize,

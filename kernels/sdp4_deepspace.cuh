@@ -1,12 +1,12 @@
-// SGP4 Deep Space Functions (CUDA)
+// SDP4 Deep Space Functions (CUDA)
 // Based on Vallado's DSCOM, DSINIT, DSPACE, DPPER functions
 // Handles satellites with orbital periods > 225 minutes
 
-#ifndef SGP4_DEEPSPACE_CUH
-#define SGP4_DEEPSPACE_CUH
+#ifndef SDP4_DEEPSPACE_CUH
+#define SDP4_DEEPSPACE_CUH
 
-#include "sgp4_types.cuh"
-#include "sgp4_constants.cuh"
+#include "tle_propagator_types.cuh"
+#include "tle_propagator_constants.cuh"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DSCOM - Deep Space Common Items
@@ -29,7 +29,7 @@ __device__ void dscom(
     double& nm, double& em, double& inclm, double& mm, double& argpm, double& nodem,
     Sgp4Params& p
 ) {
-    // Solar and lunar constants (from sgp4_constants.cuh)
+    // Solar and lunar constants (from tle_propagator_constants.cuh)
     // ZES, ZEL, C1SS, C1L, ZSINIS, ZCOSIS, ZCOSGS, ZSINGS
     
     // Local variables
@@ -527,7 +527,7 @@ __device__ void dspace(
     const double fasx6 = 0.37448087;
     
     // Use header constants for G-values and step sizes
-    // G22, G32, G44, G52, G54, STEP, STEPN, STEP2 from sgp4_constants.cuh
+    // G22, G32, G44, G52, G54, STEP, STEPN, STEP2 from tle_propagator_constants.cuh
     
     double delt, xni, xli, atime;
     double ft = 0.0;
@@ -637,4 +637,4 @@ __device__ void dspace(
     }
 }
 
-#endif // SGP4_DEEPSPACE_CUH
+#endif // SDP4_DEEPSPACE_CUH

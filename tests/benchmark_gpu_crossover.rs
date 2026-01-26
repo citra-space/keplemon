@@ -12,7 +12,7 @@
 
 use keplemon::elements::TLE;
 use keplemon::bodies::Satellite;
-use keplemon::gpu::{CudaSgp4Propagator, cuda_sgp4::TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, cuda_tle::TleDataGpu};
 use keplemon::time::{Epoch, TimeSpan};
 use std::time::Instant;
 
@@ -99,7 +99,7 @@ fn benchmark_cpu(satellites: &[Satellite], times: &[Epoch]) -> std::time::Durati
 fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<std::time::Duration, String> {
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
     
-    let mut gpu_propagator = CudaSgp4Propagator::new()
+    let mut gpu_propagator = CudaTlePropagator::new()
         .map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
     
     gpu_propagator.init_satellites(&tle_data_gpu)
@@ -174,7 +174,7 @@ fn run_crossover_analysis(
 #[test]
 #[ignore]
 fn test_gpu_crossover_analysis() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping crossover analysis");
         return;
     }
@@ -224,7 +224,7 @@ fn test_gpu_crossover_analysis() {
 #[test]
 #[ignore]
 fn test_quick_crossover() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping quick crossover test");
         return;
     }

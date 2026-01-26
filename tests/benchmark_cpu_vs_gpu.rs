@@ -1,8 +1,8 @@
 //! CPU vs GPU Performance Benchmark
-//! 
-//! Compares execution time between CPU (sequential) and GPU (parallel) SGP4 propagation
-//! for varying numbers of satellites: 10, 20, 40, 80, 160, and 1000.
-//! 
+//!
+//! Compares execution time between CPU (sequential), CPU (parallel with rayon),
+//! and GPU (parallel) SGP4 propagation for varying numbers of satellites.
+//!
 //! Uses a realistic mix of LEO (Starlink, ISS) and GEO (TDRS, Milstar) satellites
 //! to represent actual operational scenarios.
 
@@ -10,8 +10,9 @@
 
 use keplemon::elements::TLE;
 use keplemon::bodies::Satellite;
-use keplemon::gpu::{CudaSgp4Propagator, cuda_sgp4::TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, CudaGeoNumericalPropagator, GeoStateGpu, cuda_tle::TleDataGpu};
 use keplemon::time::{Epoch, TimeSpan};
+use rayon::prelude::*;
 use std::time::Instant;
 
 // Julian Date of 1950-01-01 00:00:00 UTC
@@ -164,15 +165,28 @@ fn tle_to_gpu(tle: &TLE) -> TleDataGpu {
 }
 
 /// Benchmark CPU propagation (sequential)
-fn benchmark_cpu(satellites: &[Satellite], times: &[Epoch]) -> std::time::Duration {
+fn benchmark_cpu_sequential(satellites: &[Satellite], times: &[Epoch]) -> std::time::Duration {
     let start = Instant::now();
-    
+
     for sat in satellites.iter() {
         for &time in times.iter() {
             let _ = sat.get_state_at_epoch(time);
         }
     }
-    
+
+    start.elapsed()
+}
+
+/// Benchmark CPU propagation (parallel with rayon)
+fn benchmark_cpu_parallel(satellites: &[Satellite], times: &[Epoch]) -> std::time::Duration {
+    let start = Instant::now();
+
+    satellites.par_iter().for_each(|sat| {
+        for &time in times.iter() {
+            let _ = sat.get_state_at_epoch(time);
+        }
+    });
+
     start.elapsed()
 }
 
@@ -193,7 +207,7 @@ fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<GpuBenchmarkResult, S
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
 
     // Initialize GPU propagator (partitions satellites internally)
-    let mut gpu_propagator = CudaSgp4Propagator::new()
+    let mut gpu_propagator = CudaTlePropagator::new()
         .map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
 
     gpu_propagator.init_satellites(&tle_data_gpu)
@@ -253,11 +267,19 @@ fn run_benchmark(n_satellites: usize, n_times: usize, regime: OrbitRegime) {
         .map(|i| base_jd + (i as f64) / 1440.0)  // 1-minute intervals (1440 minutes/day)
         .collect();
     
-    // CPU Benchmark
-    print!("\nCPU (sequential): ");
+    // CPU Sequential Benchmark
+    print!("\nCPU (sequential):  ");
     std::io::Write::flush(&mut std::io::stdout()).unwrap();
-    let cpu_time = benchmark_cpu(&satellites, &times);
-    println!("{:.3} ms", cpu_time.as_secs_f64() * 1000.0);
+    let cpu_seq_time = benchmark_cpu_sequential(&satellites, &times);
+    println!("{:.3} ms", cpu_seq_time.as_secs_f64() * 1000.0);
+
+    // CPU Parallel Benchmark
+    print!("CPU (parallel):    ");
+    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+    let cpu_par_time = benchmark_cpu_parallel(&satellites, &times);
+    let cpu_par_ms = cpu_par_time.as_secs_f64() * 1000.0;
+    let cpu_speedup = cpu_seq_time.as_secs_f64() / cpu_par_time.as_secs_f64();
+    println!("{:.3} ms  ({:.2}x vs sequential)", cpu_par_ms, cpu_speedup);
 
     // GPU Benchmark
     match benchmark_gpu(&tles, &times_jd) {
@@ -270,21 +292,32 @@ fn run_benchmark(n_satellites: usize, n_times: usize, regime: OrbitRegime) {
             println!("GPU (+ transfer):  {:.3} ms  (transfer: {:.3} ms, {:.1}% overhead)",
                 total_ms, transfer_ms, (transfer_ms / total_ms) * 100.0);
 
-            // Calculate speedups
-            let speedup_kernel = cpu_time.as_secs_f64() / gpu_result.kernel_time.as_secs_f64();
-            let speedup_total = cpu_time.as_secs_f64() / gpu_result.total_time.as_secs_f64();
+            // Calculate speedups vs sequential CPU
+            let speedup_kernel_vs_seq = cpu_seq_time.as_secs_f64() / gpu_result.kernel_time.as_secs_f64();
+            let speedup_total_vs_seq = cpu_seq_time.as_secs_f64() / gpu_result.total_time.as_secs_f64();
 
-            println!("\nSpeedup (kernel only): {:.2}x", speedup_kernel);
-            println!("Speedup (+ transfer):  {:.2}x", speedup_total);
+            // Calculate speedups vs parallel CPU
+            let speedup_kernel_vs_par = cpu_par_time.as_secs_f64() / gpu_result.kernel_time.as_secs_f64();
+            let speedup_total_vs_par = cpu_par_time.as_secs_f64() / gpu_result.total_time.as_secs_f64();
+
+            println!("\nSpeedup vs CPU Sequential:");
+            println!("  GPU (kernel only): {:.2}x", speedup_kernel_vs_seq);
+            println!("  GPU (+ transfer):  {:.2}x", speedup_total_vs_seq);
+
+            println!("\nSpeedup vs CPU Parallel:");
+            println!("  GPU (kernel only): {:.2}x", speedup_kernel_vs_par);
+            println!("  GPU (+ transfer):  {:.2}x", speedup_total_vs_par);
 
             // Calculate throughput
             let total_props = (n_satellites * n_times) as f64;
-            let cpu_throughput = total_props / cpu_time.as_secs_f64();
+            let cpu_seq_throughput = total_props / cpu_seq_time.as_secs_f64();
+            let cpu_par_throughput = total_props / cpu_par_time.as_secs_f64();
             let gpu_kernel_throughput = total_props / gpu_result.kernel_time.as_secs_f64();
             let gpu_total_throughput = total_props / gpu_result.total_time.as_secs_f64();
 
             println!("\nThroughput:");
-            println!("  CPU:              {:>12.0} propagations/sec", cpu_throughput);
+            println!("  CPU (sequential): {:>12.0} propagations/sec", cpu_seq_throughput);
+            println!("  CPU (parallel):   {:>12.0} propagations/sec", cpu_par_throughput);
             println!("  GPU (kernel):     {:>12.0} propagations/sec", gpu_kernel_throughput);
             println!("  GPU (+ transfer): {:>12.0} propagations/sec", gpu_total_throughput);
         }
@@ -298,14 +331,14 @@ fn run_benchmark(n_satellites: usize, n_times: usize, regime: OrbitRegime) {
 #[ignore]
 fn test_benchmark_cpu_vs_gpu() {
     // Skip if CUDA not available
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping CPU vs GPU benchmark");
         return;
     }
 
     println!("\n");
     println!("{}", "#".repeat(70));
-    println!("# CPU vs GPU SGP4 Performance Benchmark");
+    println!("# CPU (Sequential/Parallel) vs GPU SGP4 Performance Benchmark");
     println!("# LEO Only, GEO Only, and Mixed Constellations");
     println!("{}", "#".repeat(70));
 
@@ -344,7 +377,7 @@ fn test_benchmark_cpu_vs_gpu() {
 #[test]
 #[ignore]
 fn test_quick_benchmark() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping quick benchmark");
         return;
     }
@@ -356,4 +389,147 @@ fn test_quick_benchmark() {
     for &n_sats in &[10, 40, 160] {
         run_benchmark(n_sats, n_times, OrbitRegime::Mixed);
     }
+}
+
+/// Benchmark GPU GEO Analytical propagation
+fn benchmark_geo_analytical(n_sats: usize, times_jd: &[f64]) -> Result<GpuBenchmarkResult, String> {
+    // Generate GEO satellite states distributed around the geostationary belt
+    let geo_states: Vec<GeoStateGpu> = (0..n_sats).map(|i| {
+        let angle = (i as f64) * 360.0 / (n_sats as f64) * std::f64::consts::PI / 180.0;
+        let r = 42164.0;  // GEO radius (km)
+        let v = 3.0746;   // GEO velocity (km/s)
+        GeoStateGpu::new(
+            [r * angle.cos(), r * angle.sin(), 0.0],
+            [-v * angle.sin(), v * angle.cos(), 0.0],
+            times_jd[0],
+            None,
+            None,
+        )
+    }).collect();
+
+    let mut propagator = CudaGeoNumericalPropagator::new()
+        .map_err(|e| format!("Failed to create GEO propagator: {}", e))?;
+
+    propagator.init_satellites(&geo_states)
+        .map_err(|e| format!("Failed to initialize GEO satellites: {}", e))?;
+
+    // Warmup
+    let _ = propagator.propagate_soa_arrays(times_jd)
+        .map_err(|e| format!("Warmup failed: {}", e))?;
+
+    // Benchmark total time (kernel + transfer)
+    // GEO Analytical doesn't have a separate GPU-resident method, but the kernel
+    // dominates the time for large propagations
+    let start = Instant::now();
+    let _ = propagator.propagate_soa_arrays(times_jd)
+        .map_err(|e| format!("Propagation failed: {}", e))?;
+    let total_time = start.elapsed();
+
+    // For GEO analytical, kernel time ≈ total time (transfer overhead is small)
+    Ok(GpuBenchmarkResult { total_time, kernel_time: total_time })
+}
+
+/// Comprehensive benchmark comparing CPU SDP4 vs GPU SDP4 vs GPU GEO Analytical
+/// for GEO-regime satellites only
+#[test]
+#[ignore]
+fn test_benchmark_geo_analytical() {
+    if !CudaTlePropagator::is_cuda_available() {
+        eprintln!("CUDA not available, skipping GEO analytical benchmark");
+        return;
+    }
+
+    println!("\n");
+    println!("{}", "#".repeat(70));
+    println!("# CPU SDP4 vs GPU SDP4 vs GPU GEO Analytical Benchmark");
+    println!("# GEO-regime satellites only");
+    println!("{}", "#".repeat(70));
+
+    // Test configurations
+    let satellite_counts = vec![100, 500, 1000];
+    let n_times = 10_080;  // 7 days at 1-minute intervals
+
+    for &n_sats in &satellite_counts {
+        println!("\n{}", "=".repeat(70));
+        println!("Satellites: {} | Timesteps: {} | Total propagations: {}",
+                 n_sats, n_times, n_sats * n_times);
+        println!("{}", "=".repeat(70));
+
+        // Generate GEO TLEs for CPU and GPU SDP4 benchmarks
+        let tles = generate_tles(n_sats, OrbitRegime::GeoOnly);
+        let satellites: Vec<Satellite> = tles.iter()
+            .map(|tle| Satellite::from(tle.clone()))
+            .collect();
+
+        // Generate time arrays
+        let base_epoch = tles[0].get_keplerian_state().epoch;
+        let times: Vec<Epoch> = (0..n_times)
+            .map(|i| base_epoch + TimeSpan::from_minutes(i as f64))
+            .collect();
+        let base_jd = base_epoch.days_since_1950 + JD_1950;
+        let times_jd: Vec<f64> = (0..n_times)
+            .map(|i| base_jd + (i as f64) / 1440.0)
+            .collect();
+
+        // CPU Sequential SDP4
+        print!("CPU SDP4 (sequential):     ");
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+        let cpu_seq_time = benchmark_cpu_sequential(&satellites, &times);
+        println!("{:>10.3} ms", cpu_seq_time.as_secs_f64() * 1000.0);
+
+        // CPU Parallel SDP4
+        print!("CPU SDP4 (parallel):       ");
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+        let cpu_par_time = benchmark_cpu_parallel(&satellites, &times);
+        println!("{:>10.3} ms", cpu_par_time.as_secs_f64() * 1000.0);
+
+        // GPU SDP4
+        let gpu_sdp4_result = benchmark_gpu(&tles, &times_jd);
+        match &gpu_sdp4_result {
+            Ok(result) => {
+                println!("GPU SDP4 (kernel):         {:>10.3} ms", result.kernel_time.as_secs_f64() * 1000.0);
+            }
+            Err(e) => {
+                println!("GPU SDP4: ERROR - {}", e);
+            }
+        }
+
+        // GPU GEO Analytical
+        let geo_result = benchmark_geo_analytical(n_sats, &times_jd);
+        match &geo_result {
+            Ok(result) => {
+                println!("GPU GEO Analytical:        {:>10.3} ms", result.kernel_time.as_secs_f64() * 1000.0);
+            }
+            Err(e) => {
+                println!("GPU GEO Analytical: ERROR - {}", e);
+            }
+        }
+
+        // Calculate and display speedups
+        if let (Ok(sdp4), Ok(geo)) = (&gpu_sdp4_result, &geo_result) {
+            println!("\n--- Speedups ---");
+
+            let geo_vs_cpu_seq = cpu_seq_time.as_secs_f64() / geo.kernel_time.as_secs_f64();
+            let geo_vs_cpu_par = cpu_par_time.as_secs_f64() / geo.kernel_time.as_secs_f64();
+            let geo_vs_gpu_sdp4 = sdp4.kernel_time.as_secs_f64() / geo.kernel_time.as_secs_f64();
+
+            println!("GEO Analytical vs CPU Sequential:  {:>6.1}x", geo_vs_cpu_seq);
+            println!("GEO Analytical vs CPU Parallel:    {:>6.1}x", geo_vs_cpu_par);
+            println!("GEO Analytical vs GPU SDP4:        {:>6.1}x", geo_vs_gpu_sdp4);
+
+            // Throughput
+            let total_props = (n_sats * n_times) as f64;
+            let geo_throughput = total_props / geo.kernel_time.as_secs_f64();
+            let sdp4_throughput = total_props / sdp4.kernel_time.as_secs_f64();
+
+            println!("\n--- Throughput ---");
+            println!("GPU GEO Analytical:  {:>12.0} propagations/sec", geo_throughput);
+            println!("GPU SDP4:            {:>12.0} propagations/sec", sdp4_throughput);
+        }
+    }
+
+    println!("\n");
+    println!("{}", "=".repeat(70));
+    println!("GEO Analytical Benchmark Complete!");
+    println!("{}", "=".repeat(70));
 }

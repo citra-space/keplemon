@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════════════
-// SGP4 Constants Header - WGS-72 OLD Gravity Model
+// TLE Propagator Constants Header - WGS-72 OLD Gravity Model
 // ═══════════════════════════════════════════════════════════════════════════════════
 //
-// This file contains ALL physical constants used by the CUDA SGP4 propagator.
+// This file contains physical constants used by the CUDA SGP4/SDP4 propagators.
 // Constants are from the WGS-72 OLD (original World Geodetic System 1972) gravity model,
 // which matches the python-sgp4 library's default configuration.
 //
@@ -14,14 +14,6 @@
 // python-sgp4 uses WGS-72 OLD to match historical TLE catalogs and the original
 // Spacetrack Report #3 implementation.
 //
-// Constant differences (WGS-72 OLD vs newer standards):
-//   Constant     WGS-72 OLD (1972)   WGS-72 (1976)       WGS-84
-//   ───────────────────────────────────────────────────────────────────
-//   RE (km)      6378.135            6378.135            6378.137
-//   J2           0.001082616         0.00108262998905    0.00108263
-//   J3          -0.00000253881      -0.00000253215306   -0.00000253215
-//   mu (km³/s²)  398600.8            398600.8            398600.5
-//
 // References:
 //   - Hoots & Roehrich, "Spacetrack Report No. 3" (1980)
 //   - Vallado et al., "Revisiting Spacetrack Report #3" AIAA 2006-6753
@@ -29,8 +21,8 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════════
 
-#ifndef SGP4_CONSTANTS_CUH
-#define SGP4_CONSTANTS_CUH
+#ifndef TLE_PROPAGATOR_CONSTANTS_CUH
+#define TLE_PROPAGATOR_CONSTANTS_CUH
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // MATHEMATICAL CONSTANTS
@@ -96,7 +88,7 @@
 #define SMALL 1.5e-12
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// LUNAR-SOLAR PERTURBATION CONSTANTS
+// LUNAR-SOLAR PERTURBATION CONSTANTS (SDP4)
 // ═══════════════════════════════════════════════════════════════════════════════════
 // Constants for third-body (Moon and Sun) perturbations in deep space propagation
 
@@ -117,7 +109,7 @@
 #define ZSINGS -0.98088458            // sin(argument of perigee of Sun)
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// RESONANCE CONSTANTS
+// RESONANCE CONSTANTS (SDP4)
 // ═══════════════════════════════════════════════════════════════════════════════════
 // Constants for geosynchronous and semi-synchronous resonance terms
 
@@ -141,7 +133,7 @@
 #define Q33 2.2123015e-7
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// RESONANCE INTEGRATION CONSTANTS
+// RESONANCE INTEGRATION CONSTANTS (SDP4)
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 // Earth rotation rate (rad/min) = 2*pi / (sidereal day in minutes)
@@ -167,4 +159,4 @@
 // Used to avoid singularities in Lyddane modifications
 #define INCLM_LIM 5.2359877e-2
 
-#endif // SGP4_CONSTANTS_CUH
+#endif // TLE_PROPAGATOR_CONSTANTS_CUH

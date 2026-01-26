@@ -2,7 +2,7 @@
 
 #![cfg(feature = "cuda")]
 
-use keplemon::gpu::{CudaSgp4Propagator, device::CudaDevice};
+use keplemon::gpu::{CudaTlePropagator, device::CudaDevice};
 use keplemon::propagation::{BatchPropagator, PropagationBackend};
 
 #[test]
@@ -20,12 +20,12 @@ fn test_cuda_device_initialization() {
 
 #[test]
 fn test_cuda_propagator_creation() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping GPU tests");
         return;
     }
     
-    let result = CudaSgp4Propagator::new();
+    let result = CudaTlePropagator::new();
     assert!(result.is_ok(), "Failed to create CUDA propagator: {:?}", result.err());
 }
 
@@ -45,7 +45,7 @@ fn test_batch_propagator_backend_selection() {
 
 #[test]
 fn test_force_gpu_backend() {
-    if !CudaSgp4Propagator::is_cuda_available() {
+    if !CudaTlePropagator::is_cuda_available() {
         eprintln!("CUDA not available, skipping GPU tests");
         return;
     }

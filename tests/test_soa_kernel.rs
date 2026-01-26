@@ -4,7 +4,7 @@
 
 #![cfg(feature = "cuda")]
 
-use keplemon::gpu::{CudaSgp4Propagator, TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, TleDataGpu};
 
 /// Create test TLE data for verification
 fn get_test_tles() -> Vec<TleDataGpu> {
@@ -51,7 +51,7 @@ fn get_test_tles() -> Vec<TleDataGpu> {
 #[test]
 fn test_soa_matches_aos_kernel() {
     // Create propagator
-    let mut propagator = CudaSgp4Propagator::new()
+    let mut propagator = CudaTlePropagator::new()
         .expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
@@ -124,7 +124,7 @@ fn test_soa_matches_aos_kernel() {
 #[test]
 fn test_soa_arrays_format() {
     // Create propagator
-    let mut propagator = CudaSgp4Propagator::new()
+    let mut propagator = CudaTlePropagator::new()
         .expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
@@ -187,7 +187,7 @@ fn test_soa_arrays_format() {
 #[test]
 fn test_soa_into_preallocated() {
     // Create propagator
-    let mut propagator = CudaSgp4Propagator::new()
+    let mut propagator = CudaTlePropagator::new()
         .expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs

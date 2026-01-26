@@ -5,7 +5,7 @@
 #![cfg(feature = "cuda")]
 
 use keplemon::elements::TLE;
-use keplemon::gpu::{CudaSgp4Propagator, cuda_sgp4::TleDataGpu};
+use keplemon::gpu::{CudaTlePropagator, cuda_tle::TleDataGpu};
 
 // Julian Date of 1950-01-01 00:00:00 UTC
 const JD_1950: f64 = 2433281.5;
@@ -67,7 +67,7 @@ fn benchmark_gpu_propagation() {
         (10000, 100),
     ];
     
-    let mut gpu_propagator = CudaSgp4Propagator::new()
+    let mut gpu_propagator = CudaTlePropagator::new()
         .expect("Failed to create CUDA propagator");
     
     println!("{:>10} {:>10} {:>12} {:>15} {:>15}",
@@ -121,7 +121,7 @@ fn benchmark_init_vs_propagate() {
     let base_jd = tle_data[0].epoch_jd;
     let jd_times = generate_time_points(base_jd, n_times, 10.0);
     
-    let mut gpu_propagator = CudaSgp4Propagator::new()
+    let mut gpu_propagator = CudaTlePropagator::new()
         .expect("Failed to create CUDA propagator");
     
     // Time init
