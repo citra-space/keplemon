@@ -70,4 +70,14 @@ impl PySensor {
     pub fn set_angular_rate_noise(&mut self, angular_rate_noise: f64) {
         self.inner.angular_rate_noise = Some(angular_rate_noise);
     }
+
+    #[setter]
+    pub fn set_name(&mut self, name: String) {
+        self.inner.name = Some(name);
+    }
+
+    #[setter]
+    pub fn set_id(&mut self, id: String) {
+        self.inner.id = id;
+    }
 }

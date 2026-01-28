@@ -1,7 +1,7 @@
 use super::CartesianState;
 use super::KeplerianElements;
 use crate::enums::{KeplerianType, ReferenceFrame, TimeSystem};
-use crate::time::Epoch;
+use crate::time::{DAYS_TO_MINUTES, Epoch, TimeSpan};
 use saal::{astro, tle};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -121,6 +121,10 @@ impl KeplerianState {
 
     pub fn get_type(&self) -> KeplerianType {
         self.keplerian_type
+    }
+
+    pub fn get_period(&self) -> TimeSpan {
+        TimeSpan::from_minutes(DAYS_TO_MINUTES / self.get_mean_motion())
     }
 }
 

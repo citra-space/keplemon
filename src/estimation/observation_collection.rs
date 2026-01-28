@@ -148,10 +148,10 @@ impl ObservationCollection {
     }
 
     pub fn get_list(obs: Vec<Observation>) -> Vec<Self> {
-        let mut groups: HashMap<(Epoch, CartesianVector), Vec<Observation>> = HashMap::new();
+        let mut groups: HashMap<(Epoch, String), Vec<Observation>> = HashMap::new();
 
         for observation in obs {
-            let key = (observation.get_epoch(), observation.get_observer_position());
+            let key = (observation.get_epoch(), observation.get_sensor().id.clone());
             groups.entry(key).or_default().push(observation);
         }
 

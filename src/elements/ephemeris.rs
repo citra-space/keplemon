@@ -9,7 +9,6 @@ use crate::time::{Epoch, TimeSpan};
 use saal::satellite;
 use std::sync::Arc;
 use std::sync::RwLock;
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct Ephemeris {
@@ -18,7 +17,6 @@ pub struct Ephemeris {
 
 #[derive(Debug)]
 pub struct EphemerisHandle {
-    id: String,
     satellite_id: String,
     norad_id: i32,
     states: RwLock<Vec<CartesianState>>,
@@ -34,17 +32,7 @@ struct UniformGrid {
 
 const UNIFORM_STEP_TOLERANCE_SECONDS: f64 = ZERO_TOLERANCE * 86_400.0;
 
-impl PartialEq for Ephemeris {
-    fn eq(&self, other: &Self) -> bool {
-        self.handle.id == other.handle.id
-    }
-}
-
 impl Ephemeris {
-    pub fn get_id(&self) -> String {
-        self.handle.id.clone()
-    }
-
     pub fn get_satellite_id(&self) -> String {
         self.handle.satellite_id.clone()
     }
@@ -66,7 +54,6 @@ impl Ephemeris {
     }
     pub fn new(satellite_id: String, norad_id: Option<i32>, state: CartesianState) -> Result<Self, String> {
         let handle = EphemerisHandle {
-            id: Uuid::new_v4().to_string(),
             satellite_id: satellite_id.clone(),
             norad_id: norad_id.unwrap_or(DEFAULT_NORAD_ANALYST_ID),
             states: RwLock::new(vec![state.to_frame(ReferenceFrame::TEME)]),
@@ -501,6 +488,33 @@ impl Ephemeris {
             global_max_distance,
         ))
     }
+
+    pub fn get_epoch_range(&self) -> Option<(Epoch, Epoch)> {
+        let states = self.handle.states.read().ok()?;
+        let start = states.first()?.epoch;
+        let end = states.last()?.epoch;
+        Some((start, end))
+    }
+
+    pub fn covers_range(&self, start: Epoch, end: Epoch) -> bool {
+        let Ok(states) = self.handle.states.read() else {
+            return false;
+        };
+        let (Some(first), Some(last)) = (states.first(), states.last()) else {
+            return false;
+        };
+        start >= first.epoch && end <= last.epoch
+    }
+
+    pub fn covers_epoch(&self, epoch: Epoch) -> bool {
+        let Ok(states) = self.handle.states.read() else {
+            return false;
+        };
+        let (Some(first), Some(last)) = (states.first(), states.last()) else {
+            return false;
+        };
+        epoch >= first.epoch && epoch <= last.epoch
+    }
 }
 
 fn estimate_close_approach_epoch(state_1: &CartesianState, state_2: &CartesianState) -> Option<Epoch> {
@@ -710,10 +724,6 @@ fn refine_extremum_distance(
     Some((state_1.position - state_2.position).get_magnitude())
 }
 
-pub fn construct_ephemeris_id(start: Epoch, end: Epoch, step: TimeSpan) -> String {
-    format!("{}_{}_{:04}", start.to_iso(), end.to_iso(), step.in_seconds())
-}
-
 fn insert_state(states: &mut Vec<CartesianState>, state: CartesianState) -> usize {
     match states.binary_search_by(|s| s.epoch.cmp(&state.epoch)) {
         Ok(idx) => {
@@ -825,15 +835,6 @@ fn hermite_interpolate(a: &CartesianState, b: &CartesianState, t: Epoch) -> Cart
         CartesianVector::from(vel),
         ReferenceFrame::TEME,
     )
-}
-
-impl Ephemeris {
-    pub fn get_epoch_range(&self) -> Option<(Epoch, Epoch)> {
-        let states = self.handle.states.read().ok()?;
-        let start = states.first()?.epoch;
-        let end = states.last()?.epoch;
-        Some((start, end))
-    }
 }
 
 fn update_uniform_grid(grid: &mut UniformGrid, states: &[CartesianState], idx: usize) {
