@@ -1,6 +1,6 @@
 [project]
 name = "keplemon"
-version = "3.3.0"
+version = "3.4.0"
 dependencies = ["requests", "click"]
 description = "Citra Space Corporation's Rust-accelerated astrodynamics library."
 authors = [{ name = "Brandon Sexton", email = "brandon@citra.space" }]
@@ -40,5 +40,5 @@ ignore-gitignore = true
 testpaths = ["tests"]
 
 [build-system]
-requires = ["maturin"]
+requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"

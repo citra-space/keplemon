@@ -3,7 +3,9 @@ use crate::bindings::elements::{
     PyBoreToBodyAngles, PyCartesianState, PyEphemeris, PyGeodeticPosition, PyKeplerianState, PyOrbitPlotData,
     PyRelativeState, PyTLE,
 };
-use crate::bindings::estimation::{PyObservationAssociation, PyObservationCollection};
+use crate::bindings::estimation::{
+    PyObservation, PyObservationAssociation, PyObservationCollection, PyObservationResidual,
+};
 use crate::bindings::events::{PyCloseApproach, PyHorizonAccessReport, PyManeuverEvent, PyProximityReport};
 use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
@@ -17,7 +19,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 #[pyclass(name = "Satellite", subclass)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PySatellite {
     inner: Satellite,
 }
@@ -299,5 +301,18 @@ impl PySatellite {
             .into_iter()
             .map(PyObservationAssociation::from)
             .collect()
+    }
+
+    pub fn get_rms(&self, obs: Vec<PyObservation>) -> PyResult<f64> {
+        let obs: Vec<_> = obs.into_iter().map(|o| o.into()).collect();
+        self.inner.get_rms(&obs).map_err(|e| PyErr::new::<PyValueError, _>(e))
+    }
+
+    pub fn get_residuals(&self, obs: Vec<PyObservation>) -> PyResult<Vec<PyObservationResidual>> {
+        let obs: Vec<_> = obs.into_iter().map(|o| o.into()).collect();
+        self.inner
+            .get_residuals(&obs)
+            .map(|residuals| residuals.into_iter().map(PyObservationResidual::from).collect())
+            .map_err(|e| PyErr::new::<PyValueError, _>(e))
     }
 }

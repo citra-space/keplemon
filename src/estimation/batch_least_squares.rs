@@ -16,7 +16,7 @@ pub const DEFAULT_MAX_ITERATIONS: usize = 20;
 // SAAL's SGP4/astro calls are not thread-safe under rayon on Linux.
 static SAAL_BLS_LOCK: Mutex<()> = Mutex::new(());
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BatchLeastSquares {
     obs: Vec<Observation>,
     a_priori: Satellite,

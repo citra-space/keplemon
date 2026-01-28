@@ -1,5 +1,5 @@
 # flake8: noqa
-from typing import Optional
+from typing import Iterator, Optional
 
 from keplemon.elements import (
     TLE,
@@ -17,7 +17,7 @@ from keplemon.time import Epoch, TimeSpan
 from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
-from keplemon.estimation import CollectionAssociationReport, ObservationAssociation, ObservationCollection
+from keplemon.estimation import CollectionAssociationReport, Observation, ObservationAssociation, ObservationCollection, ObservationResidual
 
 class Satellite:
 
@@ -172,6 +172,40 @@ class Satellite:
 
         Returns:
             List of observation associations where this satellite matches observations
+        """
+        ...
+
+    def get_rms(self, obs: list[Observation]) -> float:
+        """
+        Calculate the root mean squared position error between observations and the satellite state.
+
+        Uses interpolated states from cached ephemeris when available for better performance.
+
+        Args:
+            obs: List of observations to compare against
+
+        Returns:
+            Root mean squared position error in **_kilometers_**
+
+        Raises:
+            ValueError: If no valid residuals could be computed
+        """
+        ...
+
+    def get_residuals(self, obs: list[Observation]) -> list[ObservationResidual]:
+        """
+        Calculate position residuals between observations and the satellite state.
+
+        Uses interpolated states from cached ephemeris when available for better performance.
+
+        Args:
+            obs: List of observations to compare against
+
+        Returns:
+            List of observation residuals
+
+        Raises:
+            ValueError: If no valid residuals could be computed
         """
         ...
 
@@ -333,6 +367,10 @@ class Constellation:
 
     def __getitem__(self, satellite_id: str) -> Satellite: ...
     def __setitem__(self, satellite_id: str, sat: Satellite) -> None: ...
+    def __iter__(self) -> Iterator[str]: ...
+    def __contains__(self, key: str) -> bool: ...
+    def __len__(self) -> int: ...
+    def keys(self) -> list[str]: ...
     def get_horizon_access_report(
         self,
         site: Observatory,

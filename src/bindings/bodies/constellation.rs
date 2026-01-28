@@ -10,10 +10,11 @@ use crate::catalogs::TLECatalog;
 use crate::estimation::ObservationCollection;
 use crate::time::{Epoch, TimeSpan};
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 use std::collections::HashMap;
 
 #[pyclass(name = "Constellation")]
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone)]
 pub struct PyConstellation {
     inner: Constellation,
 }
@@ -221,6 +222,20 @@ impl PyConstellation {
 
     fn keys(&self) -> Vec<String> {
         self.inner.get_keys()
+    }
+
+    fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let keys = self.inner.get_keys();
+        let list = PyList::new(py, keys)?;
+        list.call_method0("__iter__")
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        self.inner.get(key.to_string()).is_some()
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.get_count()
     }
 
     fn __setitem__(&mut self, satellite_id: String, state: PySatellite) {

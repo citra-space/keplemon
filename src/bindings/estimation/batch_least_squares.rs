@@ -7,7 +7,7 @@ use crate::estimation::{BatchLeastSquares, Observation};
 use pyo3::prelude::*;
 
 #[pyclass(name = "BatchLeastSquares")]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PyBatchLeastSquares {
     inner: BatchLeastSquares,
 }

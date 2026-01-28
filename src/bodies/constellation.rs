@@ -14,7 +14,7 @@ use crate::time::{Epoch, TimeSpan};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone)]
 pub struct Constellation {
     pub name: Option<String>,
     satellites: HashMap<String, Satellite>,

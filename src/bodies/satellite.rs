@@ -2,10 +2,10 @@ use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
     BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData,
-    OrbitPlotState, RelativeState, TLE, construct_ephemeris_id,
+    OrbitPlotState, RelativeState, TLE,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
-use crate::estimation::{Observation, ObservationAssociation, ObservationCollection};
+use crate::estimation::{Observation, ObservationAssociation, ObservationCollection, ObservationResidual};
 use crate::events::{CloseApproach, HorizonAccessReport, ManeuverEvent, ProximityReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::time::{Epoch, TimeSpan};
@@ -14,7 +14,7 @@ use rayon::prelude::*;
 use saal::{astro, satellite};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Satellite {
     pub id: String,
     pub norad_id: i32,
@@ -23,7 +23,6 @@ pub struct Satellite {
     keplerian_state: Option<KeplerianState>,
     inertial_propagator: Option<InertialPropagator>,
     ephemeris_cache: Option<Ephemeris>,
-    pub ephemeris_id: Option<String>,
 }
 
 impl Default for Satellite {
@@ -58,7 +57,6 @@ impl From<TLE> for Satellite {
             keplerian_state: Some(tle.get_keplerian_state()),
             inertial_propagator: Some(InertialPropagator::from(tle)),
             ephemeris_cache: None,
-            ephemeris_id: None,
         }
     }
 }
@@ -89,6 +87,41 @@ impl Satellite {
         };
 
         Ok(new_satellite)
+    }
+
+    pub fn get_rms(&self, obs: &[Observation]) -> Result<f64, String> {
+        let squared_residuals: Vec<f64> = obs
+            .iter()
+            .filter_map(|ob| {
+                let state = self.interpolate_state_at_epoch(ob.get_epoch())?;
+                let residual = ob.get_residual_from_state(&state)?;
+                Some(residual.get_range().powi(2))
+            })
+            .collect();
+
+        if squared_residuals.is_empty() {
+            return Err("No valid residuals computed".to_string());
+        }
+
+        let sum: f64 = squared_residuals.iter().sum();
+        let rms = (sum / squared_residuals.len() as f64).sqrt();
+        Ok(rms)
+    }
+
+    pub fn get_residuals(&self, obs: &[Observation]) -> Result<Vec<ObservationResidual>, String> {
+        let residuals: Vec<ObservationResidual> = obs
+            .iter()
+            .filter_map(|ob| {
+                let state = self.interpolate_state_at_epoch(ob.get_epoch())?;
+                ob.get_residual_from_state(&state)
+            })
+            .collect();
+
+        if residuals.is_empty() {
+            return Err("No valid residuals computed".to_string());
+        }
+
+        Ok(residuals)
     }
 
     pub fn get_prior_node(&self, epoch: Epoch) -> Result<Epoch, String> {
@@ -138,7 +171,13 @@ impl Satellite {
 
     pub fn get_ephemeris(&mut self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
         // exit early if we have a cached ephemeris that matches the request
-        if self.ephemeris_id == Some(construct_ephemeris_id(start_epoch, end_epoch, step)) {
+        if self.ephemeris_cache.is_some()
+            && self
+                .ephemeris_cache
+                .as_ref()
+                .unwrap()
+                .covers_range(start_epoch, end_epoch)
+        {
             return self.ephemeris_cache.clone();
         }
 
@@ -159,7 +198,6 @@ impl Satellite {
                     }
                 }
                 self.ephemeris_cache = Some(ephemeris.clone());
-                self.ephemeris_id = Some(construct_ephemeris_id(start_epoch, end_epoch, step));
                 self.inertial_propagator.as_mut().unwrap().reload().ok()?;
                 Some(ephemeris)
             }
@@ -176,7 +214,6 @@ impl Satellite {
             keplerian_state: None,
             inertial_propagator: None,
             ephemeris_cache: None,
-            ephemeris_id: None,
         }
     }
 
@@ -266,12 +303,8 @@ impl Satellite {
 
     pub fn interpolate_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         // Check if ephemeris is cached and covers the requested epoch
-        if let Some(ref ephemeris) = self.ephemeris_cache
-            && let Some((start, end)) = ephemeris.get_epoch_range()
-            && epoch >= start
-            && epoch <= end
-        {
-            return ephemeris.get_state_at_epoch(epoch);
+        if self.ephemeris_cache.is_some() && self.ephemeris_cache.as_ref().unwrap().covers_epoch(epoch) {
+            return self.ephemeris_cache.as_ref().unwrap().get_state_at_epoch(epoch);
         }
         // Fall back to propagator-based state computation
         self.get_state_at_epoch(epoch)
