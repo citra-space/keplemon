@@ -9,8 +9,8 @@ use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
 use crate::enums::KeplerianType;
 use crate::estimation::{CollectionAssociationReport, Observation, ObservationCollection};
 use crate::events::{
-    CloseApproachReport, CrossTagEvidence, CrossTagReport, HorizonAccessReport, ManeuverEvent, ManeuverReport,
-    ProximityReport,
+    CloseApproachReport, CrossTagEvidence, CrossTagReport, CrossTagResult, HorizonAccessReport, ManeuverEvent,
+    ManeuverReport, ProximityReport,
 };
 use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::time::{Epoch, TimeSpan};
@@ -250,7 +250,7 @@ impl Constellation {
         confidence_threshold: Option<f64>,
     ) -> CrossTagReport {
         let prox_threshold = proximity_threshold.unwrap_or(10.0);
-        let conf_threshold = confidence_threshold.unwrap_or(0.75);
+        let _conf_threshold = confidence_threshold.unwrap_or(0.75);
 
         // Step 1: Get proximity candidates
         let proximity_report = self.get_proximity_report_vs_one(uct, start, end, prox_threshold);
@@ -258,11 +258,12 @@ impl Constellation {
         if proximity_report.get_events().is_empty() {
             return CrossTagReport::new(
                 uct.id.clone(),
-                false,
+                CrossTagResult::NoProximityFound,
                 None,
                 0.0,
                 Vec::new(),
                 "No proximity events found".to_string(),
+                0,
                 0,
                 0,
                 0,
@@ -286,11 +287,12 @@ impl Constellation {
         if relevant_observations.is_empty() {
             return CrossTagReport::new(
                 uct.id.clone(),
-                false,
+                CrossTagResult::NoObservationsDuringProximity,
                 None,
                 0.0,
                 Vec::new(),
                 "No observations during proximity windows".to_string(),
+                0,
                 0,
                 0,
                 0,
@@ -361,11 +363,12 @@ impl Constellation {
 
         // Step 5: Aggregate evidence and decide
         let total_votes = cross_tag_votes + real_uct_votes;
+        let inconclusive_votes = evidence_list.len() - total_votes;
 
         if total_votes == 0 {
             return CrossTagReport::new(
                 uct.id.clone(),
-                false,
+                CrossTagResult::InsufficientEvidence,
                 None,
                 0.0,
                 evidence_list.clone(),
@@ -373,36 +376,52 @@ impl Constellation {
                 evidence_list.len(),
                 real_uct_votes,
                 cross_tag_votes,
+                inconclusive_votes,
             );
         }
 
-        let confidence = (cross_tag_votes as f64) / (total_votes as f64);
-
-        if confidence >= conf_threshold {
-            CrossTagReport::new(
-                uct.id.clone(),
-                true,
-                approved_candidate_id,
-                confidence,
-                evidence_list.clone(),
-                format!("Cross-tag detected with {:.1}% confidence", confidence * 100.0),
-                evidence_list.len(),
-                real_uct_votes,
-                cross_tag_votes,
-            )
+        // Determine result: Any real_uct vote means they're different objects
+        let result = if real_uct_votes > 0 {
+            CrossTagResult::RealUCT
         } else {
-            CrossTagReport::new(
-                uct.id.clone(),
-                false,
-                approved_candidate_id,
-                1.0 - confidence,
-                evidence_list.clone(),
-                format!("Real UCT with {:.1}% confidence", (1.0 - confidence) * 100.0),
-                evidence_list.len(),
+            CrossTagResult::CrossTag
+        };
+
+        // Calculate confidence: fraction of conclusive votes supporting this result
+        let confidence = match result {
+            CrossTagResult::RealUCT => real_uct_votes as f64 / total_votes as f64,
+            CrossTagResult::CrossTag => cross_tag_votes as f64 / total_votes as f64,
+            _ => 0.0,
+        };
+
+        let reason = match result {
+            CrossTagResult::RealUCT => format!(
+                "Real UCT with {:.1}% confidence ({} of {} conclusive votes)",
+                confidence * 100.0,
                 real_uct_votes,
+                total_votes
+            ),
+            CrossTagResult::CrossTag => format!(
+                "Cross-tag detected with {:.1}% confidence ({} of {} conclusive votes)",
+                confidence * 100.0,
                 cross_tag_votes,
-            )
-        }
+                total_votes
+            ),
+            _ => "Unknown".to_string(),
+        };
+
+        CrossTagReport::new(
+            uct.id.clone(),
+            result,
+            approved_candidate_id,
+            confidence,
+            evidence_list.clone(),
+            reason,
+            evidence_list.len(),
+            real_uct_votes,
+            cross_tag_votes,
+            inconclusive_votes,
+        )
     }
 
     pub fn get_maneuver_events(

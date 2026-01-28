@@ -2,6 +2,15 @@ use crate::estimation::{Observation, ObservationAssociation};
 use crate::time::Epoch;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CrossTagResult {
+    NoProximityFound,
+    NoObservationsDuringProximity,
+    InsufficientEvidence,
+    RealUCT,
+    CrossTag,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CrossTagEvidence {
     epoch: Epoch,
     sensor_id: String,
@@ -71,38 +80,41 @@ impl CrossTagEvidence {
 
 pub struct CrossTagReport {
     uct_id: String,
-    is_likely_crosstag: bool,
+    result: CrossTagResult,
     approved_candidate_id: Option<String>,
     confidence: f64,
     evidence: Vec<CrossTagEvidence>,
     reason: String,
     total_collections_analyzed: usize,
-    collections_with_orphans: usize,
-    collections_without_orphans: usize,
+    real_uct_votes: usize,
+    cross_tag_votes: usize,
+    inconclusive_votes: usize,
 }
 
 impl CrossTagReport {
     pub fn new(
         uct_id: String,
-        is_likely_crosstag: bool,
+        result: CrossTagResult,
         approved_candidate_id: Option<String>,
         confidence: f64,
         evidence: Vec<CrossTagEvidence>,
         reason: String,
         total_collections_analyzed: usize,
-        collections_with_orphans: usize,
-        collections_without_orphans: usize,
+        real_uct_votes: usize,
+        cross_tag_votes: usize,
+        inconclusive_votes: usize,
     ) -> Self {
         Self {
             uct_id,
-            is_likely_crosstag,
+            result,
             approved_candidate_id,
             confidence,
             evidence,
             reason,
             total_collections_analyzed,
-            collections_with_orphans,
-            collections_without_orphans,
+            real_uct_votes,
+            cross_tag_votes,
+            inconclusive_votes,
         }
     }
 
@@ -110,8 +122,8 @@ impl CrossTagReport {
         self.uct_id.clone()
     }
 
-    pub fn get_is_likely_crosstag(&self) -> bool {
-        self.is_likely_crosstag
+    pub fn get_result(&self) -> CrossTagResult {
+        self.result.clone()
     }
 
     pub fn get_approved_candidate_id(&self) -> Option<String> {
@@ -134,11 +146,15 @@ impl CrossTagReport {
         self.total_collections_analyzed
     }
 
-    pub fn get_collections_with_orphans(&self) -> usize {
-        self.collections_with_orphans
+    pub fn get_real_uct_votes(&self) -> usize {
+        self.real_uct_votes
     }
 
-    pub fn get_collections_without_orphans(&self) -> usize {
-        self.collections_without_orphans
+    pub fn get_cross_tag_votes(&self) -> usize {
+        self.cross_tag_votes
+    }
+
+    pub fn get_inconclusive_votes(&self) -> usize {
+        self.inconclusive_votes
     }
 }

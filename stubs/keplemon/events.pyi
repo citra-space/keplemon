@@ -1,4 +1,5 @@
 # flake8: noqa
+from enum import Enum
 from keplemon.time import Epoch, TimeSpan
 from keplemon.elements import HorizonState, CartesianVector, TopocentricElements
 from keplemon.enums import ReferenceFrame
@@ -186,6 +187,24 @@ class ManeuverReport:
         self, start: Epoch, end: Epoch, distance_threshold: float, velocity_threshold: float
     ) -> None: ...
 
+class CrossTagResult(Enum):
+    """
+    Result of cross-tag detection analysis.
+
+    Attributes:
+        NoProximityFound (CrossTagResult): No proximity events found between UCT and approved satellites
+        NoObservationsDuringProximity (CrossTagResult): Proximity found but no observations during proximity windows
+        InsufficientEvidence (CrossTagResult): No conclusive evidence (all collections were inconclusive)
+        RealUCT (CrossTagResult): Evidence indicates UCT is a real distinct object
+        CrossTag (CrossTagResult): Evidence indicates UCT is a misidentified approved satellite
+    """
+
+    NoProximityFound = ...
+    NoObservationsDuringProximity = ...
+    InsufficientEvidence = ...
+    RealUCT = ...
+    CrossTag = ...
+
 class CrossTagEvidence:
     """Evidence from a single observation collection for cross-tag detection."""
 
@@ -231,21 +250,22 @@ class CrossTagReport:
 
     Args:
         uct_id: ID of the UCT satellite being analyzed
-        is_likely_crosstag: Whether the UCT is likely a cross-tag (misidentification)
+        result: Result of the cross-tag detection analysis
         approved_candidate_id: ID of the approved satellite candidate (if cross-tag detected)
         confidence: Confidence level (0.0 to 1.0)
         evidence: List of evidence from individual observation collections
         reason: Human-readable explanation of the conclusion
         total_collections_analyzed: Total number of observation collections analyzed
-        collections_with_orphans: Number of collections with orphan observations
-        collections_without_orphans: Number of collections without orphan observations
+        real_uct_votes: Number of collections voting for real UCT
+        cross_tag_votes: Number of collections voting for cross-tag
+        inconclusive_votes: Number of inconclusive collections
     """
 
     uct_id: str
     """ID of the UCT satellite being analyzed"""
 
-    is_likely_crosstag: bool
-    """Whether the UCT is likely a cross-tag (misidentification)"""
+    result: CrossTagResult
+    """Result of the cross-tag detection analysis"""
 
     approved_candidate_id: str | None
     """ID of the approved satellite candidate (if cross-tag detected)"""
@@ -262,21 +282,25 @@ class CrossTagReport:
     total_collections_analyzed: int
     """Total number of observation collections analyzed"""
 
-    collections_with_orphans: int
-    """Number of collections with orphan observations"""
+    real_uct_votes: int
+    """Number of collections voting for real UCT"""
 
-    collections_without_orphans: int
-    """Number of collections without orphan observations"""
+    cross_tag_votes: int
+    """Number of collections voting for cross-tag"""
+
+    inconclusive_votes: int
+    """Number of inconclusive collections"""
 
     def __init__(
         self,
         uct_id: str,
-        is_likely_crosstag: bool,
+        result: CrossTagResult,
         approved_candidate_id: str | None,
         confidence: float,
         evidence: list[CrossTagEvidence],
         reason: str,
         total_collections_analyzed: int,
-        collections_with_orphans: int,
-        collections_without_orphans: int,
+        real_uct_votes: int,
+        cross_tag_votes: int,
+        inconclusive_votes: int,
     ) -> None: ...

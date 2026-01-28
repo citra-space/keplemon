@@ -12,7 +12,7 @@ mod proximity_report;
 
 pub use close_approach::CloseApproach;
 pub use close_approach_report::CloseApproachReport;
-pub use cross_tag_report::{CrossTagEvidence, CrossTagReport};
+pub use cross_tag_report::{CrossTagEvidence, CrossTagReport, CrossTagResult};
 pub use field_of_view_candidate::FieldOfViewCandidate;
 pub use field_of_view_report::FieldOfViewReport;
 pub use horizon_access::HorizonAccess;

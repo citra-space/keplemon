@@ -1,8 +1,42 @@
 use super::PyCrossTagEvidence;
 use crate::bindings::time::PyEpoch;
-use crate::events::CrossTagReport;
+use crate::events::{CrossTagReport, CrossTagResult};
 use crate::time::Epoch;
 use pyo3::prelude::*;
+
+#[pyclass(name = "CrossTagResult")]
+#[derive(Debug, Clone, PartialEq)]
+pub enum PyCrossTagResult {
+    NoProximityFound,
+    NoObservationsDuringProximity,
+    InsufficientEvidence,
+    RealUCT,
+    CrossTag,
+}
+
+impl From<CrossTagResult> for PyCrossTagResult {
+    fn from(result: CrossTagResult) -> Self {
+        match result {
+            CrossTagResult::NoProximityFound => PyCrossTagResult::NoProximityFound,
+            CrossTagResult::NoObservationsDuringProximity => PyCrossTagResult::NoObservationsDuringProximity,
+            CrossTagResult::InsufficientEvidence => PyCrossTagResult::InsufficientEvidence,
+            CrossTagResult::RealUCT => PyCrossTagResult::RealUCT,
+            CrossTagResult::CrossTag => PyCrossTagResult::CrossTag,
+        }
+    }
+}
+
+impl From<PyCrossTagResult> for CrossTagResult {
+    fn from(result: PyCrossTagResult) -> Self {
+        match result {
+            PyCrossTagResult::NoProximityFound => CrossTagResult::NoProximityFound,
+            PyCrossTagResult::NoObservationsDuringProximity => CrossTagResult::NoObservationsDuringProximity,
+            PyCrossTagResult::InsufficientEvidence => CrossTagResult::InsufficientEvidence,
+            PyCrossTagResult::RealUCT => CrossTagResult::RealUCT,
+            PyCrossTagResult::CrossTag => CrossTagResult::CrossTag,
+        }
+    }
+}
 
 #[pyclass(name = "CrossTagReport")]
 pub struct PyCrossTagReport {
@@ -26,14 +60,15 @@ impl PyCrossTagReport {
     #[new]
     pub fn new(
         uct_id: String,
-        is_likely_crosstag: bool,
+        result: PyCrossTagResult,
         approved_candidate_id: Option<String>,
         confidence: f64,
         evidence: Vec<PyCrossTagEvidence>,
         reason: String,
         total_collections_analyzed: usize,
-        collections_with_orphans: usize,
-        collections_without_orphans: usize,
+        real_uct_votes: usize,
+        cross_tag_votes: usize,
+        inconclusive_votes: usize,
     ) -> Self {
         let evidence = evidence
             .into_iter()
@@ -41,14 +76,15 @@ impl PyCrossTagReport {
             .collect();
         CrossTagReport::new(
             uct_id,
-            is_likely_crosstag,
+            result.into(),
             approved_candidate_id,
             confidence,
             evidence,
             reason,
             total_collections_analyzed,
-            collections_with_orphans,
-            collections_without_orphans,
+            real_uct_votes,
+            cross_tag_votes,
+            inconclusive_votes,
         )
         .into()
     }
@@ -59,8 +95,8 @@ impl PyCrossTagReport {
     }
 
     #[getter]
-    pub fn get_is_likely_crosstag(&self) -> bool {
-        self.inner.get_is_likely_crosstag()
+    pub fn get_result(&self) -> PyCrossTagResult {
+        self.inner.get_result().into()
     }
 
     #[getter]
@@ -93,12 +129,17 @@ impl PyCrossTagReport {
     }
 
     #[getter]
-    pub fn get_collections_with_orphans(&self) -> usize {
-        self.inner.get_collections_with_orphans()
+    pub fn get_real_uct_votes(&self) -> usize {
+        self.inner.get_real_uct_votes()
     }
 
     #[getter]
-    pub fn get_collections_without_orphans(&self) -> usize {
-        self.inner.get_collections_without_orphans()
+    pub fn get_cross_tag_votes(&self) -> usize {
+        self.inner.get_cross_tag_votes()
+    }
+
+    #[getter]
+    pub fn get_inconclusive_votes(&self) -> usize {
+        self.inner.get_inconclusive_votes()
     }
 }
