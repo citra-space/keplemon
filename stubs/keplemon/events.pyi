@@ -187,6 +187,45 @@ class ManeuverReport:
         self, start: Epoch, end: Epoch, distance_threshold: float, velocity_threshold: float
     ) -> None: ...
 
+class CandidateAnalysis:
+    """Analysis of a single candidate satellite for cross-tag detection."""
+
+    candidate_id: str
+    """ID of the candidate satellite"""
+
+    result: CrossTagResult
+    """Result of the analysis for this candidate"""
+
+    confidence: float
+    """Confidence level (0.0 to 1.0)"""
+
+    real_uct_votes: int
+    """Number of collections voting for real UCT"""
+
+    cross_tag_votes: int
+    """Number of collections voting for cross-tag"""
+
+    inconclusive_votes: int
+    """Number of inconclusive collections"""
+
+    total_collections_analyzed: int
+    """Total number of observation collections analyzed"""
+
+    evidence: list[CrossTagEvidence]
+    """List of evidence from individual observation collections"""
+
+    def __init__(
+        self,
+        candidate_id: str,
+        result: CrossTagResult,
+        confidence: float,
+        real_uct_votes: int,
+        cross_tag_votes: int,
+        inconclusive_votes: int,
+        total_collections_analyzed: int,
+        evidence: list[CrossTagEvidence],
+    ) -> None: ...
+
 class CrossTagResult(Enum):
     """
     Result of cross-tag detection analysis.
@@ -251,45 +290,49 @@ class CrossTagReport:
     Args:
         uct_id: ID of the UCT satellite being analyzed
         result: Result of the cross-tag detection analysis
-        approved_candidate_id: ID of the approved satellite candidate (if cross-tag detected)
-        confidence: Confidence level (0.0 to 1.0)
-        evidence: List of evidence from individual observation collections
+        approved_candidate_id: ID of the best approved satellite candidate
+        confidence: Confidence level (0.0 to 1.0) for the best candidate
+        evidence: List of evidence from individual observation collections for the best candidate
         reason: Human-readable explanation of the conclusion
-        total_collections_analyzed: Total number of observation collections analyzed
-        real_uct_votes: Number of collections voting for real UCT
-        cross_tag_votes: Number of collections voting for cross-tag
-        inconclusive_votes: Number of inconclusive collections
+        total_collections_analyzed: Total number of observation collections analyzed for the best candidate
+        real_uct_votes: Number of collections voting for real UCT for the best candidate
+        cross_tag_votes: Number of collections voting for cross-tag for the best candidate
+        inconclusive_votes: Number of inconclusive collections for the best candidate
+        all_candidates: List of all candidate analyses, sorted by confidence descending
     """
 
     uct_id: str
     """ID of the UCT satellite being analyzed"""
 
     result: CrossTagResult
-    """Result of the cross-tag detection analysis"""
+    """Result of the cross-tag detection analysis for the best candidate"""
 
     approved_candidate_id: str | None
-    """ID of the approved satellite candidate (if cross-tag detected)"""
+    """ID of the best approved satellite candidate"""
 
     confidence: float
-    """Confidence level (0.0 to 1.0)"""
+    """Confidence level (0.0 to 1.0) for the best candidate"""
 
     evidence: list[CrossTagEvidence]
-    """List of evidence from individual observation collections"""
+    """List of evidence from individual observation collections for the best candidate"""
 
     reason: str
     """Human-readable explanation of the conclusion"""
 
     total_collections_analyzed: int
-    """Total number of observation collections analyzed"""
+    """Total number of observation collections analyzed for the best candidate"""
 
     real_uct_votes: int
-    """Number of collections voting for real UCT"""
+    """Number of collections voting for real UCT for the best candidate"""
 
     cross_tag_votes: int
-    """Number of collections voting for cross-tag"""
+    """Number of collections voting for cross-tag for the best candidate"""
 
     inconclusive_votes: int
-    """Number of inconclusive collections"""
+    """Number of inconclusive collections for the best candidate"""
+
+    all_candidates: list[CandidateAnalysis]
+    """List of all candidate analyses, sorted by confidence descending"""
 
     def __init__(
         self,
@@ -303,4 +346,5 @@ class CrossTagReport:
         real_uct_votes: int,
         cross_tag_votes: int,
         inconclusive_votes: int,
+        all_candidates: list[CandidateAnalysis],
     ) -> None: ...

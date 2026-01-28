@@ -1,4 +1,5 @@
 from keplemon._keplemon.events import (  # type: ignore
+    CandidateAnalysis,
     CloseApproach,
     CloseApproachReport,
     CrossTagEvidence,
@@ -11,6 +12,7 @@ from keplemon._keplemon.events import (  # type: ignore
 )
 
 __all__ = [
+    "CandidateAnalysis",
     "CloseApproach",
     "CloseApproachReport",
     "CrossTagEvidence",

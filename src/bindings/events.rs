@@ -1,3 +1,4 @@
+mod candidate_analysis;
 mod close_approach;
 mod close_approach_report;
 mod cross_tag_evidence;
@@ -11,6 +12,7 @@ mod maneuver_report;
 mod proximity_event;
 mod proximity_report;
 
+pub use candidate_analysis::PyCandidateAnalysis;
 pub use close_approach::PyCloseApproach;
 pub use close_approach_report::PyCloseApproachReport;
 pub use cross_tag_evidence::PyCrossTagEvidence;
@@ -29,6 +31,7 @@ use pyo3::py_run;
 
 pub fn register_events(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let events = PyModule::new(parent_module.py(), "events")?;
+    events.add_class::<PyCandidateAnalysis>()?;
     events.add_class::<PyCloseApproach>()?;
     events.add_class::<PyCloseApproachReport>()?;
     events.add_class::<PyCrossTagEvidence>()?;

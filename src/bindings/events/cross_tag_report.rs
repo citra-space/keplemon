@@ -1,8 +1,7 @@
-use super::PyCrossTagEvidence;
-use crate::bindings::time::PyEpoch;
+use super::{PyCandidateAnalysis, PyCrossTagEvidence};
 use crate::events::{CrossTagReport, CrossTagResult};
-use crate::time::Epoch;
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 #[pyclass(name = "CrossTagResult")]
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +58,7 @@ impl From<PyCrossTagReport> for CrossTagReport {
 impl PyCrossTagReport {
     #[new]
     pub fn new(
+        py: Python<'_>,
         uct_id: String,
         result: PyCrossTagResult,
         approved_candidate_id: Option<String>,
@@ -69,12 +69,22 @@ impl PyCrossTagReport {
         real_uct_votes: usize,
         cross_tag_votes: usize,
         inconclusive_votes: usize,
-    ) -> Self {
+        all_candidates: Vec<Py<PyCandidateAnalysis>>,
+    ) -> PyResult<Self> {
         let evidence = evidence
             .into_iter()
             .map(crate::events::CrossTagEvidence::from)
             .collect();
-        CrossTagReport::new(
+
+        let all_candidates_vec: Vec<crate::events::CandidateAnalysis> = all_candidates
+            .into_iter()
+            .map(|item| {
+                let candidate = item.borrow(py);
+                candidate.inner().clone()
+            })
+            .collect();
+
+        Ok(CrossTagReport::new(
             uct_id,
             result.into(),
             approved_candidate_id,
@@ -85,8 +95,9 @@ impl PyCrossTagReport {
             real_uct_votes,
             cross_tag_votes,
             inconclusive_votes,
+            all_candidates_vec,
         )
-        .into()
+        .into())
     }
 
     #[getter]
@@ -141,5 +152,14 @@ impl PyCrossTagReport {
     #[getter]
     pub fn get_inconclusive_votes(&self) -> usize {
         self.inner.get_inconclusive_votes()
+    }
+
+    #[getter]
+    pub fn get_all_candidates(&self) -> Vec<PyCandidateAnalysis> {
+        self.inner
+            .get_all_candidates()
+            .into_iter()
+            .map(PyCandidateAnalysis::from)
+            .collect()
     }
 }

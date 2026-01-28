@@ -11,6 +11,74 @@ pub enum CrossTagResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CandidateAnalysis {
+    candidate_id: String,
+    result: CrossTagResult,
+    confidence: f64,
+    real_uct_votes: usize,
+    cross_tag_votes: usize,
+    inconclusive_votes: usize,
+    total_collections_analyzed: usize,
+    evidence: Vec<CrossTagEvidence>,
+}
+
+impl CandidateAnalysis {
+    pub fn new(
+        candidate_id: String,
+        result: CrossTagResult,
+        confidence: f64,
+        real_uct_votes: usize,
+        cross_tag_votes: usize,
+        inconclusive_votes: usize,
+        total_collections_analyzed: usize,
+        evidence: Vec<CrossTagEvidence>,
+    ) -> Self {
+        Self {
+            candidate_id,
+            result,
+            confidence,
+            real_uct_votes,
+            cross_tag_votes,
+            inconclusive_votes,
+            total_collections_analyzed,
+            evidence,
+        }
+    }
+
+    pub fn get_candidate_id(&self) -> String {
+        self.candidate_id.clone()
+    }
+
+    pub fn get_result(&self) -> CrossTagResult {
+        self.result.clone()
+    }
+
+    pub fn get_confidence(&self) -> f64 {
+        self.confidence
+    }
+
+    pub fn get_real_uct_votes(&self) -> usize {
+        self.real_uct_votes
+    }
+
+    pub fn get_cross_tag_votes(&self) -> usize {
+        self.cross_tag_votes
+    }
+
+    pub fn get_inconclusive_votes(&self) -> usize {
+        self.inconclusive_votes
+    }
+
+    pub fn get_total_collections_analyzed(&self) -> usize {
+        self.total_collections_analyzed
+    }
+
+    pub fn get_evidence(&self) -> Vec<CrossTagEvidence> {
+        self.evidence.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CrossTagEvidence {
     epoch: Epoch,
     sensor_id: String,
@@ -89,6 +157,7 @@ pub struct CrossTagReport {
     real_uct_votes: usize,
     cross_tag_votes: usize,
     inconclusive_votes: usize,
+    all_candidates: Vec<CandidateAnalysis>,
 }
 
 impl CrossTagReport {
@@ -103,6 +172,7 @@ impl CrossTagReport {
         real_uct_votes: usize,
         cross_tag_votes: usize,
         inconclusive_votes: usize,
+        all_candidates: Vec<CandidateAnalysis>,
     ) -> Self {
         Self {
             uct_id,
@@ -115,6 +185,7 @@ impl CrossTagReport {
             real_uct_votes,
             cross_tag_votes,
             inconclusive_votes,
+            all_candidates,
         }
     }
 
@@ -156,5 +227,9 @@ impl CrossTagReport {
 
     pub fn get_inconclusive_votes(&self) -> usize {
         self.inconclusive_votes
+    }
+
+    pub fn get_all_candidates(&self) -> Vec<CandidateAnalysis> {
+        self.all_candidates.clone()
     }
 }
