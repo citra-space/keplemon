@@ -1,8 +1,10 @@
 use super::{PyObservatory, PySatellite};
 use crate::bindings::catalogs::PyTLECatalog;
 use crate::bindings::elements::{PyCartesianState, PyEphemeris, PyOrbitPlotData};
-use crate::bindings::estimation::{PyCollectionAssociationReport, PyObservationCollection};
-use crate::bindings::events::{PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport};
+use crate::bindings::estimation::{PyCollectionAssociationReport, PyObservation, PyObservationCollection};
+use crate::bindings::events::{
+    PyCloseApproachReport, PyCrossTagReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport,
+};
 use crate::bindings::propagation::PyPropagationBackend;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
 use crate::bodies::{Constellation, Satellite};
@@ -166,6 +168,31 @@ impl PyConstellation {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
         py.detach(|| PyProximityReport::from(self.inner.get_proximity_report_vs_many(start, end, distance_threshold)))
+    }
+
+    pub fn detect_cross_tags(
+        &mut self,
+        py: Python<'_>,
+        uct: &mut PySatellite,
+        observations: Vec<PyObservation>,
+        start: PyEpoch,
+        end: PyEpoch,
+        proximity_threshold: Option<f64>,
+        confidence_threshold: Option<f64>,
+    ) -> PyCrossTagReport {
+        let start: Epoch = start.into();
+        let end: Epoch = end.into();
+        let observations: Vec<crate::estimation::Observation> = observations.into_iter().map(|o| o.into()).collect();
+        py.detach(|| {
+            PyCrossTagReport::from(self.inner.detect_cross_tags(
+                uct.inner_mut(),
+                &observations,
+                start,
+                end,
+                proximity_threshold,
+                confidence_threshold,
+            ))
+        })
     }
 
     pub fn get_maneuver_events(

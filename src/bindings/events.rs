@@ -1,5 +1,7 @@
 mod close_approach;
 mod close_approach_report;
+mod cross_tag_evidence;
+mod cross_tag_report;
 mod field_of_view_candidate;
 mod field_of_view_report;
 mod horizon_access;
@@ -11,6 +13,8 @@ mod proximity_report;
 
 pub use close_approach::PyCloseApproach;
 pub use close_approach_report::PyCloseApproachReport;
+pub use cross_tag_evidence::PyCrossTagEvidence;
+pub use cross_tag_report::PyCrossTagReport;
 pub use field_of_view_candidate::PyFieldOfViewCandidate;
 pub use field_of_view_report::PyFieldOfViewReport;
 pub use horizon_access::PyHorizonAccess;
@@ -27,6 +31,8 @@ pub fn register_events(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     let events = PyModule::new(parent_module.py(), "events")?;
     events.add_class::<PyCloseApproach>()?;
     events.add_class::<PyCloseApproachReport>()?;
+    events.add_class::<PyCrossTagEvidence>()?;
+    events.add_class::<PyCrossTagReport>()?;
     events.add_class::<PyHorizonAccess>()?;
     events.add_class::<PyHorizonAccessReport>()?;
     events.add_class::<PyFieldOfViewReport>()?;

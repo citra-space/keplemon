@@ -7,8 +7,11 @@ use crate::elements::TLE;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
 #[cfg(feature = "cuda")]
 use crate::enums::KeplerianType;
-use crate::estimation::{CollectionAssociationReport, ObservationCollection};
-use crate::events::{CloseApproachReport, HorizonAccessReport, ManeuverEvent, ManeuverReport, ProximityReport};
+use crate::estimation::{CollectionAssociationReport, Observation, ObservationCollection};
+use crate::events::{
+    CloseApproachReport, CrossTagEvidence, CrossTagReport, HorizonAccessReport, ManeuverEvent, ManeuverReport,
+    ProximityReport,
+};
 use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::time::{Epoch, TimeSpan};
 use rayon::prelude::*;
@@ -235,6 +238,171 @@ impl Constellation {
             .collect();
         report.set_events(events);
         report
+    }
+
+    pub fn detect_cross_tags(
+        &mut self,
+        uct: &mut Satellite,
+        observations: &Vec<Observation>,
+        start: Epoch,
+        end: Epoch,
+        proximity_threshold: Option<f64>,
+        confidence_threshold: Option<f64>,
+    ) -> CrossTagReport {
+        let prox_threshold = proximity_threshold.unwrap_or(10.0);
+        let conf_threshold = confidence_threshold.unwrap_or(0.75);
+
+        // Step 1: Get proximity candidates
+        let proximity_report = self.get_proximity_report_vs_one(uct, start, end, prox_threshold);
+
+        if proximity_report.get_events().is_empty() {
+            return CrossTagReport::new(
+                uct.id.clone(),
+                false,
+                None,
+                0.0,
+                Vec::new(),
+                "No proximity events found".to_string(),
+                0,
+                0,
+                0,
+            );
+        }
+
+        // Step 2: Filter observations to proximity windows and group by sensor/time
+        let mut relevant_observations: Vec<Observation> = Vec::new();
+        for event in proximity_report.get_events() {
+            let event_start = event.get_start_epoch();
+            let event_end = event.get_end_epoch();
+
+            for obs in observations {
+                let obs_epoch = obs.get_epoch();
+                if obs_epoch >= event_start && obs_epoch <= event_end {
+                    relevant_observations.push(obs.clone());
+                }
+            }
+        }
+
+        if relevant_observations.is_empty() {
+            return CrossTagReport::new(
+                uct.id.clone(),
+                false,
+                None,
+                0.0,
+                Vec::new(),
+                "No observations during proximity windows".to_string(),
+                0,
+                0,
+                0,
+            );
+        }
+
+        // Step 3: Group observations by sensor/time
+        let collections = ObservationCollection::get_list(relevant_observations.clone());
+
+        // Step 4: Check each collection for orphans
+        let mut evidence_list: Vec<CrossTagEvidence> = Vec::new();
+        let mut cross_tag_votes = 0;
+        let mut real_uct_votes = 0;
+        let mut approved_candidate_id: Option<String> = None;
+
+        for collection in collections.iter() {
+            // Check observations against the approved constellation (not including UCT)
+            let report = collection.get_association_report(self);
+
+            // Find approved associations from proximity events
+            let mut approved_associations = Vec::new();
+            for event in proximity_report.get_events() {
+                let secondary_id = event.get_secondary_id();
+                for assoc in report.get_associations() {
+                    if assoc.get_satellite_id() == secondary_id {
+                        approved_associations.push(assoc.clone());
+                        if approved_candidate_id.is_none() {
+                            approved_candidate_id = Some(secondary_id.clone());
+                        }
+                    }
+                }
+            }
+
+            // Check visibility of UCT
+            let uct_visible = collection.get_visibility(uct);
+
+            let orphan_observations = report.get_orphan_observations();
+            let orphan_count = orphan_observations.len();
+            let approved_matched = !approved_associations.is_empty();
+
+            // Determine conclusion
+            let conclusion = if orphan_count > 0 && uct_visible {
+                // Orphans exist AND UCT was visible
+                // Both objects were likely present
+                real_uct_votes += 1;
+                "REAL_UCT".to_string()
+            } else if orphan_count == 0 && approved_matched {
+                // No orphans, approved sat matched all observations
+                // UCT is likely just the approved satellite
+                cross_tag_votes += 1;
+                "CROSS_TAG".to_string()
+            } else {
+                "INCONCLUSIVE".to_string()
+            };
+
+            let evidence = CrossTagEvidence::new(
+                collection.get_epoch(),
+                collection.get_observations()[0].get_sensor().id.clone(),
+                orphan_count,
+                approved_matched,
+                uct_visible,
+                conclusion,
+                approved_associations,
+                orphan_observations.clone(),
+            );
+            evidence_list.push(evidence);
+        }
+
+        // Step 5: Aggregate evidence and decide
+        let total_votes = cross_tag_votes + real_uct_votes;
+
+        if total_votes == 0 {
+            return CrossTagReport::new(
+                uct.id.clone(),
+                false,
+                None,
+                0.0,
+                evidence_list.clone(),
+                "Insufficient conclusive evidence".to_string(),
+                evidence_list.len(),
+                real_uct_votes,
+                cross_tag_votes,
+            );
+        }
+
+        let confidence = (cross_tag_votes as f64) / (total_votes as f64);
+
+        if confidence >= conf_threshold {
+            CrossTagReport::new(
+                uct.id.clone(),
+                true,
+                approved_candidate_id,
+                confidence,
+                evidence_list.clone(),
+                format!("Cross-tag detected with {:.1}% confidence", confidence * 100.0),
+                evidence_list.len(),
+                real_uct_votes,
+                cross_tag_votes,
+            )
+        } else {
+            CrossTagReport::new(
+                uct.id.clone(),
+                false,
+                approved_candidate_id,
+                1.0 - confidence,
+                evidence_list.clone(),
+                format!("Real UCT with {:.1}% confidence", (1.0 - confidence) * 100.0),
+                evidence_list.len(),
+                real_uct_votes,
+                cross_tag_votes,
+            )
+        }
     }
 
     pub fn get_maneuver_events(

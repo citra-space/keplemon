@@ -1,6 +1,8 @@
 from keplemon._keplemon.events import (  # type: ignore
     CloseApproach,
     CloseApproachReport,
+    CrossTagEvidence,
+    CrossTagReport,
     HorizonAccess,
     HorizonAccessReport,
     FieldOfViewCandidate,
@@ -10,6 +12,8 @@ from keplemon._keplemon.events import (  # type: ignore
 __all__ = [
     "CloseApproach",
     "CloseApproachReport",
+    "CrossTagEvidence",
+    "CrossTagReport",
     "HorizonAccess",
     "HorizonAccessReport",
     "FieldOfViewCandidate",
