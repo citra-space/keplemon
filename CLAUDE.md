@@ -7,6 +7,7 @@ Definition of done:
 - Consider if Python bindings for Rust changes need to be exposed in bindings/ or bindings.rs
 - Consider if Python bindings need to be imported in any of the python/keplemon/\*.py files
 - Consider if Python type hints need to be updated in any of the stubs/keplemon/\*.pyi files
+- Keep __init__.py minimal - users should import from submodules (keplemon.tle.TLE), not the top level (keplemon.TLE)
 - Run `cargo make clean-all` to clear Python and Rust caches
 - Run `cargo test` after changes to confirm the Rust library works
 - Run `pip install .` to confirm the Python wheel still builds and installs
