@@ -231,7 +231,6 @@ pub struct CudaGeoNumericalPropagator {
     init_kernel: CudaFunction,
     propagate_kernel: CudaFunction,
     propagate_soa_kernel: CudaFunction,
-    propagate_soa_indexed_kernel: CudaFunction,
     propagate_eci_kernel: CudaFunction,
     // Index mappings for partitioned propagation
     original_indices: Vec<usize>,
@@ -252,7 +251,6 @@ impl CudaGeoNumericalPropagator {
                 "geo_init_kernel",
                 "geo_propagate_kernel",
                 "geo_propagate_soa_kernel",
-                "geo_propagate_soa_indexed_kernel",
                 "geo_propagate_eci_kernel",
             ],
         ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
@@ -266,9 +264,6 @@ impl CudaGeoNumericalPropagator {
 
         let propagate_soa_kernel = dev.get_func("geo_numerical", "geo_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_propagate_soa_kernel not found".into()))?;
-
-        let propagate_soa_indexed_kernel = dev.get_func("geo_numerical", "geo_propagate_soa_indexed_kernel")
-            .ok_or_else(|| CudaError::KernelLoad("geo_propagate_soa_indexed_kernel not found".into()))?;
 
         let propagate_eci_kernel = dev.get_func("geo_numerical", "geo_propagate_eci_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_propagate_eci_kernel not found".into()))?;
@@ -284,7 +279,6 @@ impl CudaGeoNumericalPropagator {
             init_kernel,
             propagate_kernel,
             propagate_soa_kernel,
-            propagate_soa_indexed_kernel,
             propagate_eci_kernel,
             original_indices: Vec::new(),
             indices_gpu: None,
