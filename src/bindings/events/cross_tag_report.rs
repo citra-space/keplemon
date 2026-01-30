@@ -1,7 +1,6 @@
 use super::{PyCandidateAnalysis, PyCrossTagEvidence};
 use crate::events::{CrossTagReport, CrossTagResult};
 use pyo3::prelude::*;
-use pyo3::types::PyList;
 
 #[pyclass(name = "CrossTagResult")]
 #[derive(Debug, Clone, PartialEq)]

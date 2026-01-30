@@ -31,17 +31,23 @@ fn main() {
     let python_pkg_dir = Path::new("python").join("keplemon");
     fs::create_dir_all(&python_pkg_dir).expect("Failed to create python/keplemon directory");
 
+    // Only copy data files - SAAL libraries are bundled via auditwheel
+    let data_extensions: &[&str] = &["GEO", "dat", "405", "txt"];
+
     for entry in fs::read_dir(&target_dir).expect("Failed to read target directory") {
         let entry = entry.expect("Failed to access entry in target directory");
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
-        let filename = path.file_name().expect("Invalid target file name");
-        if filename == "Cargo.lock" || filename == ".cargo-lock" || filename == "libkeplemon.d" {
+
+        // Only copy files with allowed data extensions
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !data_extensions.contains(&ext) {
             continue;
         }
 
+        let filename = path.file_name().expect("Invalid target file name");
         let dest_path = python_pkg_dir.join(filename);
         fs::copy(&path, &dest_path)
             .unwrap_or_else(|_| panic!("Failed to copy {} to {}", path.display(), dest_path.display()));

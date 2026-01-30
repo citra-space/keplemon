@@ -1,9 +1,9 @@
 use super::{Covariance, Observation, ObservationResidual};
-use crate::bodies::Satellite;
+use crate::bodies::{Observatory, Satellite, Sensor};
 use crate::configs;
-use crate::elements::EquinoctialElements;
-use crate::enums::{CovarianceType, KeplerianType};
-use crate::time::Epoch;
+use crate::elements::{CartesianVector, EquinoctialElements, TopocentricElements};
+use crate::enums::{CovarianceType, KeplerianType, ReferenceFrame};
+use crate::time::{Epoch, TimeSpan};
 use log;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
@@ -36,6 +36,11 @@ pub struct BatchLeastSquares {
     predicted_measurements: Option<DVector<f64>>,
     jacobian: Option<DMatrix<f64>>,
     eccentricity_constraint_weight: Option<f64>,
+    estimate_maneuver: bool,
+    maneuver_epoch: Option<Epoch>,
+    delta_v: Option<CartesianVector>,
+    maneuver_radial_penalty_weight: f64,
+    allow_radial_delta_v: bool,
 }
 
 impl BatchLeastSquares {
@@ -62,6 +67,11 @@ impl BatchLeastSquares {
             predicted_measurements: None,
             jacobian: None,
             eccentricity_constraint_weight: None,
+            estimate_maneuver: false,
+            maneuver_epoch: None,
+            delta_v: None,
+            maneuver_radial_penalty_weight: 0.0,
+            allow_radial_delta_v: true,
         }
     }
 
@@ -102,6 +112,10 @@ impl BatchLeastSquares {
     }
 
     pub fn solve(&mut self) -> Result<(), String> {
+        if self.estimate_maneuver {
+            return self.solve_with_maneuver();
+        }
+
         self.iteration_count = 0;
         self.converged = false;
         self.delta_x = None;
@@ -210,6 +224,8 @@ impl BatchLeastSquares {
         self.predicted_buffers = None;
         self.predicted_measurements = None;
         self.jacobian = None;
+        self.maneuver_epoch = None;
+        self.delta_v = None;
 
         let mut force_properties = self.a_priori.get_force_properties();
 
@@ -252,6 +268,36 @@ impl BatchLeastSquares {
 
     pub fn set_eccentricity_constraint_weight(&mut self, weight: Option<f64>) {
         self.eccentricity_constraint_weight = weight;
+    }
+
+    pub fn set_estimate_maneuver(&mut self, estimate_maneuver: bool) {
+        self.estimate_maneuver = estimate_maneuver;
+        if estimate_maneuver {
+            self.use_drag = false;
+            self.use_srp = false;
+        }
+        self.reset();
+    }
+
+    pub fn get_estimate_maneuver(&self) -> bool {
+        self.estimate_maneuver
+    }
+
+    pub fn get_maneuver_epoch(&self) -> Option<Epoch> {
+        self.maneuver_epoch
+    }
+
+    pub fn get_delta_v(&self) -> Option<CartesianVector> {
+        self.delta_v
+    }
+
+    pub fn set_allow_radial_delta_v(&mut self, allow: bool) {
+        self.allow_radial_delta_v = allow;
+        self.maneuver_radial_penalty_weight = if allow { 0.0 } else { 1e12 };
+    }
+
+    pub fn get_allow_radial_delta_v(&self) -> bool {
+        self.allow_radial_delta_v
     }
 
     pub fn get_covariance(&self) -> Option<Covariance> {
@@ -677,6 +723,245 @@ fn compute_normal_equations(h: &DMatrix<f64>, w: &DVector<f64>, r: &DVector<f64>
     (n, b, wrss)
 }
 
+// Maneuver estimation implementation
+impl BatchLeastSquares {
+    /// Angular noise for anchor observations (0.001 degrees = 3.6 arcsec)
+    const ANCHOR_ANGULAR_NOISE: f64 = 0.001;
+    /// Minimum delta-V magnitude to consider as a maneuver (0.05 m/s = 0.00005 km/s)
+    const MIN_MANEUVER_DELTA_V: f64 = 0.00005;
+    /// Golden ratio for golden section search
+    const PHI: f64 = 1.618033988749895;
+    /// Tolerance for maneuver epoch search (1 minute)
+    const MANEUVER_SEARCH_TOL_MINUTES: f64 = 1.0;
+
+    /// Create multiple anchor observations at the maneuver epoch to constrain pre-maneuver state.
+    /// All observations are at the same epoch but from slightly different viewing angles.
+    fn create_anchor_observations(&self, maneuver_epoch: Epoch, count: usize) -> Result<Vec<Observation>, String> {
+        let a_priori_at_epoch = self.a_priori.clone_at_epoch(maneuver_epoch)?;
+        let teme_state = a_priori_at_epoch
+            .get_state_at_epoch(maneuver_epoch)
+            .ok_or("Failed to get a priori state at maneuver epoch")?;
+
+        // Get sub-satellite point
+        let efg = teme_state.to_frame(ReferenceFrame::EFG).position;
+        let lla = astro::efg_to_lla(&efg.into())?;
+        let base_lat = lla[0];
+        let base_lon = lla[1];
+
+        let mut anchors = Vec::with_capacity(count);
+
+        // Create observations from slightly different viewing positions
+        // Perturb longitude by small amounts to create diversity
+        // Generate evenly spaced offsets in range [-0.2, 0.2] degrees
+        let max_offset = 0.2;
+        let offsets: Vec<f64> = if count == 1 {
+            vec![0.0]
+        } else {
+            (0..count)
+                .map(|i| -max_offset + (2.0 * max_offset * i as f64) / (count - 1) as f64)
+                .collect()
+        };
+
+        for offset in offsets.iter() {
+            let site = Observatory::new(base_lat, base_lon + offset, 0.0);
+            let observer_teme = site.get_state_at_epoch(maneuver_epoch);
+            let lst = maneuver_epoch.get_gst() + (base_lon + offset).to_radians();
+            let xa_topo = astro::teme_to_topo(lst, base_lat, &observer_teme.position.into(), &teme_state.into())?;
+
+            let ra = xa_topo[astro::XA_TOPO_RA];
+            let dec = xa_topo[astro::XA_TOPO_DEC];
+            let topo_els = TopocentricElements::new(ra, dec);
+
+            let sensor = Sensor::new(Self::ANCHOR_ANGULAR_NOISE);
+            anchors.push(Observation::new(
+                sensor,
+                maneuver_epoch,
+                topo_els,
+                observer_teme.position,
+            ));
+        }
+
+        Ok(anchors)
+    }
+
+    /// Solve the batch least squares at a specific maneuver epoch.
+    /// Returns the weighted objective: RMS + radial_penalty_weight * |radial_dv|
+    /// If max_radial_dv is set, applies a steep quadratic penalty for exceeding the threshold.
+    fn solve_at_maneuver_epoch(&self, maneuver_epoch: Epoch) -> Result<f64, String> {
+        // Filter observations to only those after maneuver
+        let post_maneuver_obs: Vec<Observation> = self
+            .obs
+            .iter()
+            .filter(|o| o.get_epoch() > maneuver_epoch)
+            .cloned()
+            .collect();
+
+        if post_maneuver_obs.is_empty() {
+            return Err("No observations after maneuver epoch".to_string());
+        }
+
+        // Scale anchor count with post-maneuver observation count (minimum 5)
+        let anchor_count = post_maneuver_obs.len().max(5);
+        let anchors = self.create_anchor_observations(maneuver_epoch, anchor_count)?;
+
+        // Combine anchors with post-maneuver observations
+        let combined_obs: Vec<Observation> = anchors.into_iter().chain(post_maneuver_obs).collect();
+
+        // Create a temporary BLS instance and solve
+        let mut temp_bls = BatchLeastSquares::new(combined_obs, &self.a_priori);
+        temp_bls.output_keplerian_type = self.output_keplerian_type;
+        temp_bls.max_iterations = self.max_iterations;
+        temp_bls.solve()?;
+
+        let rms = temp_bls.get_rms().unwrap_or(f64::MAX);
+
+        // Apply radial penalty if set (used when allow_radial_delta_v is false)
+        if self.maneuver_radial_penalty_weight > 0.0 {
+            // Get a priori state at maneuver epoch (pre-maneuver)
+            let pre_maneuver = self.a_priori.clone_at_epoch(maneuver_epoch)?;
+            // Get fitted solution at maneuver epoch (post-maneuver)
+            let post_maneuver = temp_bls.current_estimate.clone_at_epoch(maneuver_epoch)?;
+
+            // Compute relative state to get delta-V in RIC frame
+            if let Some(relative_state) = post_maneuver.get_relative_state_at_epoch(&pre_maneuver, maneuver_epoch) {
+                let radial_dv = relative_state.velocity.get_x().abs();
+                let penalty = self.maneuver_radial_penalty_weight * radial_dv;
+                return Ok(rms + penalty);
+            }
+        }
+
+        Ok(rms)
+    }
+
+    /// Use golden section search to find the optimal maneuver epoch.
+    /// Searches over the 3/4 period before the first observation.
+    fn search_maneuver_epoch(&self) -> Result<Epoch, String> {
+        let kep_state = self
+            .a_priori
+            .get_keplerian_state()
+            .ok_or("Failed to get a priori keplerian state")?;
+        let period = kep_state.get_period();
+        let search_window = TimeSpan::from_minutes(period.in_minutes() * 0.75);
+
+        let first_epoch = self.obs.iter().map(|o| o.get_epoch()).min().ok_or("No observations")?;
+
+        // Search window: [first_obs - 3T/4, first_obs]
+        // Maneuver must occur before the first observation
+        let mut a = first_epoch - search_window;
+        let mut b = first_epoch;
+
+        // Golden section search
+        let mut c = b - TimeSpan::from_minutes((b - a).in_minutes() / Self::PHI);
+        let mut d = a + TimeSpan::from_minutes((b - a).in_minutes() / Self::PHI);
+
+        let mut fc = self.solve_at_maneuver_epoch(c)?;
+        let mut fd = self.solve_at_maneuver_epoch(d)?;
+
+        while (b - a).in_minutes() > Self::MANEUVER_SEARCH_TOL_MINUTES {
+            if fc < fd {
+                b = d;
+                d = c;
+                fd = fc;
+                c = b - TimeSpan::from_minutes((b - a).in_minutes() / Self::PHI);
+                fc = self.solve_at_maneuver_epoch(c)?;
+            } else {
+                a = c;
+                c = d;
+                fc = fd;
+                d = a + TimeSpan::from_minutes((b - a).in_minutes() / Self::PHI);
+                fd = self.solve_at_maneuver_epoch(d)?;
+            }
+        }
+
+        // Return midpoint of final interval
+        Ok(a + TimeSpan::from_minutes((b - a).in_minutes() / 2.0))
+    }
+
+    /// Compute the delta-V at the maneuver epoch.
+    /// Returns the velocity difference in RIC frame (km/s).
+    fn compute_maneuver_delta_v(&self, maneuver_epoch: Epoch) -> Result<CartesianVector, String> {
+        // Get a priori state at maneuver epoch (pre-maneuver)
+        let pre_maneuver = self.a_priori.clone_at_epoch(maneuver_epoch)?;
+
+        // Get current estimate state at maneuver epoch (post-maneuver)
+        let post_maneuver = self.current_estimate.clone_at_epoch(maneuver_epoch)?;
+
+        // Compute relative state - this gives us delta-V in RIC frame
+        let relative_state = post_maneuver
+            .get_relative_state_at_epoch(&pre_maneuver, maneuver_epoch)
+            .ok_or("Failed to compute relative state at maneuver epoch")?;
+
+        Ok(relative_state.velocity)
+    }
+
+    /// Solve with maneuver estimation.
+    fn solve_with_maneuver(&mut self) -> Result<(), String> {
+        // 1. Find optimal maneuver epoch via golden section search
+        let maneuver_epoch = self.search_maneuver_epoch()?;
+
+        // 2. Create final anchor observations and post-maneuver observation set
+        let post_maneuver_obs: Vec<Observation> = self
+            .obs
+            .iter()
+            .filter(|o| o.get_epoch() > maneuver_epoch)
+            .cloned()
+            .collect();
+
+        // Scale anchor count with post-maneuver observation count (minimum 5)
+        let anchor_count = post_maneuver_obs.len().max(5);
+        let anchors = self.create_anchor_observations(maneuver_epoch, anchor_count)?;
+
+        let combined_obs: Vec<Observation> = anchors.into_iter().chain(post_maneuver_obs).collect();
+
+        // 3. Store original observations and replace with combined set
+        let original_obs = std::mem::replace(&mut self.obs, combined_obs);
+
+        // 4. Run standard solve with the combined observations
+        self.iteration_count = 0;
+        self.converged = false;
+        self.delta_x = None;
+        self.weighted_rms = None;
+        self.measurement_vector = None;
+        self.weight_vector = None;
+        self.measurement_sizes = None;
+        self.predicted_buffers = None;
+        self.predicted_measurements = None;
+        self.jacobian = None;
+
+        let last_epoch = self.obs.iter().map(|o| o.get_epoch()).max().unwrap();
+        self.current_estimate = self.current_estimate.clone_at_epoch(last_epoch)?;
+
+        for _ in 0..self.max_iterations {
+            self.iterate()?;
+            if self.converged {
+                log::debug!(
+                    "BLS (maneuver) converged in {} iterations with {:.3} RMS",
+                    self.iteration_count,
+                    self.get_rms().unwrap()
+                );
+                break;
+            }
+        }
+
+        // 5. Restore original observations
+        self.obs = original_obs;
+
+        // 6. Compute delta-V
+        let delta_v = self.compute_maneuver_delta_v(maneuver_epoch)?;
+
+        // 7. Check if significant maneuver (> 0.05 m/s = 0.00005 km/s)
+        if delta_v.get_magnitude() < Self::MIN_MANEUVER_DELTA_V {
+            self.maneuver_epoch = None;
+            self.delta_v = None;
+        } else {
+            self.maneuver_epoch = Some(maneuver_epoch);
+            self.delta_v = Some(delta_v);
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::BatchLeastSquares;
@@ -792,5 +1077,85 @@ mod tests {
         assert!(bls.get_rms().unwrap() < 2.0);
         let max_range = ranges.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         assert!(max_range < 2.0);
+    }
+
+    #[test]
+    fn test_maneuver_estimation_api() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
+
+        // Use a known working TLE pair from the regular test
+        let initial_tle = TLE::from_lines(
+            "1 99999U          25334.80826079 -.00000092  00000 0  00000 0 0 0000",
+            "2 99999   5.1462  74.9949 0001499 136.0805 318.9951  0.9987069300000",
+            None,
+        )
+        .unwrap();
+        let initial_sat = Satellite::from(initial_tle.clone());
+
+        // Load the test observations (which are from a different satellite state)
+        let obs_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/test-observations.json");
+        let obs_contents = fs::read_to_string(obs_path).unwrap();
+        let json_obs: Vec<TestObservation> = serde_json::from_str(&obs_contents).unwrap();
+
+        let mut observations: Vec<Observation> = Vec::with_capacity(json_obs.len());
+        for json_ob in json_obs {
+            let epoch = Epoch::from_iso(&json_ob.epoch, TimeSystem::UTC);
+            let site = Observatory::new(
+                json_ob.sensor_latitude,
+                json_ob.sensor_longitude,
+                json_ob.sensor_altitude,
+            );
+            let els = TopocentricElements::new(json_ob.ra, json_ob.dec);
+            let sensor = Sensor::new(json_ob.angular_noise);
+            let ob = Observation::new(sensor, epoch, els, site.get_state_at_epoch(epoch).position);
+            observations.push(ob);
+        }
+
+        // Create BLS and verify the estimate_maneuver API works
+        let mut bls = BatchLeastSquares::new(observations.clone(), &initial_sat);
+
+        // Test 1: Verify initial state
+        assert!(
+            !bls.get_estimate_maneuver(),
+            "estimate_maneuver should be false by default"
+        );
+        assert!(
+            bls.get_maneuver_epoch().is_none(),
+            "maneuver_epoch should be None initially"
+        );
+        assert!(bls.get_delta_v().is_none(), "delta_v should be None initially");
+
+        // Test 2: Verify setting estimate_maneuver disables SRP and drag
+        // First set output type that allows SRP
+        bls.set_output_type(KeplerianType::MeanBrouwerXP);
+        bls.set_estimate_srp(true);
+        bls.set_estimate_drag(true);
+        assert!(bls.get_estimate_srp(), "SRP should be enabled");
+        assert!(bls.get_estimate_drag(), "Drag should be enabled");
+
+        bls.set_estimate_maneuver(true);
+        assert!(bls.get_estimate_maneuver(), "estimate_maneuver should be true");
+        assert!(
+            !bls.get_estimate_srp(),
+            "SRP should be disabled when estimate_maneuver is true"
+        );
+        assert!(
+            !bls.get_estimate_drag(),
+            "Drag should be disabled when estimate_maneuver is true"
+        );
+
+        // Test 3: Verify toggling estimate_maneuver back to false doesn't re-enable SRP/drag
+        bls.set_estimate_maneuver(false);
+        assert!(!bls.get_estimate_maneuver(), "estimate_maneuver should be false");
+        // SRP and drag remain false since they were explicitly set by the maneuver flag
+
+        // Test 4: Solve without maneuver estimation and verify results
+        bls.solve().unwrap();
+        assert!(bls.get_converged(), "Standard BLS should converge");
+        assert!(
+            bls.get_maneuver_epoch().is_none(),
+            "No maneuver when estimate_maneuver=false"
+        );
+        assert!(bls.get_delta_v().is_none(), "No delta_v when estimate_maneuver=false");
     }
 }

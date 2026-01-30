@@ -11,6 +11,13 @@ pub enum CrossTagResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CrossTagVotes {
+    pub uct: usize,
+    pub cross_tag: usize,
+    pub inconclusive: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CandidateAnalysis {
     candidate_id: String,
     result: CrossTagResult,
