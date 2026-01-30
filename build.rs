@@ -31,8 +31,17 @@ fn main() {
     let python_pkg_dir = Path::new("python").join("keplemon");
     fs::create_dir_all(&python_pkg_dir).expect("Failed to create python/keplemon directory");
 
-    // Only copy data files - SAAL libraries are bundled via auditwheel
+    // Data files to always copy
     let data_extensions: &[&str] = &["GEO", "dat", "405", "txt"];
+
+    // On macOS/Windows, we need to copy native libraries too.
+    // On Linux, maturin bundles them into keplemon.libs/ automatically.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let native_lib_ext: Option<&str> = match target_os.as_str() {
+        "macos" => Some("dylib"),
+        "windows" => Some("dll"),
+        _ => None, // Linux: maturin handles bundling
+    };
 
     for entry in fs::read_dir(&target_dir).expect("Failed to read target directory") {
         let entry = entry.expect("Failed to access entry in target directory");
@@ -41,9 +50,15 @@ fn main() {
             continue;
         }
 
-        // Only copy files with allowed data extensions
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !data_extensions.contains(&ext) {
+
+        // Copy data files on all platforms
+        let is_data_file = data_extensions.contains(&ext);
+
+        // Copy native libs on macOS/Windows only
+        let is_native_lib = native_lib_ext.is_some_and(|lib_ext| ext == lib_ext);
+
+        if !is_data_file && !is_native_lib {
             continue;
         }
 
