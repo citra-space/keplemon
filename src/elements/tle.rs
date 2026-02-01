@@ -529,7 +529,7 @@ impl TLE {
     }
 
     pub fn from_two_lines(line_1: &str, line_2: &str) -> Result<TLE, String> {
-        let (xa_tle, xs_tle) = tle::lines_to_arrays(line_1, line_2).unwrap();
+        let (xa_tle, xs_tle) = tle::lines_to_arrays(line_1, line_2)?;
         let cls_char = &xs_tle[tle::XS_TLE_SECCLASS_0_1..tle::XS_TLE_SECCLASS_0_1 + 1];
         let designator = &xs_tle[tle::XS_TLE_SATNAME_1_12..tle::XS_TLE_SATNAME_1_12 + 12];
         let keplerian_state = KeplerianState::from(&xa_tle);
@@ -538,7 +538,7 @@ impl TLE {
             Uuid::new_v4().to_string(),
             xa_tle[tle::XA_TLE_SATNUM] as i32,
             None,
-            Classification::from_str(cls_char).unwrap(),
+            Classification::from_str(cls_char)?,
             designator.trim().to_string(),
             keplerian_state,
             force_properties,
@@ -549,17 +549,12 @@ impl TLE {
     }
 
     pub fn from_three_lines(line_1: &str, line_2: &str, line_3: &str) -> Result<TLE, String> {
-        let tle = Self::from_two_lines(line_2, line_3);
-        match tle {
-            Ok(mut tle) => {
-                tle.name = match line_1.starts_with("0 ") {
-                    true => Some(line_1[2..].trim().to_string()),
-                    false => Some(line_1.trim().to_string()),
-                };
-                Ok(tle)
-            }
-            Err(e) => Err(e),
-        }
+        let mut tle = Self::from_two_lines(line_2, line_3)?;
+        tle.name = match line_1.starts_with("0 ") {
+            true => Some(line_1[2..].trim().to_string()),
+            false => Some(line_1.trim().to_string()),
+        };
+        Ok(tle)
     }
 
     pub fn get_keplerian_state(&self) -> KeplerianState {
