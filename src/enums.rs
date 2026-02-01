@@ -6,6 +6,8 @@ mod geodetic_model;
 mod keplerian_type;
 mod reference_frame;
 mod time_system;
+mod uct_observability;
+mod uct_validity;
 
 pub use association_confidence::AssociationConfidence;
 pub use classification::Classification;
@@ -15,3 +17,5 @@ pub use geodetic_model::GeodeticModel;
 pub use keplerian_type::KeplerianType;
 pub use reference_frame::ReferenceFrame;
 pub use time_system::TimeSystem;
+pub use uct_observability::UCTObservability;
+pub use uct_validity::UCTValidity;

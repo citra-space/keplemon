@@ -3,7 +3,7 @@ use crate::bindings::catalogs::PyTLECatalog;
 use crate::bindings::elements::{PyCartesianState, PyEphemeris, PyOrbitPlotData};
 use crate::bindings::estimation::{PyCollectionAssociationReport, PyObservation, PyObservationCollection};
 use crate::bindings::events::{
-    PyCloseApproachReport, PyCrossTagReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport,
+    PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport, PyUCTValidityReport,
 };
 use crate::bindings::propagation::PyPropagationBackend;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
@@ -171,28 +171,18 @@ impl PyConstellation {
         py.detach(|| PyProximityReport::from(self.inner.get_proximity_report_vs_many(start, end, distance_threshold)))
     }
 
-    pub fn detect_cross_tags(
+    pub fn get_uct_validity(
         &mut self,
         py: Python<'_>,
         uct: &mut PySatellite,
         observations: Vec<PyObservation>,
-        start: PyEpoch,
-        end: PyEpoch,
-        proximity_threshold: Option<f64>,
-        confidence_threshold: Option<f64>,
-    ) -> PyCrossTagReport {
-        let start: Epoch = start.into();
-        let end: Epoch = end.into();
+    ) -> PyResult<PyUCTValidityReport> {
         let observations: Vec<crate::estimation::Observation> = observations.into_iter().map(|o| o.into()).collect();
         py.detach(|| {
-            PyCrossTagReport::from(self.inner.detect_cross_tags(
-                uct.inner_mut(),
-                &observations,
-                start,
-                end,
-                proximity_threshold,
-                confidence_threshold,
-            ))
+            self.inner
+                .get_uct_validity(uct.inner_mut(), &observations)
+                .map(PyUCTValidityReport::from)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
         })
     }
 

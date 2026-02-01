@@ -103,8 +103,18 @@ impl TLE {
         }
     }
     pub fn reload(&mut self) -> Result<(), String> {
+        log::debug!(
+            "Reloading TLE key {} for satellite {}",
+            self.get_key(),
+            self.satellite_id
+        );
         sgp4::remove(self.get_key())?;
         sgp4::load(self.get_key())?;
+        log::debug!(
+            "Successfully reloaded TLE key {} for satellite {}",
+            self.get_key(),
+            self.satellite_id
+        );
         Ok(())
     }
 
@@ -577,9 +587,9 @@ impl TLE {
             }
             Err(e) => {
                 log::debug!(
-                    "{} propagating {} TLE to {}",
-                    e,
-                    self.get_name().unwrap_or("UNKNOWN".to_string()),
+                    "{} propagating satellite {} to {}",
+                    e.trim(),
+                    self.satellite_id,
                     epoch.to_iso()
                 );
                 Err(e.trim().to_string())

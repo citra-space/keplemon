@@ -9,6 +9,7 @@ use crate::estimation::{Observation, ObservationAssociation, ObservationCollecti
 use crate::events::{CloseApproach, HorizonAccessReport, ManeuverEvent, ProximityReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::time::{Epoch, TimeSpan};
+use log;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
 use saal::{astro, satellite};
@@ -179,6 +180,18 @@ impl Satellite {
                 .covers_range(start_epoch, end_epoch)
         {
             return self.ephemeris_cache.clone();
+        } else if self.ephemeris_cache.is_none() {
+            log::debug!("No cached ephemeris for satellite {} when building ephemeris", self.id);
+        } else {
+            let span = self.ephemeris_cache.as_ref().unwrap().get_epoch_range().unwrap();
+            log::debug!(
+                "Cached ephemeris span of {} to {} for satellite {} does not cover {} to {}",
+                span.0.to_iso(),
+                span.1.to_iso(),
+                self.id,
+                start_epoch.to_iso(),
+                end_epoch.to_iso()
+            );
         }
 
         match self.get_state_at_epoch(start_epoch) {
@@ -194,14 +207,28 @@ impl Satellite {
                             ephemeris.add_state(state).unwrap();
                             next_epoch += dt;
                         }
-                        None => return None,
+                        None => {
+                            log::debug!(
+                                "Failed to propagate satellite {} to {} when building ephemeris",
+                                self.id,
+                                next_epoch.to_iso()
+                            );
+                            return None;
+                        }
                     }
                 }
                 self.ephemeris_cache = Some(ephemeris.clone());
                 self.inertial_propagator.as_mut().unwrap().reload().ok()?;
                 Some(ephemeris)
             }
-            None => None,
+            None => {
+                log::debug!(
+                    "Failed to get state for satellite {} at start {} when building ephemeris",
+                    self.id,
+                    start_epoch.to_iso()
+                );
+                None
+            }
         }
     }
 
@@ -305,7 +332,28 @@ impl Satellite {
         // Check if ephemeris is cached and covers the requested epoch
         if self.ephemeris_cache.is_some() && self.ephemeris_cache.as_ref().unwrap().covers_epoch(epoch) {
             return self.ephemeris_cache.as_ref().unwrap().get_state_at_epoch(epoch);
+        } else if self.ephemeris_cache.is_none() {
+            log::debug!(
+                "No cached ephemeris for satellite {} when interpolating at {}",
+                self.id,
+                epoch.to_iso()
+            );
+        } else {
+            let span = self.ephemeris_cache.as_ref().unwrap().get_epoch_range().unwrap();
+            log::debug!(
+                "Cached ephemeris span of {} to {} for satellite {} does not cover {}",
+                span.0.to_iso(),
+                span.1.to_iso(),
+                self.id,
+                epoch.to_iso()
+            );
         }
+
+        log::debug!(
+            "Falling back to explicit propagation for {} at {}",
+            self.id,
+            epoch.to_iso()
+        );
         // Fall back to propagator-based state computation
         self.get_state_at_epoch(epoch)
     }

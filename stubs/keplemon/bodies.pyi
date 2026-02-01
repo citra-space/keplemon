@@ -14,7 +14,7 @@ from keplemon.elements import (
 )
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
-from keplemon.events import CloseApproach, CloseApproachReport, CrossTagReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport
+from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport, UCTValidityReport
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
 from keplemon.estimation import CollectionAssociationReport, Observation, ObservationAssociation, ObservationCollection, ObservationResidual
@@ -339,36 +339,31 @@ class Constellation:
         """
         ...
 
-    def detect_cross_tags(
+    def get_uct_validity(
         self,
         uct: Satellite,
         observations: list[Observation],
-        start: Epoch,
-        end: Epoch,
-        proximity_threshold: float | None = None,
-        confidence_threshold: float | None = None,
-    ) -> CrossTagReport:
+    ) -> UCTValidityReport:
         """
-        Detect if a UCT (Uncorrelated Track) is likely a cross-tag (misidentification of an approved satellite).
+        Analyze the validity of a UCT (Uncorrelated Track) against the constellation.
 
-        This method analyzes observations during proximity events to determine if the UCT and an approved
-        satellite are the same object. The logic is:
+        This method uses cached ephemeris to analyze:
+        - Observation associations with orphan observations
+        - Proximity events with approved satellites (possible cross-tags)
+        - Close approaches with approved satellites (possible maneuver origins)
 
-        - If orphan observations exist during proximity windows: Both objects were likely visible simultaneously,
-          suggesting the UCT is a real distinct object.
-        - If no orphan observations exist: All observations match either the UCT or approved satellite,
-          suggesting they are the same object (cross-tag).
+        The analysis window is automatically determined based on the UCT's orbital period
+        and the constellation's cached ephemeris bounds.
 
         Args:
             uct: The UCT satellite to analyze
             observations: List of observations to analyze
-            start: UTC epoch of the start of the analysis window
-            end: UTC epoch of the end of the analysis window
-            proximity_threshold: Maximum distance threshold in **_kilometers_** for proximity detection (default: 10.0)
-            confidence_threshold: Minimum confidence level (0.0 to 1.0) to declare a cross-tag (default: 0.75)
 
         Returns:
-            Cross-tag report with analysis results and evidence
+            UCT validity report with analysis results
+
+        Raises:
+            ValueError: If the UCT satellite has no valid orbit state
         """
         ...
 

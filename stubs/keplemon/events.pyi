@@ -1,9 +1,8 @@
 # flake8: noqa
-from enum import Enum
 from keplemon.time import Epoch, TimeSpan
 from keplemon.elements import HorizonState, CartesianVector, TopocentricElements
-from keplemon.enums import ReferenceFrame
-from keplemon.estimation import Observation, ObservationAssociation
+from keplemon.enums import ReferenceFrame, UCTObservability, UCTValidity
+from keplemon.estimation import ObservationAssociation
 
 class FieldOfViewCandidate:
     satellite_id: str
@@ -187,164 +186,31 @@ class ManeuverReport:
         self, start: Epoch, end: Epoch, distance_threshold: float, velocity_threshold: float
     ) -> None: ...
 
-class CandidateAnalysis:
-    """Analysis of a single candidate satellite for cross-tag detection."""
-
-    candidate_id: str
-    """ID of the candidate satellite"""
-
-    result: CrossTagResult
-    """Result of the analysis for this candidate"""
-
-    confidence: float
-    """Confidence level (0.0 to 1.0)"""
-
-    real_uct_votes: int
-    """Number of collections voting for real UCT"""
-
-    cross_tag_votes: int
-    """Number of collections voting for cross-tag"""
-
-    inconclusive_votes: int
-    """Number of inconclusive collections"""
-
-    total_collections_analyzed: int
-    """Total number of observation collections analyzed"""
-
-    evidence: list[CrossTagEvidence]
-    """List of evidence from individual observation collections"""
-
-    def __init__(
-        self,
-        candidate_id: str,
-        result: CrossTagResult,
-        confidence: float,
-        real_uct_votes: int,
-        cross_tag_votes: int,
-        inconclusive_votes: int,
-        total_collections_analyzed: int,
-        evidence: list[CrossTagEvidence],
-    ) -> None: ...
-
-class CrossTagResult(Enum):
+class UCTValidityReport:
     """
-    Result of cross-tag detection analysis.
+    Report containing UCT validity analysis results.
 
-    Attributes:
-        NoProximityFound (CrossTagResult): No proximity events found between UCT and approved satellites
-        NoObservationsDuringProximity (CrossTagResult): Proximity found but no observations during proximity windows
-        InsufficientEvidence (CrossTagResult): No conclusive evidence (all collections were inconclusive)
-        RealUCT (CrossTagResult): Evidence indicates UCT is a real distinct object
-        CrossTag (CrossTagResult): Evidence indicates UCT is a misidentified approved satellite
+    This report provides information about a UCT's validity based on:
+    - Observation associations with the UCT
+    - Proximity events with approved satellites (possible cross-tags)
+    - Close approaches with approved satellites (possible maneuver origins)
+    - Observability status during the analysis window
     """
 
-    NoProximityFound = ...
-    NoObservationsDuringProximity = ...
-    InsufficientEvidence = ...
-    RealUCT = ...
-    CrossTag = ...
-
-class CrossTagEvidence:
-    """Evidence from a single observation collection for cross-tag detection."""
-
-    epoch: Epoch
-    """UTC epoch of the observation collection"""
-
-    sensor_id: str
-    """ID of the sensor that made the observations"""
-
-    orphan_count: int
-    """Number of orphan observations (observations not matched to any satellite)"""
-
-    approved_satellite_matched: bool
-    """Whether the approved satellite candidate was matched to observations"""
-
-    uct_was_visible: bool
-    """Whether the UCT satellite was within the sensor's field of view"""
-
-    conclusion: str
-    """Conclusion for this collection: 'REAL_UCT', 'CROSS_TAG', or 'INCONCLUSIVE'"""
-
-    approved_associations: list[ObservationAssociation]
-    """List of associations between observations and the approved satellite"""
-
-    orphan_observations: list[Observation]
-    """List of orphan observations"""
-
-    def __init__(
-        self,
-        epoch: Epoch,
-        sensor_id: str,
-        orphan_count: int,
-        approved_satellite_matched: bool,
-        uct_was_visible: bool,
-        conclusion: str,
-        approved_associations: list[ObservationAssociation],
-        orphan_observations: list[Observation],
-    ) -> None: ...
-
-class CrossTagReport:
-    """
-    Report containing cross-tag detection analysis results.
-
-    Args:
-        uct_id: ID of the UCT satellite being analyzed
-        result: Result of the cross-tag detection analysis
-        approved_candidate_id: ID of the best approved satellite candidate
-        confidence: Confidence level (0.0 to 1.0) for the best candidate
-        evidence: List of evidence from individual observation collections for the best candidate
-        reason: Human-readable explanation of the conclusion
-        total_collections_analyzed: Total number of observation collections analyzed for the best candidate
-        real_uct_votes: Number of collections voting for real UCT for the best candidate
-        cross_tag_votes: Number of collections voting for cross-tag for the best candidate
-        inconclusive_votes: Number of inconclusive collections for the best candidate
-        all_candidates: List of all candidate analyses, sorted by confidence descending
-    """
-
-    uct_id: str
+    satellite_id: str
     """ID of the UCT satellite being analyzed"""
 
-    result: CrossTagResult
-    """Result of the cross-tag detection analysis for the best candidate"""
+    associations: list[ObservationAssociation]
+    """List of observation associations where the UCT matched orphan observations"""
 
-    approved_candidate_id: str | None
-    """ID of the best approved satellite candidate"""
+    possible_cross_tags: list[ProximityEvent]
+    """List of proximity events with approved satellites that could indicate cross-tagging"""
 
-    confidence: float
-    """Confidence level (0.0 to 1.0) for the best candidate"""
+    possible_origins: list[CloseApproach]
+    """List of close approaches with approved satellites that could indicate maneuver origins"""
 
-    evidence: list[CrossTagEvidence]
-    """List of evidence from individual observation collections for the best candidate"""
+    observability: UCTObservability
+    """Observability status of the UCT during the analysis window"""
 
-    reason: str
-    """Human-readable explanation of the conclusion"""
-
-    total_collections_analyzed: int
-    """Total number of observation collections analyzed for the best candidate"""
-
-    real_uct_votes: int
-    """Number of collections voting for real UCT for the best candidate"""
-
-    cross_tag_votes: int
-    """Number of collections voting for cross-tag for the best candidate"""
-
-    inconclusive_votes: int
-    """Number of inconclusive collections for the best candidate"""
-
-    all_candidates: list[CandidateAnalysis]
-    """List of all candidate analyses, sorted by confidence descending"""
-
-    def __init__(
-        self,
-        uct_id: str,
-        result: CrossTagResult,
-        approved_candidate_id: str | None,
-        confidence: float,
-        evidence: list[CrossTagEvidence],
-        reason: str,
-        total_collections_analyzed: int,
-        real_uct_votes: int,
-        cross_tag_votes: int,
-        inconclusive_votes: int,
-        all_candidates: list[CandidateAnalysis],
-    ) -> None: ...
+    validity: UCTValidity
+    """Validity assessment based on the analysis results"""
