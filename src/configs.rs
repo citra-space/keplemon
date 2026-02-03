@@ -24,3 +24,6 @@ pub const ATMOSPHERE_BOUNDARY_RADIUS: f64 = 7500.0; // in kilometers
 pub const NEAR_EARTH_PROXIMITY_RANGE: f64 = 5.0; // in kilometers
 pub const HEO_PROXIMITY_RANGE: f64 = 50.0; // in kilometers
 pub const DEEP_SPACE_PROXIMITY_RANGE: f64 = 25.0; // in kilometers
+pub const REAL_UCT_MIN_OB_SPAN_MINUTES: f64 = 15.0; // in minutes
+pub const REAL_UCT_MIN_OB_COUNT: usize = 5;
+pub const REAL_UCT_MAX_RMS: f64 = 5.0; // in kilometers

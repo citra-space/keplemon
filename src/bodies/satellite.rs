@@ -13,6 +13,7 @@ use log;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
 use saal::{astro, satellite};
+use std::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -200,11 +201,13 @@ impl Satellite {
                 let diff = end_epoch - start_epoch;
                 let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
                 let dt = if step < max_step { step } else { max_step };
+                let mut last_epoch: Epoch = start_epoch;
                 let mut next_epoch: Epoch = start_epoch + dt;
                 while next_epoch <= end_epoch {
                     match self.get_state_at_epoch(next_epoch) {
                         Some(state) => {
                             ephemeris.add_state(state).unwrap();
+                            last_epoch = next_epoch;
                             next_epoch += dt;
                         }
                         None => {
@@ -212,6 +215,21 @@ impl Satellite {
                                 "Failed to propagate satellite {} to {} when building ephemeris",
                                 self.id,
                                 next_epoch.to_iso()
+                            );
+                            return None;
+                        }
+                    }
+                }
+                if last_epoch < end_epoch {
+                    match self.get_state_at_epoch(end_epoch) {
+                        Some(state) => {
+                            ephemeris.add_state(state).unwrap();
+                        }
+                        None => {
+                            log::debug!(
+                                "Failed to propagate satellite {} to {} when finalizing ephemeris",
+                                self.id,
+                                end_epoch.to_iso()
                             );
                             return None;
                         }
@@ -359,12 +377,24 @@ impl Satellite {
     }
 
     pub fn get_associations(&self, collections: &Vec<ObservationCollection>) -> Vec<ObservationAssociation> {
+        let start = Instant::now();
+        log::info!(
+            "Getting associations for satellite {} across {} observation collections",
+            self.id,
+            collections.len()
+        );
         let mut associations: Vec<ObservationAssociation> = Vec::new();
         for collection in collections {
             if let Some(association) = collection.get_association(self) {
                 associations.push(association);
             }
         }
+        log::info!(
+            "Found {} associations for satellite {} in {:.3} seconds",
+            associations.len(),
+            self.id,
+            start.elapsed().as_secs_f64()
+        );
         associations
     }
 
@@ -774,5 +804,24 @@ mod tests {
                 epsilon = vel_tolerance_km_s
             );
         }
+    }
+
+    #[test]
+    fn test_get_ephemeris_covers_end_epoch() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
+        let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+        let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+        let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();
+        let mut satellite = Satellite::from(tle);
+
+        let start = Epoch::from_iso("2020-07-18T12:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2020-07-18T12:37:30.000000Z", TimeSystem::UTC);
+        let step = TimeSpan::from_minutes(10.0);
+
+        let ephemeris = satellite
+            .get_ephemeris(start, end, step)
+            .expect("failed to build ephemeris");
+
+        assert!(ephemeris.covers_range(start, end));
     }
 }

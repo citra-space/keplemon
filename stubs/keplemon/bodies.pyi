@@ -342,7 +342,8 @@ class Constellation:
     def get_uct_validity(
         self,
         uct: Satellite,
-        observations: list[Observation],
+        all_collections: list[ObservationCollection],
+        orphan_collections: list[ObservationCollection],
     ) -> UCTValidityReport:
         """
         Analyze the validity of a UCT (Uncorrelated Track) against the constellation.
@@ -357,7 +358,8 @@ class Constellation:
 
         Args:
             uct: The UCT satellite to analyze
-            observations: List of observations to analyze
+            all_collections: All observation collections for visibility checks
+            orphan_collections: Observation collections of orphan observations
 
         Returns:
             UCT validity report with analysis results
@@ -395,6 +397,7 @@ class Constellation:
 
     def __getitem__(self, satellite_id: str) -> Satellite: ...
     def __setitem__(self, satellite_id: str, sat: Satellite) -> None: ...
+    def __delitem__(self, satellite_id: str) -> None: ...
     def __iter__(self) -> Iterator[str]: ...
     def __contains__(self, key: str) -> bool: ...
     def __len__(self) -> int: ...
@@ -422,7 +425,7 @@ class Constellation:
         """
         ...
 
-    def cache_ephemeris(self, start: Epoch, end: Epoch, step: TimeSpan) -> None:
+    def cache_ephemeris(self, start: Epoch, end: Epoch, step: TimeSpan, purge_on_fail: bool = False) -> None:
         """
         Cache ephemeris for all satellites in the constellation.
 
@@ -433,6 +436,7 @@ class Constellation:
             start: Start epoch for ephemeris caching
             end: End epoch for ephemeris caching
             step: Time step between cached states
+            purge_on_fail: Remove satellites that fail to build ephemeris
         """
         ...
 
