@@ -25,8 +25,7 @@ fn test_propagator_selection_near_earth() {
     println!("ISS orbital period: {:.2} minutes", period);
     assert!(period < 225.0, "ISS should be near-earth");
 
-    let propagator = BatchPropagator::new()
-        .set_backend(PropagationBackend::Gpu);
+    let propagator = BatchPropagator::new().set_backend(PropagationBackend::Gpu);
 
     let epochs = vec![
         Epoch::from_days_since_1950(23001.0, TimeSystem::UTC),
@@ -57,8 +56,7 @@ fn test_propagator_selection_deep_space() {
     println!("INTELSAT 902 orbital period: {:.2} minutes", period);
     assert!(period >= 225.0, "GEO should be deep-space");
 
-    let propagator = BatchPropagator::new()
-        .set_backend(PropagationBackend::Gpu);
+    let propagator = BatchPropagator::new().set_backend(PropagationBackend::Gpu);
 
     let epochs = vec![
         Epoch::from_days_since_1950(23001.5, TimeSystem::UTC),
@@ -98,8 +96,7 @@ fn test_propagator_selection_mixed() {
     println!("ISS period: {:.2} min (near-earth)", period_iss);
     println!("INTELSAT 902 period: {:.2} min (deep-space)", period_geo);
 
-    let propagator = BatchPropagator::new()
-        .set_backend(PropagationBackend::Gpu);
+    let propagator = BatchPropagator::new().set_backend(PropagationBackend::Gpu);
 
     let epochs = vec![
         Epoch::from_days_since_1950(23001.0, TimeSystem::UTC),
@@ -139,7 +136,10 @@ fn test_orbital_period_helper() {
     println!("GEO: {:.5} rev/day = {:.2} min period", mean_motion_geo, period_geo);
 
     assert!(period_iss > 85.0 && period_iss < 95.0, "ISS period should be ~90 min");
-    assert!(period_geo > 1430.0 && period_geo < 1450.0, "GEO period should be ~1436 min (1 day)");
+    assert!(
+        period_geo > 1430.0 && period_geo < 1450.0,
+        "GEO period should be ~1436 min (1 day)"
+    );
 
     assert!(period_iss < 225.0, "ISS is near-earth");
     assert!(period_geo >= 225.0, "GEO is deep-space");

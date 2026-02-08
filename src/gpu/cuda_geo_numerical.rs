@@ -8,8 +8,8 @@
 //!
 //! The approach converts TLE -> ECI at epoch, then propagates using the analytical model.
 
-use super::device::{CudaDevice, CudaError};
 use super::cuda_tle::{Sgp4StateGpu, SoAArrays};
+use super::device::{CudaDevice, CudaError};
 use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 
 // Include the PTX at compile time
@@ -78,13 +78,7 @@ impl Default for GeoStateGpu {
 
 impl GeoStateGpu {
     /// Create a new GEO state with custom SRP parameters
-    pub fn new(
-        pos: [f64; 3],
-        vel: [f64; 3],
-        epoch_jd: f64,
-        cr: Option<f64>,
-        area_mass: Option<f64>,
-    ) -> Self {
+    pub fn new(pos: [f64; 3], vel: [f64; 3], epoch_jd: f64, cr: Option<f64>, area_mass: Option<f64>) -> Self {
         Self {
             x: pos[0],
             y: pos[1],
@@ -253,19 +247,24 @@ impl CudaGeoNumericalPropagator {
                 "geo_propagate_soa_kernel",
                 "geo_propagate_eci_kernel",
             ],
-        ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+        )
+        .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
 
         // Cache kernel functions
-        let init_kernel = dev.get_func("geo_numerical", "geo_init_kernel")
+        let init_kernel = dev
+            .get_func("geo_numerical", "geo_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_init_kernel not found".into()))?;
 
-        let propagate_kernel = dev.get_func("geo_numerical", "geo_propagate_kernel")
+        let propagate_kernel = dev
+            .get_func("geo_numerical", "geo_propagate_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_propagate_kernel not found".into()))?;
 
-        let propagate_soa_kernel = dev.get_func("geo_numerical", "geo_propagate_soa_kernel")
+        let propagate_soa_kernel = dev
+            .get_func("geo_numerical", "geo_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_propagate_soa_kernel not found".into()))?;
 
-        let propagate_eci_kernel = dev.get_func("geo_numerical", "geo_propagate_eci_kernel")
+        let propagate_eci_kernel = dev
+            .get_func("geo_numerical", "geo_propagate_eci_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_propagate_eci_kernel not found".into()))?;
 
         Ok(Self {
@@ -309,11 +308,13 @@ impl CudaGeoNumericalPropagator {
         let dev = self.device.device();
 
         // Upload ECI states to GPU
-        let states_gpu = dev.htod_sync_copy(states)
+        let states_gpu = dev
+            .htod_sync_copy(states)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate params buffer
-        let params_gpu: CudaSlice<GeoNumericalParamsGpu> = dev.alloc_zeros(self.n_satellites)
+        let params_gpu: CudaSlice<GeoNumericalParamsGpu> = dev
+            .alloc_zeros(self.n_satellites)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Launch init kernel
@@ -327,7 +328,9 @@ impl CudaGeoNumericalPropagator {
         };
 
         unsafe {
-            self.init_kernel.clone().launch(cfg, (&states_gpu, &params_gpu, self.n_satellites as i32))
+            self.init_kernel
+                .clone()
+                .launch(cfg, (&states_gpu, &params_gpu, self.n_satellites as i32))
                 .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
@@ -340,8 +343,10 @@ impl CudaGeoNumericalPropagator {
         // Store original indices for potential partitioned propagation
         self.original_indices = (0..self.n_satellites).collect();
         let indices_i32: Vec<i32> = self.original_indices.iter().map(|&i| i as i32).collect();
-        self.indices_gpu = Some(dev.htod_sync_copy(&indices_i32)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?);
+        self.indices_gpu = Some(
+            dev.htod_sync_copy(&indices_i32)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+        );
 
         // Clear cached buffers
         self.cached_soa_buffers = None;
@@ -366,11 +371,12 @@ impl CudaGeoNumericalPropagator {
             || positions.len() != area_mass_values.len()
         {
             return Err(CudaError::InvalidParameter(
-                "All input arrays must have the same length".into()
+                "All input arrays must have the same length".into(),
             ));
         }
 
-        let states: Vec<GeoStateGpu> = positions.iter()
+        let states: Vec<GeoStateGpu> = positions
+            .iter()
             .zip(velocities.iter())
             .zip(epochs.iter())
             .zip(cr_values.iter())
@@ -397,19 +403,20 @@ impl CudaGeoNumericalPropagator {
             return Err(CudaError::NotInitialized);
         }
 
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
 
         let dev = self.device.device();
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
 
         // Upload times
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate output
-        let states_gpu: CudaSlice<Sgp4StateGpu> = dev.alloc_zeros(n_results)
+        let states_gpu: CudaSlice<Sgp4StateGpu> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Launch propagation kernel
@@ -425,16 +432,26 @@ impl CudaGeoNumericalPropagator {
         };
 
         unsafe {
-            self.propagate_kernel.clone().launch(
-                cfg,
-                (params_gpu, &times_gpu, &states_gpu, self.n_satellites as i32, n_times as i32)
-            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            self.propagate_kernel
+                .clone()
+                .launch(
+                    cfg,
+                    (
+                        params_gpu,
+                        &times_gpu,
+                        &states_gpu,
+                        self.n_satellites as i32,
+                        n_times as i32,
+                    ),
+                )
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
 
-        let results = dev.dtoh_sync_copy(&states_gpu)
+        let results = dev
+            .dtoh_sync_copy(&states_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
         Ok(results)
@@ -451,15 +468,15 @@ impl CudaGeoNumericalPropagator {
             return Err(CudaError::NotInitialized);
         }
 
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
 
         let dev = self.device.device();
         let n_times = jd_times.len();
         let n_results = self.n_satellites * n_times;
 
         // Upload times
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate or reuse SoA buffers
@@ -470,13 +487,27 @@ impl CudaGeoNumericalPropagator {
 
         if need_realloc {
             self.cached_soa_buffers = Some(CachedGeoSoABuffers {
-                x: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                y: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                z: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                vx: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                vy: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                vz: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                error_code: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                x: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                y: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                z: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vx: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vy: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                vz: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                error_code: dev
+                    .alloc_zeros(n_results)
+                    .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
                 n_results,
             });
         }
@@ -497,18 +528,25 @@ impl CudaGeoNumericalPropagator {
         };
 
         unsafe {
-            self.propagate_soa_kernel.clone().launch(
-                cfg,
-                (
-                    params_gpu,
-                    &times_gpu,
-                    &soa.x, &soa.y, &soa.z,
-                    &soa.vx, &soa.vy, &soa.vz,
-                    &soa.error_code,
-                    self.n_satellites as i32,
-                    n_times as i32,
+            self.propagate_soa_kernel
+                .clone()
+                .launch(
+                    cfg,
+                    (
+                        params_gpu,
+                        &times_gpu,
+                        &soa.x,
+                        &soa.y,
+                        &soa.z,
+                        &soa.vx,
+                        &soa.vy,
+                        &soa.vz,
+                        &soa.error_code,
+                        self.n_satellites as i32,
+                        n_times as i32,
+                    ),
                 )
-            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
         dev.synchronize()
@@ -516,13 +554,27 @@ impl CudaGeoNumericalPropagator {
 
         // Download results
         Ok(SoAArrays {
-            x: dev.dtoh_sync_copy(&soa.x).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            y: dev.dtoh_sync_copy(&soa.y).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            z: dev.dtoh_sync_copy(&soa.z).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vx: dev.dtoh_sync_copy(&soa.vx).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vy: dev.dtoh_sync_copy(&soa.vy).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vz: dev.dtoh_sync_copy(&soa.vz).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            error_code: dev.dtoh_sync_copy(&soa.error_code).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            x: dev
+                .dtoh_sync_copy(&soa.x)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            y: dev
+                .dtoh_sync_copy(&soa.y)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            z: dev
+                .dtoh_sync_copy(&soa.z)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vx: dev
+                .dtoh_sync_copy(&soa.vx)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vy: dev
+                .dtoh_sync_copy(&soa.vy)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vz: dev
+                .dtoh_sync_copy(&soa.vz)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            error_code: dev
+                .dtoh_sync_copy(&soa.error_code)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
             n_sats: self.n_satellites,
             n_times,
         })
@@ -543,27 +595,36 @@ impl CudaGeoNumericalPropagator {
         let n_results = n_sats * n_times;
 
         // Upload ECI states
-        let states_gpu = dev.htod_sync_copy(eci_states)
+        let states_gpu = dev
+            .htod_sync_copy(eci_states)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Upload times
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate output
-        let out_x: CudaSlice<f64> = dev.alloc_zeros(n_results)
+        let out_x: CudaSlice<f64> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        let out_y: CudaSlice<f64> = dev.alloc_zeros(n_results)
+        let out_y: CudaSlice<f64> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        let out_z: CudaSlice<f64> = dev.alloc_zeros(n_results)
+        let out_z: CudaSlice<f64> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        let out_vx: CudaSlice<f64> = dev.alloc_zeros(n_results)
+        let out_vx: CudaSlice<f64> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        let out_vy: CudaSlice<f64> = dev.alloc_zeros(n_results)
+        let out_vy: CudaSlice<f64> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        let out_vz: CudaSlice<f64> = dev.alloc_zeros(n_results)
+        let out_vz: CudaSlice<f64> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        let out_error: CudaSlice<i32> = dev.alloc_zeros(n_results)
+        let out_error: CudaSlice<i32> = dev
+            .alloc_zeros(n_results)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Launch kernel
@@ -580,31 +641,52 @@ impl CudaGeoNumericalPropagator {
         };
 
         unsafe {
-            self.propagate_eci_kernel.clone().launch(
-                cfg,
-                (
-                    &states_gpu,
-                    &times_gpu,
-                    &out_x, &out_y, &out_z,
-                    &out_vx, &out_vy, &out_vz,
-                    &out_error,
-                    n_sats as i32,
-                    n_times as i32,
+            self.propagate_eci_kernel
+                .clone()
+                .launch(
+                    cfg,
+                    (
+                        &states_gpu,
+                        &times_gpu,
+                        &out_x,
+                        &out_y,
+                        &out_z,
+                        &out_vx,
+                        &out_vy,
+                        &out_vz,
+                        &out_error,
+                        n_sats as i32,
+                        n_times as i32,
+                    ),
                 )
-            ).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
 
         Ok(SoAArrays {
-            x: dev.dtoh_sync_copy(&out_x).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            y: dev.dtoh_sync_copy(&out_y).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            z: dev.dtoh_sync_copy(&out_z).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vx: dev.dtoh_sync_copy(&out_vx).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vy: dev.dtoh_sync_copy(&out_vy).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            vz: dev.dtoh_sync_copy(&out_vz).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
-            error_code: dev.dtoh_sync_copy(&out_error).map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            x: dev
+                .dtoh_sync_copy(&out_x)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            y: dev
+                .dtoh_sync_copy(&out_y)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            z: dev
+                .dtoh_sync_copy(&out_z)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vx: dev
+                .dtoh_sync_copy(&out_vx)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vy: dev
+                .dtoh_sync_copy(&out_vy)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vz: dev
+                .dtoh_sync_copy(&out_vz)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            error_code: dev
+                .dtoh_sync_copy(&out_error)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
             n_sats,
             n_times,
         })
@@ -613,7 +695,8 @@ impl CudaGeoNumericalPropagator {
     /// Pre-load Julian Date times to GPU for repeated propagations
     pub fn cache_times(&mut self, jd_times: &[f64]) -> Result<(), CudaError> {
         let dev = self.device.device();
-        let times_gpu = dev.htod_sync_copy(jd_times)
+        let times_gpu = dev
+            .htod_sync_copy(jd_times)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
         self.cached_times_gpu = Some(times_gpu);
         self.cached_n_times = jd_times.len();
@@ -643,11 +726,11 @@ impl CudaGeoNumericalPropagator {
 
     /// Get initialized parameters from GPU for debugging
     pub fn get_params_debug(&self) -> Result<Vec<GeoNumericalParamsGpu>, CudaError> {
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
 
         let dev = self.device.device();
-        let params = dev.dtoh_sync_copy(params_gpu)
+        let params = dev
+            .dtoh_sync_copy(params_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
         Ok(params)

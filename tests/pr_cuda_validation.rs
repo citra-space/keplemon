@@ -14,7 +14,7 @@
 
 use keplemon::bodies::Satellite;
 use keplemon::elements::TLE;
-use keplemon::gpu::{cuda_tle::TleDataGpu, CudaTlePropagator};
+use keplemon::gpu::{CudaTlePropagator, cuda_tle::TleDataGpu};
 use keplemon::time::{Epoch, TimeSpan};
 use std::time::Instant;
 
@@ -174,8 +174,7 @@ fn test_pr_cuda_validation() {
         .collect();
 
     let mut gpu = CudaTlePropagator::new().expect("Failed to create GPU propagator");
-    gpu.init_satellites(&tle_gpu)
-        .expect("Failed to init satellites");
+    gpu.init_satellites(&tle_gpu).expect("Failed to init satellites");
 
     let gpu_start = Instant::now();
     let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();

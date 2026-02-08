@@ -14,7 +14,7 @@
 
 use keplemon::bodies::Satellite;
 use keplemon::elements::TLE;
-use keplemon::gpu::{cuda_tle::TleDataGpu, CudaTlePropagator, CudaGeoNumericalPropagator, GeoStateGpu};
+use keplemon::gpu::{CudaGeoNumericalPropagator, CudaTlePropagator, GeoStateGpu, cuda_tle::TleDataGpu};
 use keplemon::time::TimeSpan;
 
 const JD_1950: f64 = 2433281.5;
@@ -151,8 +151,7 @@ fn test_gpu_cpu_parity_all_regimes() {
         .collect();
 
     let mut gpu = CudaTlePropagator::new().expect("Failed to create GPU propagator");
-    gpu.init_satellites(&tle_gpu)
-        .expect("Failed to init satellites");
+    gpu.init_satellites(&tle_gpu).expect("Failed to init satellites");
 
     let gpu_start = std::time::Instant::now();
     let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();
@@ -311,9 +310,9 @@ fn test_dual_mode_equivalence_leo_geo() {
         ];
 
         // Mode 1: CPU-copy (existing API)
-        let mut propagator1 = CudaTlePropagator::new()
-            .expect("Failed to create propagator 1");
-        propagator1.init_satellites(&[tle_gpu.clone()])
+        let mut propagator1 = CudaTlePropagator::new().expect("Failed to create propagator 1");
+        propagator1
+            .init_satellites(&[tle_gpu.clone()])
             .expect("Failed to init propagator 1");
 
         let cpu_copy_results = propagator1
@@ -321,9 +320,9 @@ fn test_dual_mode_equivalence_leo_geo() {
             .expect("propagate_soa_arrays failed");
 
         // Mode 2: GPU-resident (new API)
-        let mut propagator2 = CudaTlePropagator::new()
-            .expect("Failed to create propagator 2");
-        propagator2.init_satellites(&[tle_gpu])
+        let mut propagator2 = CudaTlePropagator::new().expect("Failed to create propagator 2");
+        propagator2
+            .init_satellites(&[tle_gpu])
             .expect("Failed to init propagator 2");
 
         let gpu_resident = propagator2
@@ -446,24 +445,36 @@ fn test_geo_analytical_vs_cpu_saal() {
         };
 
         println!("  Initial state from CPU SDP4:");
-        println!("    pos: ({:.3}, {:.3}, {:.3}) km",
-            initial_state.position[0], initial_state.position[1], initial_state.position[2]);
-        println!("    vel: ({:.6}, {:.6}, {:.6}) km/s",
-            initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]);
+        println!(
+            "    pos: ({:.3}, {:.3}, {:.3}) km",
+            initial_state.position[0], initial_state.position[1], initial_state.position[2]
+        );
+        println!(
+            "    vel: ({:.6}, {:.6}, {:.6}) km/s",
+            initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]
+        );
 
         // Create GEO state for analytical propagator using the CPU-computed initial state
         let geo_state = GeoStateGpu::new(
-            [initial_state.position[0], initial_state.position[1], initial_state.position[2]],
-            [initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]],
+            [
+                initial_state.position[0],
+                initial_state.position[1],
+                initial_state.position[2],
+            ],
+            [
+                initial_state.velocity[0],
+                initial_state.velocity[1],
+                initial_state.velocity[2],
+            ],
             epoch.days_since_1950 + JD_1950,
-            None,  // Default Cr
-            None,  // Default area/mass
+            None, // Default Cr
+            None, // Default area/mass
         );
 
         // Initialize GPU GEO analytical propagator
-        let mut geo_prop = CudaGeoNumericalPropagator::new()
-            .expect("Failed to create GEO analytical propagator");
-        geo_prop.init_satellites(&[geo_state])
+        let mut geo_prop = CudaGeoNumericalPropagator::new().expect("Failed to create GEO analytical propagator");
+        geo_prop
+            .init_satellites(&[geo_state])
             .expect("Failed to init GEO analytical propagator");
 
         // Propagation times: 0, 1h, 6h, 1d, 2d, 3d, 7d
@@ -479,15 +490,12 @@ fn test_geo_analytical_vs_cpu_saal() {
         let time_labels = ["0h", "1h", "6h", "1d", "2d", "3d", "7d"];
 
         // CPU propagation (SAAL/SDP4)
-        let cpu_results: Vec<_> = times.iter()
-            .map(|t| satellite.get_state_at_epoch(*t))
-            .collect();
+        let cpu_results: Vec<_> = times.iter().map(|t| satellite.get_state_at_epoch(*t)).collect();
 
         // GPU GEO analytical propagation
-        let jd_times: Vec<f64> = times.iter()
-            .map(|t| t.days_since_1950 + JD_1950)
-            .collect();
-        let gpu_results = geo_prop.propagate_soa_arrays(&jd_times)
+        let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();
+        let gpu_results = geo_prop
+            .propagate_soa_arrays(&jd_times)
             .expect("GPU GEO analytical propagation failed");
 
         // Compare results
@@ -521,8 +529,10 @@ fn test_geo_analytical_vs_cpu_saal() {
             let dvz = gpu_results.vz[i] - cpu.velocity[2];
             let vel_err = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt() * 1000.0; // km/s to m/s
 
-            println!("  {:4} | {:15.3} | {:15.3} | {:14.3} | {:15.3}",
-                label, cpu_r, gpu_r, pos_err, vel_err);
+            println!(
+                "  {:4} | {:15.3} | {:15.3} | {:14.3} | {:15.3}",
+                label, cpu_r, gpu_r, pos_err, vel_err
+            );
         }
         println!();
     }
@@ -550,33 +560,37 @@ fn test_geo_analytical_short_term_accuracy() {
     let epoch = tle.get_keplerian_state().epoch;
 
     // Get initial state from CPU
-    let initial_state = satellite.get_state_at_epoch(epoch)
+    let initial_state = satellite
+        .get_state_at_epoch(epoch)
         .expect("Failed to get initial state");
 
     // Create GEO state
     let geo_state = GeoStateGpu::new(
-        [initial_state.position[0], initial_state.position[1], initial_state.position[2]],
-        [initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]],
+        [
+            initial_state.position[0],
+            initial_state.position[1],
+            initial_state.position[2],
+        ],
+        [
+            initial_state.velocity[0],
+            initial_state.velocity[1],
+            initial_state.velocity[2],
+        ],
         epoch.days_since_1950 + JD_1950,
-        None, None,
+        None,
+        None,
     );
 
     let mut geo_prop = CudaGeoNumericalPropagator::new().expect("Failed to create propagator");
     geo_prop.init_satellites(&[geo_state]).expect("Failed to init");
 
     // Short time spans: 0, 10min, 30min, 1h, 2h, 4h, 8h, 12h, 24h
-    let hours = [0.0, 1.0/6.0, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 24.0];
-    let times: Vec<_> = hours.iter()
-        .map(|h| epoch + TimeSpan::from_hours(*h))
-        .collect();
+    let hours = [0.0, 1.0 / 6.0, 0.5, 1.0, 2.0, 4.0, 8.0, 12.0, 24.0];
+    let times: Vec<_> = hours.iter().map(|h| epoch + TimeSpan::from_hours(*h)).collect();
 
-    let cpu_results: Vec<_> = times.iter()
-        .map(|t| satellite.get_state_at_epoch(*t))
-        .collect();
+    let cpu_results: Vec<_> = times.iter().map(|t| satellite.get_state_at_epoch(*t)).collect();
 
-    let jd_times: Vec<f64> = times.iter()
-        .map(|t| t.days_since_1950 + JD_1950)
-        .collect();
+    let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();
     let gpu_results = geo_prop.propagate_soa_arrays(&jd_times).expect("Failed");
 
     println!("Satellite: {} (GEO)", name);
@@ -647,30 +661,31 @@ fn test_all_geo_models_comparison() {
     println!("Period: {:.1} minutes (GEO)", 1440.0 / tle.get_mean_motion());
 
     // Get initial state from CPU SDP4
-    let initial_state = satellite.get_state_at_epoch(epoch)
+    let initial_state = satellite
+        .get_state_at_epoch(epoch)
         .expect("Failed to get initial state from CPU");
 
     println!("\nInitial ECI state at epoch (from CPU SDP4):");
-    println!("  Position: ({:12.3}, {:12.3}, {:12.3}) km",
-        initial_state.position[0], initial_state.position[1], initial_state.position[2]);
-    println!("  Velocity: ({:12.6}, {:12.6}, {:12.6}) km/s",
-        initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]);
-    let r0 = (initial_state.position[0].powi(2) + initial_state.position[1].powi(2) + initial_state.position[2].powi(2)).sqrt();
+    println!(
+        "  Position: ({:12.3}, {:12.3}, {:12.3}) km",
+        initial_state.position[0], initial_state.position[1], initial_state.position[2]
+    );
+    println!(
+        "  Velocity: ({:12.6}, {:12.6}, {:12.6}) km/s",
+        initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]
+    );
+    let r0 =
+        (initial_state.position[0].powi(2) + initial_state.position[1].powi(2) + initial_state.position[2].powi(2))
+            .sqrt();
     println!("  Radius: {:.3} km", r0);
 
     // Propagation times: 0, 1d, 2d, 3d, 4d, 5d, 6d, 7d
     let days: Vec<f64> = (0..=7).map(|d| d as f64).collect();
-    let times: Vec<_> = days.iter()
-        .map(|d| epoch + TimeSpan::from_days(*d))
-        .collect();
-    let jd_times: Vec<f64> = times.iter()
-        .map(|t| t.days_since_1950 + JD_1950)
-        .collect();
+    let times: Vec<_> = days.iter().map(|d| epoch + TimeSpan::from_days(*d)).collect();
+    let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();
 
     // 1. CPU SDP4 (reference)
-    let cpu_results: Vec<_> = times.iter()
-        .map(|t| satellite.get_state_at_epoch(*t))
-        .collect();
+    let cpu_results: Vec<_> = times.iter().map(|t| satellite.get_state_at_epoch(*t)).collect();
 
     // 2. GPU SDP4
     let tle_gpu = TleDataGpu {
@@ -692,15 +707,28 @@ fn test_all_geo_models_comparison() {
 
     // 3. GPU GEO Analytical (high-fidelity model with SRP)
     let geo_state = GeoStateGpu::new(
-        [initial_state.position[0], initial_state.position[1], initial_state.position[2]],
-        [initial_state.velocity[0], initial_state.velocity[1], initial_state.velocity[2]],
+        [
+            initial_state.position[0],
+            initial_state.position[1],
+            initial_state.position[2],
+        ],
+        [
+            initial_state.velocity[0],
+            initial_state.velocity[1],
+            initial_state.velocity[2],
+        ],
         epoch.days_since_1950 + JD_1950,
-        None, None,
+        None,
+        None,
     );
 
     let mut geo_analytical = CudaGeoNumericalPropagator::new().expect("Failed to create GEO Analytical");
-    geo_analytical.init_satellites(&[geo_state]).expect("Failed to init GEO Analytical");
-    let geo_analytical_results = geo_analytical.propagate_soa_arrays(&jd_times).expect("GEO Analytical failed");
+    geo_analytical
+        .init_satellites(&[geo_state])
+        .expect("Failed to init GEO Analytical");
+    let geo_analytical_results = geo_analytical
+        .propagate_soa_arrays(&jd_times)
+        .expect("GEO Analytical failed");
 
     // Print comparison table
     println!("\n┌─────┬─────────────────┬─────────────────┬─────────────────┐");
@@ -712,11 +740,17 @@ fn test_all_geo_models_comparison() {
         let cpu = cpu_results[i].as_ref().expect("CPU failed");
         let cpu_r = (cpu.position[0].powi(2) + cpu.position[1].powi(2) + cpu.position[2].powi(2)).sqrt();
 
-        let gpu_sdp4_r = (gpu_sdp4_results.x[i].powi(2) + gpu_sdp4_results.y[i].powi(2) + gpu_sdp4_results.z[i].powi(2)).sqrt();
-        let geo_analytical_r = (geo_analytical_results.x[i].powi(2) + geo_analytical_results.y[i].powi(2) + geo_analytical_results.z[i].powi(2)).sqrt();
+        let gpu_sdp4_r =
+            (gpu_sdp4_results.x[i].powi(2) + gpu_sdp4_results.y[i].powi(2) + gpu_sdp4_results.z[i].powi(2)).sqrt();
+        let geo_analytical_r = (geo_analytical_results.x[i].powi(2)
+            + geo_analytical_results.y[i].powi(2)
+            + geo_analytical_results.z[i].powi(2))
+        .sqrt();
 
-        println!("│ {:3.0} │ {:15.3} │ {:15.3} │ {:15.3} │",
-            d, cpu_r, gpu_sdp4_r, geo_analytical_r);
+        println!(
+            "│ {:3.0} │ {:15.3} │ {:15.3} │ {:15.3} │",
+            d, cpu_r, gpu_sdp4_r, geo_analytical_r
+        );
     }
     println!("└─────┴─────────────────┴─────────────────┴─────────────────┘");
 
@@ -733,16 +767,15 @@ fn test_all_geo_models_comparison() {
         let dx_sdp4 = gpu_sdp4_results.x[i] - cpu.position[0];
         let dy_sdp4 = gpu_sdp4_results.y[i] - cpu.position[1];
         let dz_sdp4 = gpu_sdp4_results.z[i] - cpu.position[2];
-        let err_sdp4 = (dx_sdp4*dx_sdp4 + dy_sdp4*dy_sdp4 + dz_sdp4*dz_sdp4).sqrt();
+        let err_sdp4 = (dx_sdp4 * dx_sdp4 + dy_sdp4 * dy_sdp4 + dz_sdp4 * dz_sdp4).sqrt();
 
         // GEO Analytical error
         let dx_geo = geo_analytical_results.x[i] - cpu.position[0];
         let dy_geo = geo_analytical_results.y[i] - cpu.position[1];
         let dz_geo = geo_analytical_results.z[i] - cpu.position[2];
-        let err_geo = (dx_geo*dx_geo + dy_geo*dy_geo + dz_geo*dz_geo).sqrt();
+        let err_geo = (dx_geo * dx_geo + dy_geo * dy_geo + dz_geo * dz_geo).sqrt();
 
-        println!("│ {:3.0} │ {:15.3} │ {:15.3} │",
-            d, err_sdp4, err_geo);
+        println!("│ {:3.0} │ {:15.3} │ {:15.3} │", d, err_sdp4, err_geo);
     }
     println!("└─────┴─────────────────┴─────────────────┘");
 

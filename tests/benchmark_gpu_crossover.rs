@@ -145,10 +145,10 @@ fn benchmark_cpu(satellites: &[Satellite], times: &[Epoch]) -> std::time::Durati
 fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<std::time::Duration, String> {
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
 
-    let mut gpu_propagator = CudaTlePropagator::new()
-        .map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
+    let mut gpu_propagator = CudaTlePropagator::new().map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
 
-    gpu_propagator.init_satellites(&tle_data_gpu)
+    gpu_propagator
+        .init_satellites(&tle_data_gpu)
         .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
 
     let start = Instant::now();

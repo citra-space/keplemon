@@ -109,9 +109,9 @@ fn test_sgp4_geo_empirical_error() {
     // CORRECT: SDP4 (deep-space propagator) - REFERENCE
     // ========================================================================
     println!("\nPropagating with SDP4 (correct for GEO)...");
-    let mut propagator_sdp4 = CudaTlePropagator::new()
-        .expect("Failed to create GPU propagator");
-    propagator_sdp4.init_satellites(&tle_data_gpu)
+    let mut propagator_sdp4 = CudaTlePropagator::new().expect("Failed to create GPU propagator");
+    propagator_sdp4
+        .init_satellites(&tle_data_gpu)
         .expect("Failed to initialize with SDP4");
 
     let sdp4_results = propagator_sdp4
@@ -122,9 +122,9 @@ fn test_sgp4_geo_empirical_error() {
     // WRONG: SGP4 (near-earth propagator forced on GEO satellites)
     // ========================================================================
     println!("Propagating with forced SGP4 (incorrect for GEO)...");
-    let mut propagator_sgp4 = CudaTlePropagator::new()
-        .expect("Failed to create GPU propagator");
-    propagator_sgp4.init_satellites(&tle_data_gpu)
+    let mut propagator_sgp4 = CudaTlePropagator::new().expect("Failed to create GPU propagator");
+    propagator_sgp4
+        .init_satellites(&tle_data_gpu)
         .expect("Failed to initialize");
 
     // *** NEW: Use force_near_earth override to actually force SGP4 behavior ***

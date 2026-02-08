@@ -72,11 +72,12 @@ fn benchmark_gpu_propagation() {
         (10000, 100),
     ];
 
-    let mut gpu_propagator = CudaTlePropagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut gpu_propagator = CudaTlePropagator::new().expect("Failed to create CUDA propagator");
 
-    println!("{:>10} {:>10} {:>12} {:>15} {:>15}",
-             "Sats", "Times", "Total Props", "Time (ms)", "Props/sec");
+    println!(
+        "{:>10} {:>10} {:>12} {:>15} {:>15}",
+        "Sats", "Times", "Total Props", "Time (ms)", "Props/sec"
+    );
     println!("{}", "-".repeat(65));
 
     for (n_sats, n_times) in configs {
@@ -128,8 +129,7 @@ fn benchmark_init_vs_propagate() {
     let base_jd = tle_data[0].epoch_jd;
     let jd_times = generate_time_points(base_jd, n_times, 10.0);
 
-    let mut gpu_propagator = CudaTlePropagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut gpu_propagator = CudaTlePropagator::new().expect("Failed to create CUDA propagator");
 
     // Time init
     let init_start = std::time::Instant::now();

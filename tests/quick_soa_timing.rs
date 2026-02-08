@@ -27,10 +27,8 @@ fn quick_timing_comparison() {
     println!("Time steps: {}", n_times);
     println!("Iterations: {}", n_iters);
 
-    let mut propagator = CudaTlePropagator::new()
-        .expect("Failed to create propagator");
-    propagator.init_satellites(&tles)
-        .expect("Failed to init satellites");
+    let mut propagator = CudaTlePropagator::new().expect("Failed to create propagator");
+    propagator.init_satellites(&tles).expect("Failed to init satellites");
 
     let base_jd = 2460500.5;
     let jd_times: Vec<f64> = (0..n_times).map(|i| base_jd + (i as f64) * 0.01).collect();

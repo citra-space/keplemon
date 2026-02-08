@@ -25,7 +25,7 @@
 //! let results = propagator.propagate_soa_arrays(&times)?;
 //! ```
 
-use super::cuda_tle::{TleDataGpu, SoAArrays, Sgp4StateGpu};
+use super::cuda_tle::{Sgp4StateGpu, SoAArrays, TleDataGpu};
 use super::device::{CudaDevice, CudaError};
 use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 
@@ -130,7 +130,7 @@ pub struct Sdp4InterpolatedParamsGpu {
 
     // Resonance terms
     pub irez: i32,
-    pub _pad1: i32,  // Padding for alignment
+    pub _pad1: i32, // Padding for alignment
     pub del1: f64,
     pub del2: f64,
     pub del3: f64,
@@ -149,7 +149,7 @@ pub struct Sdp4InterpolatedParamsGpu {
 
     // Resonance sample metadata
     pub n_samples: i32,
-    pub _pad2: i32,  // Padding
+    pub _pad2: i32, // Padding
     pub sample_t0: f64,
     pub sample_dt: f64,
 
@@ -233,14 +233,21 @@ impl CudaSdp4InterpolatedPropagator {
         dev.load_ptx(
             SDP4_INTERPOLATED_PTX.into(),
             "sdp4_interpolated",
-            &["sdp4_interpolated_init_kernel", "sdp4_interpolated_propagate_soa_kernel", "sdp4_interpolated_propagate_kernel"]
-        ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+            &[
+                "sdp4_interpolated_init_kernel",
+                "sdp4_interpolated_propagate_soa_kernel",
+                "sdp4_interpolated_propagate_kernel",
+            ],
+        )
+        .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
 
         // Cache kernel functions
-        let init_kernel = dev.get_func("sdp4_interpolated", "sdp4_interpolated_init_kernel")
+        let init_kernel = dev
+            .get_func("sdp4_interpolated", "sdp4_interpolated_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sdp4_interpolated_init_kernel not found".into()))?;
 
-        let propagate_soa_kernel = dev.get_func("sdp4_interpolated", "sdp4_interpolated_propagate_soa_kernel")
+        let propagate_soa_kernel = dev
+            .get_func("sdp4_interpolated", "sdp4_interpolated_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sdp4_interpolated_propagate_soa_kernel not found".into()))?;
 
         Ok(Self {
@@ -285,16 +292,19 @@ impl CudaSdp4InterpolatedPropagator {
         let dev = self.device.device();
 
         // Upload TLE data to GPU
-        let tles_gpu = dev.htod_sync_copy(tle_data)
+        let tles_gpu = dev
+            .htod_sync_copy(tle_data)
             .map_err(|e: cudarc::driver::DriverError| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate params buffer
-        let params_gpu: CudaSlice<Sdp4InterpolatedParamsGpu> = dev.alloc_zeros(self.n_satellites)
+        let params_gpu: CudaSlice<Sdp4InterpolatedParamsGpu> = dev
+            .alloc_zeros(self.n_satellites)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Allocate resonance samples buffer (n_sats * max_samples)
         let n_samples_total = self.n_satellites * SDP4_MAX_RESONANCE_SAMPLES;
-        let samples_gpu: CudaSlice<Sdp4ResonanceSampleGpu> = dev.alloc_zeros(n_samples_total)
+        let samples_gpu: CudaSlice<Sdp4ResonanceSampleGpu> = dev
+            .alloc_zeros(n_samples_total)
             .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
         // Launch initialization kernel
@@ -308,12 +318,10 @@ impl CudaSdp4InterpolatedPropagator {
         };
 
         unsafe {
-            self.init_kernel.clone().launch(cfg, (
-                &tles_gpu,
-                &params_gpu,
-                &samples_gpu,
-                self.n_satellites as i32
-            )).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            self.init_kernel
+                .clone()
+                .launch(cfg, (&tles_gpu, &params_gpu, &samples_gpu, self.n_satellites as i32))
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
         dev.synchronize()
@@ -336,10 +344,8 @@ impl CudaSdp4InterpolatedPropagator {
             return Err(CudaError::NotInitialized);
         }
 
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
-        let samples_gpu = self.samples_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
+        let samples_gpu = self.samples_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
 
         let dev = self.device.device();
         let n_times = jd_times.len();
@@ -350,13 +356,15 @@ impl CudaSdp4InterpolatedPropagator {
             // Reuse existing buffer (may be larger than needed)
             let _cached = self.cached_times_gpu.as_ref().unwrap();
             // We need to upload new data even if buffer exists
-            let new_times = dev.htod_sync_copy(jd_times)
+            let new_times = dev
+                .htod_sync_copy(jd_times)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.cached_times_gpu = Some(new_times);
             self.cached_n_times = n_times;
             self.cached_times_gpu.as_ref().unwrap()
         } else {
-            let new_times = dev.htod_sync_copy(jd_times)
+            let new_times = dev
+                .htod_sync_copy(jd_times)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.cached_times_gpu = Some(new_times);
             self.cached_n_times = n_times;
@@ -368,20 +376,38 @@ impl CudaSdp4InterpolatedPropagator {
             if let Some(ref cached) = self.cached_soa_buffers {
                 if cached.n_results >= n_results {
                     (
-                        &cached.x, &cached.y, &cached.z,
-                        &cached.vx, &cached.vy, &cached.vz,
-                        &cached.error_code
+                        &cached.x,
+                        &cached.y,
+                        &cached.z,
+                        &cached.vx,
+                        &cached.vy,
+                        &cached.vz,
+                        &cached.error_code,
                     )
                 } else {
                     // Need larger buffers
                     self.cached_soa_buffers = Some(CachedSoABuffers {
-                        x: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                        y: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                        z: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                        vx: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                        vy: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                        vz: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                        error_code: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        x: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        y: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        z: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        vx: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        vy: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        vz: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                        error_code: dev
+                            .alloc_zeros(n_results)
+                            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
                         n_results,
                     });
                     let c = self.cached_soa_buffers.as_ref().unwrap();
@@ -390,13 +416,27 @@ impl CudaSdp4InterpolatedPropagator {
             } else {
                 // First allocation
                 self.cached_soa_buffers = Some(CachedSoABuffers {
-                    x: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                    y: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                    z: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                    vx: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                    vy: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                    vz: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
-                    error_code: dev.alloc_zeros(n_results).map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    x: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    y: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    z: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    vx: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    vy: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    vz: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
+                    error_code: dev
+                        .alloc_zeros(n_results)
+                        .map_err(|e| CudaError::AllocationFailed(e.to_string()))?,
                     n_results,
                 });
                 let c = self.cached_soa_buffers.as_ref().unwrap();
@@ -413,43 +453,56 @@ impl CudaSdp4InterpolatedPropagator {
         let cfg = LaunchConfig {
             grid_dim: (grid_x, grid_y, 1),
             block_dim: (block_x, block_y, 1),
-            shared_mem_bytes: 256 * 8,  // Shared memory for time caching
+            shared_mem_bytes: 256 * 8, // Shared memory for time caching
         };
 
         unsafe {
-            self.propagate_soa_kernel.clone().launch(cfg, (
-                params_gpu,
-                samples_gpu,
-                times_gpu,
-                x_gpu,
-                y_gpu,
-                z_gpu,
-                vx_gpu,
-                vy_gpu,
-                vz_gpu,
-                error_gpu,
-                self.n_satellites as i32,
-                n_times as i32
-            )).map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            self.propagate_soa_kernel
+                .clone()
+                .launch(
+                    cfg,
+                    (
+                        params_gpu,
+                        samples_gpu,
+                        times_gpu,
+                        x_gpu,
+                        y_gpu,
+                        z_gpu,
+                        vx_gpu,
+                        vy_gpu,
+                        vz_gpu,
+                        error_gpu,
+                        self.n_satellites as i32,
+                        n_times as i32,
+                    ),
+                )
+                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
         }
 
         dev.synchronize()
             .map_err(|e| CudaError::Synchronization(e.to_string()))?;
 
         // Copy results back to host
-        let x: Vec<f64> = dev.dtoh_sync_copy(x_gpu)
+        let x: Vec<f64> = dev
+            .dtoh_sync_copy(x_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let y: Vec<f64> = dev.dtoh_sync_copy(y_gpu)
+        let y: Vec<f64> = dev
+            .dtoh_sync_copy(y_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let z: Vec<f64> = dev.dtoh_sync_copy(z_gpu)
+        let z: Vec<f64> = dev
+            .dtoh_sync_copy(z_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let vx: Vec<f64> = dev.dtoh_sync_copy(vx_gpu)
+        let vx: Vec<f64> = dev
+            .dtoh_sync_copy(vx_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let vy: Vec<f64> = dev.dtoh_sync_copy(vy_gpu)
+        let vy: Vec<f64> = dev
+            .dtoh_sync_copy(vy_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let vz: Vec<f64> = dev.dtoh_sync_copy(vz_gpu)
+        let vz: Vec<f64> = dev
+            .dtoh_sync_copy(vz_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-        let error_code: Vec<i32> = dev.dtoh_sync_copy(error_gpu)
+        let error_code: Vec<i32> = dev
+            .dtoh_sync_copy(error_gpu)
             .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
 
         Ok(SoAArrays {
@@ -489,8 +542,7 @@ impl CudaSdp4InterpolatedPropagator {
     /// Get params for debugging (downloads from GPU)
     #[cfg(test)]
     pub fn get_params_debug(&self) -> Result<Vec<Sdp4InterpolatedParamsGpu>, CudaError> {
-        let params_gpu = self.params_gpu.as_ref()
-            .ok_or(CudaError::NotInitialized)?;
+        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
 
         let dev = self.device.device();
         dev.dtoh_sync_copy(params_gpu)

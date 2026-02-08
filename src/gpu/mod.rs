@@ -72,31 +72,17 @@ pub mod device;
 // Re-export main types when CUDA is enabled
 #[cfg(feature = "cuda")]
 pub use cuda_tle::{
-    CudaTlePropagator,
-    SoAArrays,
-    Sgp4StateSoABuffers,
-    Sgp4StateGpu,
-    Sgp4ParamsGpu,
+    CudaTlePropagator, PropagatorOverride, PropagatorType, Sgp4ParamsGpu, Sgp4StateGpu, Sgp4StateSoABuffers, SoAArrays,
     TleDataGpu,
-    PropagatorType,
-    PropagatorOverride,
 };
 
 #[cfg(feature = "cuda")]
 pub use cuda_geo_numerical::{
-    CudaGeoNumericalPropagator,
-    GeoStateGpu,
-    GeoNumericalParamsGpu,
-    DEFAULT_CR,
-    DEFAULT_AREA_MASS,
+    CudaGeoNumericalPropagator, DEFAULT_AREA_MASS, DEFAULT_CR, GeoNumericalParamsGpu, GeoStateGpu,
 };
 
 #[cfg(feature = "cuda")]
-pub use cuda_sdp4_interpolated::{
-    CudaSdp4InterpolatedPropagator,
-    Sdp4InterpolatedParamsGpu,
-    Sdp4ResonanceSampleGpu,
-};
+pub use cuda_sdp4_interpolated::{CudaSdp4InterpolatedPropagator, Sdp4InterpolatedParamsGpu, Sdp4ResonanceSampleGpu};
 
 #[cfg(feature = "cuda")]
 pub use device::{CudaDevice, CudaError};

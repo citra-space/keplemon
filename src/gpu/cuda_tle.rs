@@ -86,11 +86,7 @@ impl PropagatorType {
     ///
     /// When `prefer_geo_analytical` is true, deep-space satellites will use
     /// the GEO analytical propagator instead of SDP4 for better GPU performance.
-    pub fn for_tle_with_geo_option(
-        mean_motion: f64,
-        ephemeris_type: Option<u8>,
-        prefer_geo_analytical: bool,
-    ) -> Self {
+    pub fn for_tle_with_geo_option(mean_motion: f64, ephemeris_type: Option<u8>, prefer_geo_analytical: bool) -> Self {
         // Check for SGP4-XP TLEs first (ephemeris type 4)
         if ephemeris_type == Some(4) {
             // SGP4-XP not yet implemented, fall back to appropriate propagator
@@ -500,26 +496,39 @@ impl CudaTlePropagator {
         let dev = device.device();
 
         // Load PTX modules
-        dev.load_ptx(TLE_PROPAGATOR_INIT_PTX.into(), "tle_propagator_init", &["sgp4_init_kernel"])
-            .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+        dev.load_ptx(
+            TLE_PROPAGATOR_INIT_PTX.into(),
+            "tle_propagator_init",
+            &["sgp4_init_kernel"],
+        )
+        .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
 
         dev.load_ptx(
             TLE_PROPAGATOR_BATCH_PTX.into(),
             "tle_propagator_batch",
-            &["sgp4_propagate_kernel", "sgp4_propagate_soa_kernel", "sgp4_propagate_soa_indexed_kernel"]
-        ).map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+            &[
+                "sgp4_propagate_kernel",
+                "sgp4_propagate_soa_kernel",
+                "sgp4_propagate_soa_indexed_kernel",
+            ],
+        )
+        .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
 
         // Cache kernel functions for faster access
-        let init_kernel = dev.get_func("tle_propagator_init", "sgp4_init_kernel")
+        let init_kernel = dev
+            .get_func("tle_propagator_init", "sgp4_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
 
-        let propagate_kernel = dev.get_func("tle_propagator_batch", "sgp4_propagate_kernel")
+        let propagate_kernel = dev
+            .get_func("tle_propagator_batch", "sgp4_propagate_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
 
-        let propagate_soa_kernel = dev.get_func("tle_propagator_batch", "sgp4_propagate_soa_kernel")
+        let propagate_soa_kernel = dev
+            .get_func("tle_propagator_batch", "sgp4_propagate_soa_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_kernel not found".into()))?;
 
-        let propagate_soa_indexed_kernel = dev.get_func("tle_propagator_batch", "sgp4_propagate_soa_indexed_kernel")
+        let propagate_soa_indexed_kernel = dev
+            .get_func("tle_propagator_batch", "sgp4_propagate_soa_indexed_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_indexed_kernel not found".into()))?;
 
         Ok(Self {
@@ -1596,4 +1605,3 @@ impl CudaTlePropagator {
         self.cached_soa_buffers = None;
     }
 }
-

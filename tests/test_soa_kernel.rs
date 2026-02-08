@@ -51,8 +51,7 @@ fn get_test_tles() -> Vec<TleDataGpu> {
 #[test]
 fn test_soa_matches_aos_kernel() {
     // Create propagator
-    let mut propagator = CudaTlePropagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut propagator = CudaTlePropagator::new().expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
     let tles = get_test_tles();
@@ -130,8 +129,7 @@ fn test_soa_matches_aos_kernel() {
 #[test]
 fn test_soa_arrays_format() {
     // Create propagator
-    let mut propagator = CudaTlePropagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut propagator = CudaTlePropagator::new().expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
     let tles = get_test_tles();
@@ -205,8 +203,7 @@ fn test_soa_arrays_format() {
 #[test]
 fn test_soa_into_preallocated() {
     // Create propagator
-    let mut propagator = CudaTlePropagator::new()
-        .expect("Failed to create CUDA propagator");
+    let mut propagator = CudaTlePropagator::new().expect("Failed to create CUDA propagator");
 
     // Initialize with test TLEs
     let tles = get_test_tles();

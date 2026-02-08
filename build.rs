@@ -114,10 +114,13 @@ fn compile_cuda_kernels() {
 
         // Create empty stub PTX files so include_str! doesn't fail
         let stub_ptx = "// CUDA kernels not compiled - nvcc not available\n";
-        fs::write(format!("{}/tle_propagator_init.ptx", out_dir), stub_ptx).expect("Failed to write stub tle_propagator_init.ptx");
-        fs::write(format!("{}/tle_propagator_batch.ptx", out_dir), stub_ptx).expect("Failed to write stub tle_propagator_batch.ptx");
+        fs::write(format!("{}/tle_propagator_init.ptx", out_dir), stub_ptx)
+            .expect("Failed to write stub tle_propagator_init.ptx");
+        fs::write(format!("{}/tle_propagator_batch.ptx", out_dir), stub_ptx)
+            .expect("Failed to write stub tle_propagator_batch.ptx");
         fs::write(format!("{}/geo_numerical.ptx", out_dir), stub_ptx).expect("Failed to write stub geo_numerical.ptx");
-        fs::write(format!("{}/sdp4_interpolated.ptx", out_dir), stub_ptx).expect("Failed to write stub sdp4_interpolated.ptx");
+        fs::write(format!("{}/sdp4_interpolated.ptx", out_dir), stub_ptx)
+            .expect("Failed to write stub sdp4_interpolated.ptx");
 
         return;
     }
@@ -125,7 +128,11 @@ fn compile_cuda_kernels() {
     let nvcc_cmd = if nvcc.exists() { nvcc.to_str().unwrap() } else { "nvcc" };
 
     // Compile TLE propagator initialization kernel (SGP4/SDP4)
-    compile_kernel(nvcc_cmd, "kernels/tle_propagator_init.cu", &format!("{}/tle_propagator_init.ptx", out_dir));
+    compile_kernel(
+        nvcc_cmd,
+        "kernels/tle_propagator_init.cu",
+        &format!("{}/tle_propagator_init.ptx", out_dir),
+    );
 
     // Compile TLE propagator batch propagation kernel (SGP4/SDP4)
     compile_kernel(

@@ -247,9 +247,7 @@ impl BatchPropagator {
     #[cfg(feature = "cuda")]
     fn propagate_batch_gpu(&self, tles: &[TLE], epochs: &[Epoch]) -> Result<Vec<Vec<CartesianState>>, String> {
         // Classify each orbit
-        let orbit_types: Vec<OrbitType> = tles.iter()
-            .map(|tle| classify_orbit(tle.get_mean_motion()))
-            .collect();
+        let orbit_types: Vec<OrbitType> = tles.iter().map(|tle| classify_orbit(tle.get_mean_motion())).collect();
 
         // Check if all satellites are the same type for optimization
         let all_near_earth = orbit_types.iter().all(|t| matches!(t, OrbitType::NearEarth));
@@ -262,7 +260,10 @@ impl BatchPropagator {
             log::debug!("All {} satellites are deep-space, using SDP4-Analytical", tles.len());
             self.propagate_with_sdp4_analytical(tles, epochs)
         } else {
-            log::debug!("Mixed orbit types: {} satellites, using partitioned approach", tles.len());
+            log::debug!(
+                "Mixed orbit types: {} satellites, using partitioned approach",
+                tles.len()
+            );
             self.propagate_mixed(tles, epochs, &orbit_types)
         }
     }
@@ -333,7 +334,11 @@ impl BatchPropagator {
 
     /// Propagate deep-space satellites with SDP4-Analytical
     #[cfg(feature = "cuda")]
-    fn propagate_with_sdp4_analytical(&self, tles: &[TLE], epochs: &[Epoch]) -> Result<Vec<Vec<CartesianState>>, String> {
+    fn propagate_with_sdp4_analytical(
+        &self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+    ) -> Result<Vec<Vec<CartesianState>>, String> {
         use crate::elements::CartesianVector;
         use crate::enums::ReferenceFrame;
         use crate::gpu::CudaSdp4InterpolatedPropagator;
@@ -346,7 +351,8 @@ impl BatchPropagator {
         let tle_data: Vec<TleDataGpu> = tles.iter().map(|tle| TleDataGpu::from(tle)).collect();
 
         // Initialize satellites
-        propagator.init_satellites(&tle_data)
+        propagator
+            .init_satellites(&tle_data)
             .map_err(|e| format!("Failed to initialize SDP4-Analytical satellites: {}", e))?;
 
         // Convert epochs to Julian Dates
@@ -356,7 +362,8 @@ impl BatchPropagator {
             .collect();
 
         // Propagate using SDP4-Analytical
-        let gpu_states = propagator.propagate(&jd_times)
+        let gpu_states = propagator
+            .propagate(&jd_times)
             .map_err(|e| format!("SDP4-Analytical propagation failed: {}", e))?;
 
         // Convert to CartesianState format (same layout as SGP4)
@@ -396,7 +403,12 @@ impl BatchPropagator {
 
     /// Propagate mixed orbit types by partitioning and combining results
     #[cfg(feature = "cuda")]
-    fn propagate_mixed(&self, tles: &[TLE], epochs: &[Epoch], orbit_types: &[OrbitType]) -> Result<Vec<Vec<CartesianState>>, String> {
+    fn propagate_mixed(
+        &self,
+        tles: &[TLE],
+        epochs: &[Epoch],
+        orbit_types: &[OrbitType],
+    ) -> Result<Vec<Vec<CartesianState>>, String> {
         // Partition satellites by orbit type
         let mut near_earth_indices = Vec::new();
         let mut deep_space_indices = Vec::new();
@@ -420,13 +432,11 @@ impl BatchPropagator {
 
         // Propagate near-earth satellites if any
         if !near_earth_indices.is_empty() {
-            let near_earth_tles: Vec<&TLE> = near_earth_indices.iter()
-                .map(|&idx| &tles[idx])
-                .collect();
+            let near_earth_tles: Vec<&TLE> = near_earth_indices.iter().map(|&idx| &tles[idx]).collect();
 
             let near_earth_results = self.propagate_with_sgp4(
                 &near_earth_tles.iter().map(|&tle| tle.clone()).collect::<Vec<_>>(),
-                epochs
+                epochs,
             )?;
 
             // Insert results back into correct positions
@@ -437,13 +447,11 @@ impl BatchPropagator {
 
         // Propagate deep-space satellites if any
         if !deep_space_indices.is_empty() {
-            let deep_space_tles: Vec<&TLE> = deep_space_indices.iter()
-                .map(|&idx| &tles[idx])
-                .collect();
+            let deep_space_tles: Vec<&TLE> = deep_space_indices.iter().map(|&idx| &tles[idx]).collect();
 
             let deep_space_results = self.propagate_with_sdp4_analytical(
                 &deep_space_tles.iter().map(|&tle| tle.clone()).collect::<Vec<_>>(),
-                epochs
+                epochs,
             )?;
 
             // Insert results back into correct positions
@@ -527,9 +535,7 @@ impl BatchPropagator {
         use crate::gpu::TleDataGpu;
 
         // Classify orbits to determine propagator
-        let orbit_types: Vec<OrbitType> = tles.iter()
-            .map(|tle| classify_orbit(tle.get_mean_motion()))
-            .collect();
+        let orbit_types: Vec<OrbitType> = tles.iter().map(|tle| classify_orbit(tle.get_mean_motion())).collect();
 
         let all_near_earth = orbit_types.iter().all(|t| matches!(t, OrbitType::NearEarth));
         let all_deep_space = orbit_types.iter().all(|t| matches!(t, OrbitType::DeepSpace));
@@ -544,22 +550,26 @@ impl BatchPropagator {
             .collect();
 
         if all_near_earth {
-            let mut gpu_propagator = CudaTlePropagator::new()
-                .map_err(|e| format!("Failed to initialize CUDA SGP4: {}", e))?;
+            let mut gpu_propagator =
+                CudaTlePropagator::new().map_err(|e| format!("Failed to initialize CUDA SGP4: {}", e))?;
 
-            gpu_propagator.init_satellites(&tle_data)
+            gpu_propagator
+                .init_satellites(&tle_data)
                 .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
 
-            gpu_propagator.propagate_soa_gpu_resident(&jd_times)
+            gpu_propagator
+                .propagate_soa_gpu_resident(&jd_times)
                 .map_err(|e| format!("GPU propagation failed: {}", e))
         } else if all_deep_space {
             // Note: SDP4-Analytical doesn't yet have GPU-resident method
             // Fall back to regular propagation with download
             Err("GPU-resident propagation not yet implemented for SDP4-Analytical. \
-                 Use propagate_batch() instead.".to_string())
+                 Use propagate_batch() instead."
+                .to_string())
         } else {
             Err("GPU-resident propagation not supported for mixed orbit types. \
-                 Use propagate_batch() instead.".to_string())
+                 Use propagate_batch() instead."
+                .to_string())
         }
     }
 }

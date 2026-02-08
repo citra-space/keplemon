@@ -10,7 +10,7 @@
 
 use keplemon::bodies::Satellite;
 use keplemon::elements::TLE;
-use keplemon::gpu::{CudaTlePropagator, CudaGeoNumericalPropagator, GeoStateGpu, cuda_tle::TleDataGpu};
+use keplemon::gpu::{CudaGeoNumericalPropagator, CudaTlePropagator, GeoStateGpu, cuda_tle::TleDataGpu};
 use keplemon::time::{Epoch, TimeSpan};
 use rayon::prelude::*;
 use std::time::Instant;
@@ -202,8 +202,7 @@ fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<GpuBenchmarkResult, S
     let tle_data_gpu: Vec<TleDataGpu> = tles.iter().map(tle_to_gpu).collect();
 
     // Initialize GPU propagator (partitions satellites internally)
-    let mut gpu_propagator = CudaTlePropagator::new()
-        .map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
+    let mut gpu_propagator = CudaTlePropagator::new().map_err(|e| format!("Failed to create GPU propagator: {}", e))?;
 
     gpu_propagator
         .init_satellites(&tle_data_gpu)
@@ -399,39 +398,47 @@ fn test_quick_benchmark() {
 /// Benchmark GPU GEO Analytical propagation
 fn benchmark_geo_analytical(n_sats: usize, times_jd: &[f64]) -> Result<GpuBenchmarkResult, String> {
     // Generate GEO satellite states distributed around the geostationary belt
-    let geo_states: Vec<GeoStateGpu> = (0..n_sats).map(|i| {
-        let angle = (i as f64) * 360.0 / (n_sats as f64) * std::f64::consts::PI / 180.0;
-        let r = 42164.0;  // GEO radius (km)
-        let v = 3.0746;   // GEO velocity (km/s)
-        GeoStateGpu::new(
-            [r * angle.cos(), r * angle.sin(), 0.0],
-            [-v * angle.sin(), v * angle.cos(), 0.0],
-            times_jd[0],
-            None,
-            None,
-        )
-    }).collect();
+    let geo_states: Vec<GeoStateGpu> = (0..n_sats)
+        .map(|i| {
+            let angle = (i as f64) * 360.0 / (n_sats as f64) * std::f64::consts::PI / 180.0;
+            let r = 42164.0; // GEO radius (km)
+            let v = 3.0746; // GEO velocity (km/s)
+            GeoStateGpu::new(
+                [r * angle.cos(), r * angle.sin(), 0.0],
+                [-v * angle.sin(), v * angle.cos(), 0.0],
+                times_jd[0],
+                None,
+                None,
+            )
+        })
+        .collect();
 
-    let mut propagator = CudaGeoNumericalPropagator::new()
-        .map_err(|e| format!("Failed to create GEO propagator: {}", e))?;
+    let mut propagator =
+        CudaGeoNumericalPropagator::new().map_err(|e| format!("Failed to create GEO propagator: {}", e))?;
 
-    propagator.init_satellites(&geo_states)
+    propagator
+        .init_satellites(&geo_states)
         .map_err(|e| format!("Failed to initialize GEO satellites: {}", e))?;
 
     // Warmup
-    let _ = propagator.propagate_soa_arrays(times_jd)
+    let _ = propagator
+        .propagate_soa_arrays(times_jd)
         .map_err(|e| format!("Warmup failed: {}", e))?;
 
     // Benchmark total time (kernel + transfer)
     // GEO Analytical doesn't have a separate GPU-resident method, but the kernel
     // dominates the time for large propagations
     let start = Instant::now();
-    let _ = propagator.propagate_soa_arrays(times_jd)
+    let _ = propagator
+        .propagate_soa_arrays(times_jd)
         .map_err(|e| format!("Propagation failed: {}", e))?;
     let total_time = start.elapsed();
 
     // For GEO analytical, kernel time ≈ total time (transfer overhead is small)
-    Ok(GpuBenchmarkResult { total_time, kernel_time: total_time })
+    Ok(GpuBenchmarkResult {
+        total_time,
+        kernel_time: total_time,
+    })
 }
 
 /// Comprehensive benchmark comparing CPU SDP4 vs GPU SDP4 vs GPU GEO Analytical
@@ -452,19 +459,21 @@ fn test_benchmark_geo_analytical() {
 
     // Test configurations
     let satellite_counts = vec![100, 500, 1000];
-    let n_times = 10_080;  // 7 days at 1-minute intervals
+    let n_times = 10_080; // 7 days at 1-minute intervals
 
     for &n_sats in &satellite_counts {
         println!("\n{}", "=".repeat(70));
-        println!("Satellites: {} | Timesteps: {} | Total propagations: {}",
-                 n_sats, n_times, n_sats * n_times);
+        println!(
+            "Satellites: {} | Timesteps: {} | Total propagations: {}",
+            n_sats,
+            n_times,
+            n_sats * n_times
+        );
         println!("{}", "=".repeat(70));
 
         // Generate GEO TLEs for CPU and GPU SDP4 benchmarks
         let tles = generate_tles(n_sats, OrbitRegime::GeoOnly);
-        let satellites: Vec<Satellite> = tles.iter()
-            .map(|tle| Satellite::from(tle.clone()))
-            .collect();
+        let satellites: Vec<Satellite> = tles.iter().map(|tle| Satellite::from(tle.clone())).collect();
 
         // Generate time arrays
         let base_epoch = tles[0].get_keplerian_state().epoch;
@@ -472,9 +481,7 @@ fn test_benchmark_geo_analytical() {
             .map(|i| base_epoch + TimeSpan::from_minutes(i as f64))
             .collect();
         let base_jd = base_epoch.days_since_1950 + JD_1950;
-        let times_jd: Vec<f64> = (0..n_times)
-            .map(|i| base_jd + (i as f64) / 1440.0)
-            .collect();
+        let times_jd: Vec<f64> = (0..n_times).map(|i| base_jd + (i as f64) / 1440.0).collect();
 
         // CPU Sequential SDP4
         print!("CPU SDP4 (sequential):     ");
@@ -492,7 +499,10 @@ fn test_benchmark_geo_analytical() {
         let gpu_sdp4_result = benchmark_gpu(&tles, &times_jd);
         match &gpu_sdp4_result {
             Ok(result) => {
-                println!("GPU SDP4 (kernel):         {:>10.3} ms", result.kernel_time.as_secs_f64() * 1000.0);
+                println!(
+                    "GPU SDP4 (kernel):         {:>10.3} ms",
+                    result.kernel_time.as_secs_f64() * 1000.0
+                );
             }
             Err(e) => {
                 println!("GPU SDP4: ERROR - {}", e);
@@ -503,7 +513,10 @@ fn test_benchmark_geo_analytical() {
         let geo_result = benchmark_geo_analytical(n_sats, &times_jd);
         match &geo_result {
             Ok(result) => {
-                println!("GPU GEO Analytical:        {:>10.3} ms", result.kernel_time.as_secs_f64() * 1000.0);
+                println!(
+                    "GPU GEO Analytical:        {:>10.3} ms",
+                    result.kernel_time.as_secs_f64() * 1000.0
+                );
             }
             Err(e) => {
                 println!("GPU GEO Analytical: ERROR - {}", e);

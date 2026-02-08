@@ -8,8 +8,8 @@
 
 use keplemon::bodies::Satellite;
 use keplemon::elements::TLE;
-use keplemon::gpu::{CudaSdp4InterpolatedPropagator, CudaTlePropagator, TleDataGpu};
 use keplemon::gpu::device::CudaDevice;
+use keplemon::gpu::{CudaSdp4InterpolatedPropagator, CudaTlePropagator, TleDataGpu};
 use keplemon::time::TimeSpan;
 
 const JD_1950: f64 = 2433281.5;
@@ -80,7 +80,11 @@ fn test_sdp4_interpolated_propagator_creation() {
     }
 
     let result = CudaSdp4InterpolatedPropagator::new();
-    assert!(result.is_ok(), "Failed to create SDP4 analytical propagator: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Failed to create SDP4 analytical propagator: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -90,11 +94,11 @@ fn test_sdp4_interpolated_initialization() {
         return;
     }
 
-    let mut propagator = CudaSdp4InterpolatedPropagator::new()
-        .expect("Failed to create propagator");
+    let mut propagator = CudaSdp4InterpolatedPropagator::new().expect("Failed to create propagator");
 
     // Parse test TLEs
-    let tles: Vec<TleDataGpu> = DEEP_SPACE_TLES.iter()
+    let tles: Vec<TleDataGpu> = DEEP_SPACE_TLES
+        .iter()
         .filter_map(|(name, l1, l2)| parse_tle(name, l1, l2).map(|(_, gpu)| gpu))
         .collect();
 
@@ -110,8 +114,7 @@ fn test_sdp4_interpolated_propagation_basic() {
         return;
     }
 
-    let mut propagator = CudaSdp4InterpolatedPropagator::new()
-        .expect("Failed to create propagator");
+    let mut propagator = CudaSdp4InterpolatedPropagator::new().expect("Failed to create propagator");
 
     // Use a single GEO satellite
     let (name, line1, line2) = DEEP_SPACE_TLES[0];
@@ -123,8 +126,7 @@ fn test_sdp4_interpolated_propagation_basic() {
     let epoch = tle_gpu.epoch_jd;
     let times = vec![epoch, epoch + 1.0, epoch + 7.0];
 
-    let results = propagator.propagate_soa_arrays(&times)
-        .expect("Failed to propagate");
+    let results = propagator.propagate_soa_arrays(&times).expect("Failed to propagate");
 
     assert_eq!(results.n_sats, 1);
     assert_eq!(results.n_times, 3);
@@ -149,38 +151,41 @@ fn test_sdp4_interpolated_cpu_parity() {
     println!("\n=== SDP4 Interpolated vs Standard GPU SDP4 Parity Test ===\n");
 
     // Parse all deep space TLEs
-    let parsed: Vec<_> = DEEP_SPACE_TLES.iter()
+    let parsed: Vec<_> = DEEP_SPACE_TLES
+        .iter()
         .filter_map(|(name, l1, l2)| parse_tle(name, l1, l2).map(|(tle, gpu)| (name, tle, gpu)))
         .collect();
 
     // Initialize both propagators
     let tles_gpu: Vec<TleDataGpu> = parsed.iter().map(|(_, _, gpu)| *gpu).collect();
 
-    let mut sdp4_standard = CudaTlePropagator::new()
-        .expect("Failed to create standard GPU SDP4");
-    sdp4_standard.init_satellites(&tles_gpu)
+    let mut sdp4_standard = CudaTlePropagator::new().expect("Failed to create standard GPU SDP4");
+    sdp4_standard
+        .init_satellites(&tles_gpu)
         .expect("Failed to init standard SDP4");
 
-    let mut sdp4_interpolated = CudaSdp4InterpolatedPropagator::new()
-        .expect("Failed to create SDP4 analytical");
-    sdp4_interpolated.init_satellites(&tles_gpu)
+    let mut sdp4_interpolated = CudaSdp4InterpolatedPropagator::new().expect("Failed to create SDP4 analytical");
+    sdp4_interpolated
+        .init_satellites(&tles_gpu)
         .expect("Failed to init SDP4 analytical");
 
     // Use epoch of first satellite
     let epoch_jd = tles_gpu[0].epoch_jd;
     let times = vec![
         epoch_jd,
-        epoch_jd + 1.0 / 1440.0,  // 1 minute
-        epoch_jd + 1.0 / 24.0,     // 1 hour
-        epoch_jd + 0.5,            // 12 hours
-        epoch_jd + 1.0,            // 1 day
-        epoch_jd + 7.0,            // 7 days
+        epoch_jd + 1.0 / 1440.0, // 1 minute
+        epoch_jd + 1.0 / 24.0,   // 1 hour
+        epoch_jd + 0.5,          // 12 hours
+        epoch_jd + 1.0,          // 1 day
+        epoch_jd + 7.0,          // 7 days
     ];
     let time_labels = ["0", "1m", "1h", "12h", "1d", "7d"];
 
-    let standard_results = sdp4_standard.propagate_soa_arrays(&times)
+    let standard_results = sdp4_standard
+        .propagate_soa_arrays(&times)
         .expect("Standard SDP4 failed");
-    let analytical_results = sdp4_interpolated.propagate_soa_arrays(&times)
+    let analytical_results = sdp4_interpolated
+        .propagate_soa_arrays(&times)
         .expect("SDP4 Interpolated failed");
 
     println!("Sat | Time | Std radius (km) | Ana radius (km) | Pos Error (m)");
@@ -200,19 +205,20 @@ fn test_sdp4_interpolated_cpu_parity() {
                 continue;
             }
 
-            let std_r = (standard_results.x[idx].powi(2) +
-                        standard_results.y[idx].powi(2) +
-                        standard_results.z[idx].powi(2)).sqrt();
+            let std_r =
+                (standard_results.x[idx].powi(2) + standard_results.y[idx].powi(2) + standard_results.z[idx].powi(2))
+                    .sqrt();
 
-            let ana_r = (analytical_results.x[idx].powi(2) +
-                        analytical_results.y[idx].powi(2) +
-                        analytical_results.z[idx].powi(2)).sqrt();
+            let ana_r = (analytical_results.x[idx].powi(2)
+                + analytical_results.y[idx].powi(2)
+                + analytical_results.z[idx].powi(2))
+            .sqrt();
 
             // Position error
             let dx = analytical_results.x[idx] - standard_results.x[idx];
             let dy = analytical_results.y[idx] - standard_results.y[idx];
             let dz = analytical_results.z[idx] - standard_results.z[idx];
-            let pos_err_km = (dx*dx + dy*dy + dz*dz).sqrt();
+            let pos_err_km = (dx * dx + dy * dy + dz * dz).sqrt();
             let pos_err_m = pos_err_km * 1000.0;
 
             if pos_err_m > max_pos_err_m {
@@ -221,23 +227,34 @@ fn test_sdp4_interpolated_cpu_parity() {
                 max_err_time = label.to_string();
             }
 
-            println!("{:3} | {:4} | {:15.3} | {:15.3} | {:13.3}",
-                sat_idx, label, std_r, ana_r, pos_err_m);
+            println!(
+                "{:3} | {:4} | {:15.3} | {:15.3} | {:13.3}",
+                sat_idx, label, std_r, ana_r, pos_err_m
+            );
         }
     }
 
     println!("\n=== Results ===");
-    println!("Max position error: {:.3} m ({} at {})", max_pos_err_m, max_err_sat, max_err_time);
+    println!(
+        "Max position error: {:.3} m ({} at {})",
+        max_pos_err_m, max_err_sat, max_err_time
+    );
 
     // The SDP4 analytical propagator should match standard SDP4 reasonably well
     // Note: Due to interpolation vs iteration, there may be small differences
     // We use a generous tolerance here; the exact parity depends on interpolation quality
-    let tolerance_m = 10.0;  // 10 meters for initial implementation
+    let tolerance_m = 10.0; // 10 meters for initial implementation
     if max_pos_err_m > tolerance_m {
-        println!("\nWARNING: Position error {} m exceeds target {} m", max_pos_err_m, tolerance_m);
+        println!(
+            "\nWARNING: Position error {} m exceeds target {} m",
+            max_pos_err_m, tolerance_m
+        );
         println!("This is expected in the initial implementation - interpolation needs tuning");
     } else {
-        println!("\n[PASS] SDP4 Interpolated matches standard SDP4 within {} m", tolerance_m);
+        println!(
+            "\n[PASS] SDP4 Interpolated matches standard SDP4 within {} m",
+            tolerance_m
+        );
     }
 }
 
@@ -258,13 +275,13 @@ fn benchmark_sdp4_interpolated_performance() {
     let n_times = 1000;
 
     // Replicate the GPS TLE
-    let (_, line1, line2) = DEEP_SPACE_TLES[1];  // GPS satellite
+    let (_, line1, line2) = DEEP_SPACE_TLES[1]; // GPS satellite
     let (_, base_tle) = parse_tle("GPS", line1, line2).expect("Failed to parse");
 
     let tles: Vec<TleDataGpu> = (0..n_sats)
         .map(|i| {
             let mut tle = base_tle;
-            tle.arg_perigee = (i as f64) * 3.6;  // Spread satellites
+            tle.arg_perigee = (i as f64) * 3.6; // Spread satellites
             tle
         })
         .collect();
@@ -279,7 +296,7 @@ fn benchmark_sdp4_interpolated_performance() {
     // Create times
     let epoch = tles[0].epoch_jd;
     let times: Vec<f64> = (0..n_times)
-        .map(|t| epoch + (t as f64) / 1440.0)  // 1-minute intervals
+        .map(|t| epoch + (t as f64) / 1440.0) // 1-minute intervals
         .collect();
 
     // Warm up
@@ -308,7 +325,10 @@ fn benchmark_sdp4_interpolated_performance() {
     println!();
 
     if speedup > 5.0 {
-        println!("[PASS] SDP4 Interpolated achieves {:.1}x speedup (target: >20x)", speedup);
+        println!(
+            "[PASS] SDP4 Interpolated achieves {:.1}x speedup (target: >20x)",
+            speedup
+        );
     } else {
         println!("[INFO] SDP4 Interpolated speedup: {:.1}x (target: 20-50x)", speedup);
         println!("       Further optimization may be needed for interpolation");
@@ -333,8 +353,7 @@ fn test_sdp4_interpolated_vs_cpu_saal() {
 
     let (_, tle_gpu) = parse_tle(name, line1, line2).expect("Failed to parse");
 
-    let mut propagator = CudaSdp4InterpolatedPropagator::new()
-        .expect("Failed to create propagator");
+    let mut propagator = CudaSdp4InterpolatedPropagator::new().expect("Failed to create propagator");
     propagator.init_satellites(&[tle_gpu]).expect("Failed to init");
 
     // Propagation times
@@ -348,15 +367,12 @@ fn test_sdp4_interpolated_vs_cpu_saal() {
     let time_labels = ["0h", "1h", "6h", "1d", "7d"];
 
     // CPU propagation (SAAL/SDP4)
-    let cpu_results: Vec<_> = times.iter()
-        .map(|t| satellite.get_state_at_epoch(*t))
-        .collect();
+    let cpu_results: Vec<_> = times.iter().map(|t| satellite.get_state_at_epoch(*t)).collect();
 
     // GPU SDP4 Interpolated propagation
-    let jd_times: Vec<f64> = times.iter()
-        .map(|t| t.days_since_1950 + JD_1950)
-        .collect();
-    let gpu_results = propagator.propagate_soa_arrays(&jd_times)
+    let jd_times: Vec<f64> = times.iter().map(|t| t.days_since_1950 + JD_1950).collect();
+    let gpu_results = propagator
+        .propagate_soa_arrays(&jd_times)
         .expect("GPU propagation failed");
 
     println!("Satellite: {}", name);
@@ -383,7 +399,7 @@ fn test_sdp4_interpolated_vs_cpu_saal() {
         let dx = gpu_results.x[i] - cpu.position[0];
         let dy = gpu_results.y[i] - cpu.position[1];
         let dz = gpu_results.z[i] - cpu.position[2];
-        let pos_err_m = (dx*dx + dy*dy + dz*dz).sqrt() * 1000.0;
+        let pos_err_m = (dx * dx + dy * dy + dz * dz).sqrt() * 1000.0;
 
         println!("{:4} | {:15.3} | {:15.3} | {:13.3}", label, cpu_r, gpu_r, pos_err_m);
     }
