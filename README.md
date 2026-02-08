@@ -124,3 +124,19 @@ see the [CUDA GPU Acceleration Guide](CUDA_README.md).
 
 Anyone is welcome to contribute to KepLemon. Users are encouraged to start by opening issues or forking the repository.
 Changes directly to the baseline may be approved by contacting the owner at <brandon@citra.space>.
+
+### Code Formatting
+
+This project uses `rustfmt` with a maximum line width of 120 characters (configured in `rustfmt.toml`).
+
+**First-time setup:**
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+This installs a pre-commit hook that automatically runs `cargo fmt` before each commit, ensuring consistent formatting across all contributions.
+
+**Manual formatting:**
+```bash
+cargo fmt
+```
