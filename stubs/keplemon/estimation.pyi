@@ -271,6 +271,22 @@ class BatchLeastSquares:
     eccentricity_constraint_weight: Optional[float]
     """Tikhonov weight that keeps equinoctial a_f/a_g (eccentricity) near the a priori state"""
 
+    estimate_maneuver: bool
+    """Enable maneuver estimation mode. When True, disables drag/SRP estimation and
+    searches for a maneuver epoch in the last half orbital period."""
+
+    maneuver_epoch: Optional[Epoch]
+    """Detected maneuver epoch after solve() if estimate_maneuver was True.
+    None if no significant maneuver was detected (delta-V < 0.05 m/s)."""
+
+    delta_v: Optional[CartesianVector]
+    """Delta-V in RIC frame (radial, in-track, cross-track) in **_km/s_** after solve()
+    if estimate_maneuver was True. None if no significant maneuver was detected."""
+
+    allow_radial_delta_v: bool
+    """When False, heavily penalizes radial delta-V component during maneuver epoch search,
+    forcing the solution toward pure in-track maneuvers. Default True (no penalty)."""
+
     def __init__(
         self,
         obs: list[Observation],

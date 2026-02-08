@@ -40,6 +40,11 @@ impl PyMeanEquinox {
         }
     }
 
+    #[getter]
+    pub fn value(&self) -> i32 {
+        self.get_value()
+    }
+
     fn __repr__(&self) -> &str {
         match self.inner {
             MeanEquinox::OfDate => "MeanEquinox.OfDate",

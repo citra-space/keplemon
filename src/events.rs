@@ -8,6 +8,7 @@ mod maneuver_event;
 mod maneuver_report;
 mod proximity_event;
 mod proximity_report;
+mod uct_validity_report;
 
 pub use close_approach::CloseApproach;
 pub use close_approach_report::CloseApproachReport;
@@ -19,3 +20,4 @@ pub use maneuver_event::ManeuverEvent;
 pub use maneuver_report::ManeuverReport;
 pub use proximity_event::ProximityEvent;
 pub use proximity_report::ProximityReport;
+pub use uct_validity_report::UCTValidityReport;

@@ -368,11 +368,9 @@ impl Observation {
                         sat_state.velocity[1],
                         sat_state.velocity[2],
                     ];
-                    let residual = ObservationResidual::from(satellite::get_relative_array(
-                        &pos_vel_1,
-                        &pos_vel_2,
-                        self.epoch.days_since_1950,
-                        1,
+                    let residual = ObservationResidual::from((
+                        self.epoch,
+                        satellite::get_relative_array(&pos_vel_1, &pos_vel_2, self.epoch.days_since_1950, 1),
                     ));
 
                     if residual.get_range() < 1.0 {
@@ -433,11 +431,9 @@ impl Observation {
             satellite_state.velocity[2],
         ];
 
-        Some(ObservationResidual::from(satellite::get_relative_array(
-            &posvel_1,
-            &posvel_2,
-            self.epoch.days_since_1950,
-            1,
+        Some(ObservationResidual::from((
+            self.epoch,
+            satellite::get_relative_array(&posvel_1, &posvel_2, self.epoch.days_since_1950, 1),
         )))
     }
 

@@ -1,5 +1,6 @@
 use super::{PyCovariance, PyObservation, PyObservationResidual};
 use crate::bindings::bodies::PySatellite;
+use crate::bindings::elements::PyCartesianVector;
 use crate::bindings::enums::PyKeplerianType;
 use crate::bindings::time::PyEpoch;
 use crate::enums::KeplerianType;
@@ -7,7 +8,7 @@ use crate::estimation::{BatchLeastSquares, Observation};
 use pyo3::prelude::*;
 
 #[pyclass(name = "BatchLeastSquares")]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PyBatchLeastSquares {
     inner: BatchLeastSquares,
 }
@@ -145,5 +146,35 @@ impl PyBatchLeastSquares {
     #[getter]
     pub fn get_covariance(&self) -> Option<PyCovariance> {
         self.inner.get_covariance().map(PyCovariance::from)
+    }
+
+    #[setter]
+    pub fn set_estimate_maneuver(&mut self, estimate_maneuver: bool) {
+        self.inner.set_estimate_maneuver(estimate_maneuver);
+    }
+
+    #[getter]
+    pub fn get_estimate_maneuver(&self) -> bool {
+        self.inner.get_estimate_maneuver()
+    }
+
+    #[getter]
+    pub fn get_maneuver_epoch(&self) -> Option<PyEpoch> {
+        self.inner.get_maneuver_epoch().map(PyEpoch::from)
+    }
+
+    #[getter]
+    pub fn get_delta_v(&self) -> Option<PyCartesianVector> {
+        self.inner.get_delta_v().map(PyCartesianVector::from)
+    }
+
+    #[setter]
+    pub fn set_allow_radial_delta_v(&mut self, allow: bool) {
+        self.inner.set_allow_radial_delta_v(allow);
+    }
+
+    #[getter]
+    pub fn get_allow_radial_delta_v(&self) -> bool {
+        self.inner.get_allow_radial_delta_v()
     }
 }

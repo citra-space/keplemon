@@ -2,7 +2,9 @@ use super::{PyObservatory, PySatellite};
 use crate::bindings::catalogs::PyTLECatalog;
 use crate::bindings::elements::{PyCartesianState, PyEphemeris, PyOrbitPlotData};
 use crate::bindings::estimation::{PyCollectionAssociationReport, PyObservationCollection};
-use crate::bindings::events::{PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport};
+use crate::bindings::events::{
+    PyCloseApproachReport, PyHorizonAccessReport, PyManeuverReport, PyProximityReport, PyUCTValidityReport,
+};
 use crate::bindings::propagation::PyPropagationBackend;
 use crate::bindings::time::{PyEpoch, PyTimeSpan};
 use crate::bodies::{Constellation, Satellite};
@@ -10,10 +12,11 @@ use crate::catalogs::TLECatalog;
 use crate::estimation::ObservationCollection;
 use crate::time::{Epoch, TimeSpan};
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 use std::collections::HashMap;
 
 #[pyclass(name = "Constellation")]
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone)]
 pub struct PyConstellation {
     inner: Constellation,
 }
@@ -168,6 +171,25 @@ impl PyConstellation {
         py.detach(|| PyProximityReport::from(self.inner.get_proximity_report_vs_many(start, end, distance_threshold)))
     }
 
+    pub fn get_uct_validity(
+        &mut self,
+        py: Python<'_>,
+        uct: &mut PySatellite,
+        all_collections: Vec<PyObservationCollection>,
+        orphan_collections: Vec<PyObservationCollection>,
+    ) -> PyResult<PyUCTValidityReport> {
+        let all_collections: Vec<ObservationCollection> =
+            all_collections.into_iter().map(|c| c.inner().clone()).collect();
+        let orphan_collections: Vec<ObservationCollection> =
+            orphan_collections.into_iter().map(|c| c.inner().clone()).collect();
+        py.detach(|| {
+            self.inner
+                .get_uct_validity(uct.inner_mut(), &all_collections, &orphan_collections)
+                .map(PyUCTValidityReport::from)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
+        })
+    }
+
     pub fn get_maneuver_events(
         &mut self,
         py: Python<'_>,
@@ -223,8 +245,26 @@ impl PyConstellation {
         self.inner.get_keys()
     }
 
+    fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let keys = self.inner.get_keys();
+        let list = PyList::new(py, keys)?;
+        list.call_method0("__iter__")
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        self.inner.get(key.to_string()).is_some()
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.get_count()
+    }
+
     fn __setitem__(&mut self, satellite_id: String, state: PySatellite) {
         self.inner.add(satellite_id, state.into());
+    }
+
+    fn __delitem__(&mut self, satellite_id: String) {
+        self.inner.remove(satellite_id);
     }
 
     pub fn add(&mut self, satellite_id: String, sat: PySatellite) {
@@ -342,12 +382,21 @@ impl PyConstellation {
     /// * `start` - Start epoch for ephemeris caching
     /// * `end` - End epoch for ephemeris caching
     /// * `step` - Time step between cached states
-    pub fn cache_ephemeris(&mut self, py: Python<'_>, start: PyEpoch, end: PyEpoch, step: PyTimeSpan) {
+    /// * `purge_on_fail` - Remove satellites that fail to build ephemeris
+    #[pyo3(signature = (start, end, step, purge_on_fail = false))]
+    pub fn cache_ephemeris(
+        &mut self,
+        py: Python<'_>,
+        start: PyEpoch,
+        end: PyEpoch,
+        step: PyTimeSpan,
+        purge_on_fail: bool,
+    ) {
         let start: Epoch = start.into();
         let end: Epoch = end.into();
         let step: TimeSpan = step.into();
         py.detach(|| {
-            self.inner.cache_ephemeris(start, end, step);
+            self.inner.cache_ephemeris(start, end, step, purge_on_fail);
         });
     }
 

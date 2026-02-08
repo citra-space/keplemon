@@ -31,17 +31,38 @@ fn main() {
     let python_pkg_dir = Path::new("python").join("keplemon");
     fs::create_dir_all(&python_pkg_dir).expect("Failed to create python/keplemon directory");
 
+    // Data files to always copy
+    let data_extensions: &[&str] = &["GEO", "dat", "405", "txt"];
+
+    // On macOS/Windows, we need to copy native libraries too.
+    // On Linux, maturin bundles them into keplemon.libs/ automatically.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let native_lib_ext: Option<&str> = match target_os.as_str() {
+        "macos" => Some("dylib"),
+        "windows" => Some("dll"),
+        _ => None, // Linux: maturin handles bundling
+    };
+
     for entry in fs::read_dir(&target_dir).expect("Failed to read target directory") {
         let entry = entry.expect("Failed to access entry in target directory");
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
-        let filename = path.file_name().expect("Invalid target file name");
-        if filename == "Cargo.lock" || filename == ".cargo-lock" || filename == "libkeplemon.d" {
+
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        // Copy data files on all platforms
+        let is_data_file = data_extensions.contains(&ext);
+
+        // Copy native libs on macOS/Windows only
+        let is_native_lib = native_lib_ext.is_some_and(|lib_ext| ext == lib_ext);
+
+        if !is_data_file && !is_native_lib {
             continue;
         }
 
+        let filename = path.file_name().expect("Invalid target file name");
         let dest_path = python_pkg_dir.join(filename);
         fs::copy(&path, &dest_path)
             .unwrap_or_else(|_| panic!("Failed to copy {} to {}", path.display(), dest_path.display()));

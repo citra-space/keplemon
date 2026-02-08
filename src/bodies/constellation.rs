@@ -7,17 +7,24 @@ use crate::elements::TLE;
 use crate::elements::{CartesianState, Ephemeris, OrbitPlotData};
 #[cfg(feature = "cuda")]
 use crate::enums::KeplerianType;
+use crate::enums::UCTObservability;
 use crate::estimation::{CollectionAssociationReport, ObservationCollection};
-use crate::events::{CloseApproachReport, HorizonAccessReport, ManeuverEvent, ManeuverReport, ProximityReport};
+use crate::events::{
+    CloseApproachReport, HorizonAccessReport, ManeuverEvent, ManeuverReport, ProximityReport, UCTValidityReport,
+};
 use crate::propagation::{BatchPropagator, PropagationBackend};
 use crate::time::{Epoch, TimeSpan};
+use log;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::time::Instant;
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone)]
 pub struct Constellation {
     pub name: Option<String>,
     satellites: HashMap<String, Satellite>,
+    ephemeris_cache_start: Option<Epoch>,
+    ephemeris_cache_end: Option<Epoch>,
 }
 
 impl From<TLECatalog> for Constellation {
@@ -43,6 +50,8 @@ impl Constellation {
         Constellation {
             name: None,
             satellites: HashMap::new(),
+            ephemeris_cache_start: None,
+            ephemeris_cache_end: None,
         }
     }
 
@@ -122,6 +131,13 @@ impl Constellation {
     ) -> CloseApproachReport {
         match sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES)) {
             Some(ephemeris) => {
+                let run_start = Instant::now();
+                log::info!(
+                    "Generating close approach report for satellite {} from {} to {}",
+                    sat.id,
+                    start.to_iso(),
+                    end.to_iso()
+                );
                 let mut candidates = Constellation::new();
                 candidates.satellites = self
                     .satellites
@@ -150,6 +166,13 @@ impl Constellation {
                     .collect();
                 let mut report = CloseApproachReport::new(start, end, distance_threshold);
                 report.set_close_approaches(close_approaches);
+                log::info!(
+                    "Close approach report generation for satellite {} from {} to {} took {:.3} seconds",
+                    sat.id,
+                    start.to_iso(),
+                    end.to_iso(),
+                    run_start.elapsed().as_secs_f64()
+                );
                 report
             }
             None => CloseApproachReport::new(start, end, distance_threshold),
@@ -196,6 +219,13 @@ impl Constellation {
     ) -> ProximityReport {
         match sat.get_ephemeris(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES)) {
             Some(ephemeris) => {
+                let run_start = Instant::now();
+                log::info!(
+                    "Generating proximity report for satellite {} from {} to {}",
+                    sat.id,
+                    start.to_iso(),
+                    end.to_iso()
+                );
                 let candidate_ephem =
                     self.get_ephemeris_list(start, end, TimeSpan::from_minutes(configs::CONJUNCTION_STEP_MINUTES));
                 let events = candidate_ephem
@@ -204,6 +234,13 @@ impl Constellation {
                     .collect();
                 let mut report = ProximityReport::new(start, end, distance_threshold);
                 report.set_events(events);
+                log::info!(
+                    "Proximity report generation for satellite {} from {} to {} took {:.3} seconds",
+                    sat.id,
+                    start.to_iso(),
+                    end.to_iso(),
+                    run_start.elapsed().as_secs_f64()
+                );
                 report
             }
             None => ProximityReport::new(start, end, distance_threshold),
@@ -235,6 +272,57 @@ impl Constellation {
             .collect();
         report.set_events(events);
         report
+    }
+
+    pub fn get_uct_validity(
+        &mut self,
+        uct: &mut Satellite,
+        all_collections: &[ObservationCollection],
+        orphan_collections: &[ObservationCollection],
+    ) -> Result<UCTValidityReport, String> {
+        if uct.get_keplerian_state().is_none() {
+            return Err(format!("UCT satellite {} has no valid orbit state", uct.id));
+        }
+        let end = match self.ephemeris_cache_end {
+            Some(epoch) => epoch,
+            None => uct.get_keplerian_state().unwrap().epoch,
+        };
+        let mut start = end - uct.get_keplerian_state().unwrap().get_period();
+        if self.ephemeris_cache_start.is_some() && self.ephemeris_cache_start.unwrap() > start {
+            start = self.ephemeris_cache_start.unwrap();
+        }
+        let mut range = configs::NEAR_EARTH_PROXIMITY_RANGE;
+        if uct.get_periapsis().unwrap() < configs::ATMOSPHERE_BOUNDARY_RADIUS
+            && uct.get_apoapsis().unwrap() > configs::ATMOSPHERE_BOUNDARY_RADIUS
+        {
+            range = configs::HEO_PROXIMITY_RANGE;
+        } else if uct.get_periapsis().unwrap() >= configs::ATMOSPHERE_BOUNDARY_RADIUS {
+            range = configs::DEEP_SPACE_PROXIMITY_RANGE;
+        }
+
+        let uct_associations = uct.get_associations(&orphan_collections.to_vec());
+        let step_start = std::time::Instant::now();
+        let observability = match uct_associations.len() {
+            0 => match all_collections.iter().any(|col| col.get_visibility(uct)) {
+                true => UCTObservability::Possible,
+                false => UCTObservability::Unavailable,
+            },
+            _ => UCTObservability::Confirmed,
+        };
+        log::debug!(
+            "UCT observability check for {} took {:.3} seconds",
+            uct.id,
+            step_start.elapsed().as_secs_f64()
+        );
+        let prox_report = self.get_proximity_report_vs_one(uct, start, end, range);
+        let close_approaches = self.get_ca_report_vs_one(uct, start, end, range);
+        Ok(UCTValidityReport::new(
+            uct.id.clone(),
+            uct_associations,
+            prox_report.get_events(),
+            close_approaches.get_close_approaches(),
+            observability,
+        ))
     }
 
     pub fn get_maneuver_events(
@@ -327,20 +415,48 @@ impl Constellation {
         self.satellites.len()
     }
 
-    pub fn cache_ephemeris(&mut self, start: Epoch, end: Epoch, step: TimeSpan) {
-        self.satellites.par_iter_mut().for_each(|(_, sat)| {
-            let _ = sat.get_ephemeris(start, end, step);
-        });
+    pub fn cache_ephemeris(&mut self, start: Epoch, end: Epoch, step: TimeSpan, purge_on_fail: bool) {
+        if purge_on_fail {
+            let failed_ids: Vec<String> = self
+                .satellites
+                .par_iter_mut()
+                .filter_map(|(id, sat)| {
+                    if sat.get_ephemeris(start, end, step).is_some() {
+                        None
+                    } else {
+                        Some(id.clone())
+                    }
+                })
+                .collect();
+
+            for id in failed_ids {
+                self.satellites.remove(&id);
+            }
+        } else {
+            self.satellites.par_iter_mut().for_each(|(_, sat)| {
+                let _ = sat.get_ephemeris(start, end, step);
+            });
+        }
+        self.ephemeris_cache_start = Some(start);
+        self.ephemeris_cache_end = Some(end);
     }
 
     pub fn get_association_reports(
         &self,
         collections: &Vec<ObservationCollection>,
     ) -> Vec<CollectionAssociationReport> {
-        collections
+        let start = Instant::now();
+        log::info!("Generating association reports for {} collections", collections.len());
+        let output: Vec<CollectionAssociationReport> = collections
             .par_iter()
             .map(|collection| collection.get_association_report(self))
-            .collect()
+            .collect();
+        log::info!(
+            "Generated {} association reports in {:.3} seconds",
+            output.len(),
+            start.elapsed().as_secs_f64()
+        );
+        output
     }
 }
 
@@ -455,7 +571,9 @@ impl Constellation {
 #[cfg(test)]
 mod tests {
     use super::{Constellation, Observatory};
+    use crate::bodies::Satellite;
     use crate::catalogs::TLECatalog;
+    use crate::elements::TLE;
     use crate::enums::TimeSystem;
     use crate::time::{Epoch, TimeSpan};
     use approx::assert_abs_diff_eq;
@@ -574,5 +692,30 @@ mod tests {
             let expected_distance = secondary_map.get(&secondary_name).expect("missing expected distance");
             assert_abs_diff_eq!(distance, *expected_distance, epsilon = 1e-3);
         }
+    }
+
+    #[test]
+    fn test_cache_ephemeris_purge_on_fail() {
+        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let mut sats = Constellation::new();
+
+        let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+        let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+        let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();
+        let valid = Satellite::from(tle);
+
+        let invalid = Satellite::new();
+
+        sats.add(valid.id.clone(), valid.clone());
+        sats.add(invalid.id.clone(), invalid.clone());
+
+        let start = Epoch::from_iso("2020-07-18T12:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2020-07-18T12:30:00.000000Z", TimeSystem::UTC);
+        let step = TimeSpan::from_minutes(10.0);
+
+        sats.cache_ephemeris(start, end, step, true);
+
+        assert!(sats.get(invalid.id.clone()).is_none());
+        assert!(sats.get(valid.id.clone()).is_some());
     }
 }

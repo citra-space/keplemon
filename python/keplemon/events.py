@@ -5,6 +5,11 @@ from keplemon._keplemon.events import (  # type: ignore
     HorizonAccessReport,
     FieldOfViewCandidate,
     FieldOfViewReport,
+    ManeuverEvent,
+    ManeuverReport,
+    ProximityEvent,
+    ProximityReport,
+    UCTValidityReport,
 )
 
 __all__ = [
@@ -14,4 +19,9 @@ __all__ = [
     "HorizonAccessReport",
     "FieldOfViewCandidate",
     "FieldOfViewReport",
+    "ManeuverEvent",
+    "ManeuverReport",
+    "ProximityEvent",
+    "ProximityReport",
+    "UCTValidityReport",
 ]

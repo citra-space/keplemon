@@ -1,7 +1,9 @@
+use crate::time::Epoch;
 use saal::satellite;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct ObservationResidual {
+    epoch: Epoch,
     range: f64,
     time: f64,
     radial: f64,
@@ -16,9 +18,10 @@ pub struct ObservationResidual {
     angular_momentum: f64,
 }
 
-impl From<[f64; satellite::XA_DELTA_SIZE]> for ObservationResidual {
-    fn from(delta: [f64; satellite::XA_DELTA_SIZE]) -> Self {
+impl From<(Epoch, [f64; satellite::XA_DELTA_SIZE])> for ObservationResidual {
+    fn from((epoch, delta): (Epoch, [f64; satellite::XA_DELTA_SIZE])) -> Self {
         Self {
+            epoch,
             range: delta[satellite::XA_DELTA_POS],
             time: delta[satellite::XA_DELTA_TIME],
             radial: delta[satellite::XA_DELTA_PRADIAL],
@@ -36,6 +39,9 @@ impl From<[f64; satellite::XA_DELTA_SIZE]> for ObservationResidual {
 }
 
 impl ObservationResidual {
+    pub fn get_epoch(&self) -> Epoch {
+        self.epoch
+    }
     pub fn get_range(&self) -> f64 {
         self.range
     }

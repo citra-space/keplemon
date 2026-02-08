@@ -1,5 +1,5 @@
 # flake8: noqa
-from typing import Optional
+from typing import Iterator, Optional
 
 from keplemon.elements import (
     TLE,
@@ -14,10 +14,10 @@ from keplemon.elements import (
 )
 from keplemon.catalogs import TLECatalog
 from keplemon.time import Epoch, TimeSpan
-from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport
+from keplemon.events import CloseApproach, CloseApproachReport, HorizonAccessReport, FieldOfViewReport, ManeuverEvent, ManeuverReport, ProximityReport, UCTValidityReport
 from keplemon.propagation import ForceProperties
 from keplemon.enums import ReferenceFrame
-from keplemon.estimation import CollectionAssociationReport, ObservationAssociation, ObservationCollection
+from keplemon.estimation import CollectionAssociationReport, Observation, ObservationAssociation, ObservationCollection, ObservationResidual
 
 class Satellite:
 
@@ -175,6 +175,40 @@ class Satellite:
         """
         ...
 
+    def get_rms(self, obs: list[Observation]) -> float:
+        """
+        Calculate the root mean squared position error between observations and the satellite state.
+
+        Uses interpolated states from cached ephemeris when available for better performance.
+
+        Args:
+            obs: List of observations to compare against
+
+        Returns:
+            Root mean squared position error in **_kilometers_**
+
+        Raises:
+            ValueError: If no valid residuals could be computed
+        """
+        ...
+
+    def get_residuals(self, obs: list[Observation]) -> list[ObservationResidual]:
+        """
+        Calculate position residuals between observations and the satellite state.
+
+        Uses interpolated states from cached ephemeris when available for better performance.
+
+        Args:
+            obs: List of observations to compare against
+
+        Returns:
+            List of observation residuals
+
+        Raises:
+            ValueError: If no valid residuals could be computed
+        """
+        ...
+
 class Constellation:
 
     count: int
@@ -305,6 +339,36 @@ class Constellation:
         """
         ...
 
+    def get_uct_validity(
+        self,
+        uct: Satellite,
+        all_collections: list[ObservationCollection],
+        orphan_collections: list[ObservationCollection],
+    ) -> UCTValidityReport:
+        """
+        Analyze the validity of a UCT (Uncorrelated Track) against the constellation.
+
+        This method uses cached ephemeris to analyze:
+        - Observation associations with orphan observations
+        - Proximity events with approved satellites (possible cross-tags)
+        - Close approaches with approved satellites (possible maneuver origins)
+
+        The analysis window is automatically determined based on the UCT's orbital period
+        and the constellation's cached ephemeris bounds.
+
+        Args:
+            uct: The UCT satellite to analyze
+            all_collections: All observation collections for visibility checks
+            orphan_collections: Observation collections of orphan observations
+
+        Returns:
+            UCT validity report with analysis results
+
+        Raises:
+            ValueError: If the UCT satellite has no valid orbit state
+        """
+        ...
+
     def get_maneuver_events(
         self,
         future_sats: Constellation,
@@ -333,6 +397,11 @@ class Constellation:
 
     def __getitem__(self, satellite_id: str) -> Satellite: ...
     def __setitem__(self, satellite_id: str, sat: Satellite) -> None: ...
+    def __delitem__(self, satellite_id: str) -> None: ...
+    def __iter__(self) -> Iterator[str]: ...
+    def __contains__(self, key: str) -> bool: ...
+    def __len__(self) -> int: ...
+    def keys(self) -> list[str]: ...
     def get_horizon_access_report(
         self,
         site: Observatory,
@@ -356,7 +425,7 @@ class Constellation:
         """
         ...
 
-    def cache_ephemeris(self, start: Epoch, end: Epoch, step: TimeSpan) -> None:
+    def cache_ephemeris(self, start: Epoch, end: Epoch, step: TimeSpan, purge_on_fail: bool = False) -> None:
         """
         Cache ephemeris for all satellites in the constellation.
 
@@ -367,6 +436,7 @@ class Constellation:
             start: Start epoch for ephemeris caching
             end: End epoch for ephemeris caching
             step: Time step between cached states
+            purge_on_fail: Remove satellites that fail to build ephemeris
         """
         ...
 

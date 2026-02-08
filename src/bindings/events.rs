@@ -8,6 +8,7 @@ mod maneuver_event;
 mod maneuver_report;
 mod proximity_event;
 mod proximity_report;
+mod uct_validity_report;
 
 pub use close_approach::PyCloseApproach;
 pub use close_approach_report::PyCloseApproachReport;
@@ -19,6 +20,7 @@ pub use maneuver_event::PyManeuverEvent;
 pub use maneuver_report::PyManeuverReport;
 pub use proximity_event::PyProximityEvent;
 pub use proximity_report::PyProximityReport;
+pub use uct_validity_report::PyUCTValidityReport;
 
 use pyo3::prelude::*;
 use pyo3::py_run;
@@ -29,11 +31,13 @@ pub fn register_events(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     events.add_class::<PyCloseApproachReport>()?;
     events.add_class::<PyHorizonAccess>()?;
     events.add_class::<PyHorizonAccessReport>()?;
+    events.add_class::<PyFieldOfViewCandidate>()?;
     events.add_class::<PyFieldOfViewReport>()?;
     events.add_class::<PyManeuverEvent>()?;
     events.add_class::<PyManeuverReport>()?;
     events.add_class::<PyProximityEvent>()?;
     events.add_class::<PyProximityReport>()?;
+    events.add_class::<PyUCTValidityReport>()?;
     py_run!(
         parent_module.py(),
         events,

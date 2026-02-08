@@ -2,19 +2,21 @@ use crate::bodies::Observatory;
 use crate::configs::{CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, MIN_EPHEMERIS_POINTS};
 use crate::elements::{
     BoreToBodyAngles, CartesianState, CartesianVector, Ephemeris, GeodeticPosition, KeplerianState, OrbitPlotData,
-    OrbitPlotState, RelativeState, TLE, construct_ephemeris_id,
+    OrbitPlotState, RelativeState, TLE,
 };
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
-use crate::estimation::{Observation, ObservationAssociation, ObservationCollection};
+use crate::estimation::{Observation, ObservationAssociation, ObservationCollection, ObservationResidual};
 use crate::events::{CloseApproach, HorizonAccessReport, ManeuverEvent, ProximityReport};
 use crate::propagation::{ForceProperties, InertialPropagator};
 use crate::time::{Epoch, TimeSpan};
+use log;
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
 use saal::{astro, satellite};
+use std::time::Instant;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Satellite {
     pub id: String,
     pub norad_id: i32,
@@ -23,7 +25,6 @@ pub struct Satellite {
     keplerian_state: Option<KeplerianState>,
     inertial_propagator: Option<InertialPropagator>,
     ephemeris_cache: Option<Ephemeris>,
-    pub ephemeris_id: Option<String>,
 }
 
 impl Default for Satellite {
@@ -58,7 +59,6 @@ impl From<TLE> for Satellite {
             keplerian_state: Some(tle.get_keplerian_state()),
             inertial_propagator: Some(InertialPropagator::from(tle)),
             ephemeris_cache: None,
-            ephemeris_id: None,
         }
     }
 }
@@ -89,6 +89,41 @@ impl Satellite {
         };
 
         Ok(new_satellite)
+    }
+
+    pub fn get_rms(&self, obs: &[Observation]) -> Result<f64, String> {
+        let squared_residuals: Vec<f64> = obs
+            .iter()
+            .filter_map(|ob| {
+                let state = self.interpolate_state_at_epoch(ob.get_epoch())?;
+                let residual = ob.get_residual_from_state(&state)?;
+                Some(residual.get_range().powi(2))
+            })
+            .collect();
+
+        if squared_residuals.is_empty() {
+            return Err("No valid residuals computed".to_string());
+        }
+
+        let sum: f64 = squared_residuals.iter().sum();
+        let rms = (sum / squared_residuals.len() as f64).sqrt();
+        Ok(rms)
+    }
+
+    pub fn get_residuals(&self, obs: &[Observation]) -> Result<Vec<ObservationResidual>, String> {
+        let residuals: Vec<ObservationResidual> = obs
+            .iter()
+            .filter_map(|ob| {
+                let state = self.interpolate_state_at_epoch(ob.get_epoch())?;
+                ob.get_residual_from_state(&state)
+            })
+            .collect();
+
+        if residuals.is_empty() {
+            return Err("No valid residuals computed".to_string());
+        }
+
+        Ok(residuals)
     }
 
     pub fn get_prior_node(&self, epoch: Epoch) -> Result<Epoch, String> {
@@ -138,8 +173,26 @@ impl Satellite {
 
     pub fn get_ephemeris(&mut self, start_epoch: Epoch, end_epoch: Epoch, step: TimeSpan) -> Option<Ephemeris> {
         // exit early if we have a cached ephemeris that matches the request
-        if self.ephemeris_id == Some(construct_ephemeris_id(start_epoch, end_epoch, step)) {
+        if self.ephemeris_cache.is_some()
+            && self
+                .ephemeris_cache
+                .as_ref()
+                .unwrap()
+                .covers_range(start_epoch, end_epoch)
+        {
             return self.ephemeris_cache.clone();
+        } else if self.ephemeris_cache.is_none() {
+            log::debug!("No cached ephemeris for satellite {} when building ephemeris", self.id);
+        } else {
+            let span = self.ephemeris_cache.as_ref().unwrap().get_epoch_range().unwrap();
+            log::debug!(
+                "Cached ephemeris span of {} to {} for satellite {} does not cover {} to {}",
+                span.0.to_iso(),
+                span.1.to_iso(),
+                self.id,
+                start_epoch.to_iso(),
+                end_epoch.to_iso()
+            );
         }
 
         match self.get_state_at_epoch(start_epoch) {
@@ -148,22 +201,52 @@ impl Satellite {
                 let diff = end_epoch - start_epoch;
                 let max_step = TimeSpan::from_minutes(diff.in_minutes() / MIN_EPHEMERIS_POINTS as f64);
                 let dt = if step < max_step { step } else { max_step };
+                let mut last_epoch: Epoch = start_epoch;
                 let mut next_epoch: Epoch = start_epoch + dt;
                 while next_epoch <= end_epoch {
                     match self.get_state_at_epoch(next_epoch) {
                         Some(state) => {
                             ephemeris.add_state(state).unwrap();
+                            last_epoch = next_epoch;
                             next_epoch += dt;
                         }
-                        None => return None,
+                        None => {
+                            log::debug!(
+                                "Failed to propagate satellite {} to {} when building ephemeris",
+                                self.id,
+                                next_epoch.to_iso()
+                            );
+                            return None;
+                        }
+                    }
+                }
+                if last_epoch < end_epoch {
+                    match self.get_state_at_epoch(end_epoch) {
+                        Some(state) => {
+                            ephemeris.add_state(state).unwrap();
+                        }
+                        None => {
+                            log::debug!(
+                                "Failed to propagate satellite {} to {} when finalizing ephemeris",
+                                self.id,
+                                end_epoch.to_iso()
+                            );
+                            return None;
+                        }
                     }
                 }
                 self.ephemeris_cache = Some(ephemeris.clone());
-                self.ephemeris_id = Some(construct_ephemeris_id(start_epoch, end_epoch, step));
                 self.inertial_propagator.as_mut().unwrap().reload().ok()?;
                 Some(ephemeris)
             }
-            None => None,
+            None => {
+                log::debug!(
+                    "Failed to get state for satellite {} at start {} when building ephemeris",
+                    self.id,
+                    start_epoch.to_iso()
+                );
+                None
+            }
         }
     }
 
@@ -176,7 +259,6 @@ impl Satellite {
             keplerian_state: None,
             inertial_propagator: None,
             ephemeris_cache: None,
-            ephemeris_id: None,
         }
     }
 
@@ -266,24 +348,53 @@ impl Satellite {
 
     pub fn interpolate_state_at_epoch(&self, epoch: Epoch) -> Option<CartesianState> {
         // Check if ephemeris is cached and covers the requested epoch
-        if let Some(ref ephemeris) = self.ephemeris_cache
-            && let Some((start, end)) = ephemeris.get_epoch_range()
-            && epoch >= start
-            && epoch <= end
-        {
-            return ephemeris.get_state_at_epoch(epoch);
+        if self.ephemeris_cache.is_some() && self.ephemeris_cache.as_ref().unwrap().covers_epoch(epoch) {
+            return self.ephemeris_cache.as_ref().unwrap().get_state_at_epoch(epoch);
+        } else if self.ephemeris_cache.is_none() {
+            log::debug!(
+                "No cached ephemeris for satellite {} when interpolating at {}",
+                self.id,
+                epoch.to_iso()
+            );
+        } else {
+            let span = self.ephemeris_cache.as_ref().unwrap().get_epoch_range().unwrap();
+            log::debug!(
+                "Cached ephemeris span of {} to {} for satellite {} does not cover {}",
+                span.0.to_iso(),
+                span.1.to_iso(),
+                self.id,
+                epoch.to_iso()
+            );
         }
+
+        log::debug!(
+            "Falling back to explicit propagation for {} at {}",
+            self.id,
+            epoch.to_iso()
+        );
         // Fall back to propagator-based state computation
         self.get_state_at_epoch(epoch)
     }
 
     pub fn get_associations(&self, collections: &Vec<ObservationCollection>) -> Vec<ObservationAssociation> {
+        let start = Instant::now();
+        log::info!(
+            "Getting associations for satellite {} across {} observation collections",
+            self.id,
+            collections.len()
+        );
         let mut associations: Vec<ObservationAssociation> = Vec::new();
         for collection in collections {
             if let Some(association) = collection.get_association(self) {
                 associations.push(association);
             }
         }
+        log::info!(
+            "Found {} associations for satellite {} in {:.3} seconds",
+            associations.len(),
+            self.id,
+            start.elapsed().as_secs_f64()
+        );
         associations
     }
 
@@ -693,5 +804,24 @@ mod tests {
                 epsilon = vel_tolerance_km_s
             );
         }
+    }
+
+    #[test]
+    fn test_get_ephemeris_covers_end_epoch() {
+        let _guard = crate::test_lock::GLOBAL_TEST_LOCK.lock().unwrap();
+        let line_1 = "1 25544U 98067A   20200.51605324 +.00000884  00000 0  22898-4 0 0999";
+        let line_2 = "2 25544  51.6443  93.0000 0001400  84.0000 276.0000 15.4930007023660";
+        let tle = TLE::from_lines("ISS", line_1, Some(line_2)).unwrap();
+        let mut satellite = Satellite::from(tle);
+
+        let start = Epoch::from_iso("2020-07-18T12:00:00.000000Z", TimeSystem::UTC);
+        let end = Epoch::from_iso("2020-07-18T12:37:30.000000Z", TimeSystem::UTC);
+        let step = TimeSpan::from_minutes(10.0);
+
+        let ephemeris = satellite
+            .get_ephemeris(start, end, step)
+            .expect("failed to build ephemeris");
+
+        assert!(ephemeris.covers_range(start, end));
     }
 }

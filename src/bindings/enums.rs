@@ -6,6 +6,8 @@ mod keplerian_type;
 mod mean_equinox;
 mod reference_frame;
 mod time_system;
+mod uct_observability;
+mod uct_validity;
 
 pub use association_confidence::PyAssociationConfidence;
 pub use classification::PyClassification;
@@ -15,6 +17,8 @@ pub use keplerian_type::PyKeplerianType;
 pub use mean_equinox::PyMeanEquinox;
 pub use reference_frame::PyReferenceFrame;
 pub use time_system::PyTimeSystem;
+pub use uct_observability::PyUCTObservability;
+pub use uct_validity::PyUCTValidity;
 
 use pyo3::prelude::*;
 use pyo3::py_run;
@@ -29,6 +33,8 @@ pub fn register_enums(parent_module: &Bound<'_, PyModule>) -> PyResult<()> {
     enums.add_class::<PyGeodeticModel>()?;
     enums.add_class::<PyCovarianceType>()?;
     enums.add_class::<PyAssociationConfidence>()?;
+    enums.add_class::<PyUCTObservability>()?;
+    enums.add_class::<PyUCTValidity>()?;
     py_run!(
         parent_module.py(),
         enums,

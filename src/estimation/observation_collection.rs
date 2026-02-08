@@ -5,6 +5,7 @@ use crate::enums::AssociationConfidence;
 use crate::time::Epoch;
 use log;
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -148,14 +149,24 @@ impl ObservationCollection {
     }
 
     pub fn get_list(obs: Vec<Observation>) -> Vec<Self> {
-        let mut groups: HashMap<(Epoch, CartesianVector), Vec<Observation>> = HashMap::new();
+        let start = Instant::now();
+        let mut groups: HashMap<(Epoch, String), Vec<Observation>> = HashMap::new();
+        let count = obs.len();
 
         for observation in obs {
-            let key = (observation.get_epoch(), observation.get_observer_position());
+            let key = (observation.get_epoch(), observation.get_sensor().id.clone());
             groups.entry(key).or_default().push(observation);
         }
 
-        groups.into_values().filter_map(|group| Self::new(group).ok()).collect()
+        let result: Vec<ObservationCollection> =
+            groups.into_values().filter_map(|group| Self::new(group).ok()).collect();
+        log::debug!(
+            "ObservationCollection::get_list processed {} observations into {} collections in {:.3} seconds",
+            count,
+            result.len(),
+            start.elapsed().as_secs_f64()
+        );
+        result
     }
 
     pub fn get_association_report(&self, satellites: &Constellation) -> CollectionAssociationReport {

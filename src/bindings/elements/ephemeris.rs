@@ -57,11 +57,6 @@ impl PyEphemeris {
             .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
-    #[getter]
-    pub fn get_id(&self) -> String {
-        self.inner.get_id()
-    }
-
     pub fn get_state_at_epoch(&self, epoch: PyEpoch) -> Option<PyCartesianState> {
         let epoch: Epoch = epoch.into();
         self.inner.get_state_at_epoch(epoch).map(PyCartesianState::from)

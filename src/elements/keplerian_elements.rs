@@ -1,9 +1,8 @@
 use std::ops::{Index, IndexMut};
 
+use super::EquinoctialElements;
 use crate::enums::KeplerianType;
 use saal::astro;
-
-use super::EquinoctialElements;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KeplerianElements {

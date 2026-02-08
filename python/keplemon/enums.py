@@ -7,6 +7,8 @@ from keplemon._keplemon.enums import (  # type: ignore
     AssociationConfidence,
     GeodeticModel,
     MeanEquinox,
+    UCTObservability,
+    UCTValidity,
 )
 
 __all__ = [
@@ -18,4 +20,6 @@ __all__ = [
     "AssociationConfidence",
     "GeodeticModel",
     "MeanEquinox",
+    "UCTObservability",
+    "UCTValidity",
 ]

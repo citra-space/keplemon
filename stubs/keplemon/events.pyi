@@ -1,7 +1,8 @@
 # flake8: noqa
 from keplemon.time import Epoch, TimeSpan
 from keplemon.elements import HorizonState, CartesianVector, TopocentricElements
-from keplemon.enums import ReferenceFrame
+from keplemon.enums import ReferenceFrame, UCTObservability, UCTValidity
+from keplemon.estimation import ObservationAssociation
 
 class FieldOfViewCandidate:
     satellite_id: str
@@ -184,3 +185,32 @@ class ManeuverReport:
     def __init__(
         self, start: Epoch, end: Epoch, distance_threshold: float, velocity_threshold: float
     ) -> None: ...
+
+class UCTValidityReport:
+    """
+    Report containing UCT validity analysis results.
+
+    This report provides information about a UCT's validity based on:
+    - Observation associations with the UCT
+    - Proximity events with approved satellites (possible cross-tags)
+    - Close approaches with approved satellites (possible maneuver origins)
+    - Observability status during the analysis window
+    """
+
+    satellite_id: str
+    """ID of the UCT satellite being analyzed"""
+
+    associations: list[ObservationAssociation]
+    """List of observation associations where the UCT matched orphan observations"""
+
+    possible_cross_tags: list[ProximityEvent]
+    """List of proximity events with approved satellites that could indicate cross-tagging"""
+
+    possible_origins: list[CloseApproach]
+    """List of close approaches with approved satellites that could indicate maneuver origins"""
+
+    observability: UCTObservability
+    """Observability status of the UCT during the analysis window"""
+
+    validity: UCTValidity
+    """Validity assessment based on the analysis results"""
