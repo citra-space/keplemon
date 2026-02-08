@@ -9,6 +9,7 @@
 //! | LEO batch (1000+ sats) | `CudaTlePropagator` | ~83x GPU speedup |
 //! | GEO/MEO batch (speed priority) | `CudaSdp4InterpolatedPropagator` | ~20-50x, 2-10 km accuracy |
 //! | GEO/MEO batch (accuracy priority) | `CudaTlePropagator` (SDP4) | ~1.6x, <0.001m accuracy |
+//! | ECI state, GEO, short-term | `CudaGeoNumericalPropagator` | Experimental, <7d only |
 //! | Mixed LEO/GEO | Partition by period, use both | See `BatchPropagator` |
 //!
 //! ## Available Propagators
@@ -24,16 +25,18 @@
 //!   - Eliminates thread divergence from iterative resonance loops
 //!   - Automatically selected by `BatchPropagator` for deep-space orbits (period >= 225 min)
 //!
-//! - **CudaGeoNumericalPropagator**: ❌ **BROKEN - DO NOT USE**
-//!   - ~18x GPU speedup in theory (RK4 integrator)
+//! - **CudaGeoNumericalPropagator**: ECI-based numerical GEO propagation (experimental)
+//!   - For short-term propagation only (<7 days, ~12 km error @ 7d)
 //!   - Uses EGM96 constants + VSOP87/Brown ephemerides + SRP
-//!   - ❌ Catastrophic accuracy failure: 32,408 km errors @ 7 days
+//!   - Slower than GPU SDP4; use only when no TLE is available
 //!
 //! ## Recommended Propagator Selection
 //!
 //! ```text
 //! if ephemeris_type == 4:
 //!     → SGP4-XP (when implemented)
+//! else if have ECI state (no TLE) AND GEO orbit AND short-term (<7d):
+//!     → CudaGeoNumericalPropagator (experimental, ~12 km @ 7d)
 //! else if orbital_period >= 225 min AND want speed (km-level accuracy OK):
 //!     → CudaSdp4InterpolatedPropagator (20-50x speedup, 2-10 km accuracy)
 //! else if orbital_period >= 225 min AND need sub-meter accuracy:

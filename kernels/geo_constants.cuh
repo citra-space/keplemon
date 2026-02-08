@@ -212,11 +212,11 @@
 // RK4 INTEGRATION CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════════════
 
-// Maximum integration substeps for RK4 (balance accuracy vs performance)
-#define RK4_MAX_SUBSTEPS 100
+// Maximum integration substeps for RK4 (supports ~347 days at 120s steps)
+#define RK4_MAX_SUBSTEPS 50000
 
-// Nominal substep size (seconds) - 10 minutes works well for GEO
-#define RK4_NOMINAL_STEP 600.0
+// Nominal substep size (seconds) - 2 minutes (~0.5° of GEO orbit per step)
+#define RK4_NOMINAL_STEP 120.0
 
 // Encke rectification threshold (km) - rectify when deviation exceeds this
 #define ENCKE_RECTIFICATION_THRESHOLD 100.0

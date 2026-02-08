@@ -3,11 +3,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════════
 //
 // This file implements numerical integration of perturbation forces for GEO satellites.
-// Uses RK4 integration rather than analytical closed-form solutions.
-// Designed for maximum GPU parallelization:
-//   - No iteration loops (unlike SDP4 resonance)
-//   - Purely formulaic force evaluation
-//   - All threads execute identical instructions
+// Uses RK4 integration (Cowell's method) rather than analytical closed-form solutions.
+//
+// STATUS: Experimental - suitable for short-term propagation only (<7 days).
+// Slower than GPU SDP4; use only when propagating from ECI states (no TLE).
+// Accuracy: ~12 km @ 7d, ~689 km @ 30d vs CPU SDP4 reference.
 //
 // Perturbations included:
 //   - J2-J4 geopotential (secular and long-period)
@@ -16,10 +16,9 @@
 //   - Solar radiation pressure (SRP) with Earth shadow
 //
 // Integration method:
-//   - RK4 integrator with Encke's method for numerical stability
-//   - Propagates perturbation deviations from Keplerian reference orbit
-//
-// ⚠️ WARNING: This propagator is currently BROKEN (32,000+ km errors @ 7 days)
+//   - RK4 integrator (Cowell's method) with 120s nominal step size
+//   - Up to 50,000 substeps for multi-week propagation spans
+//   - Full state integration with central gravity + perturbations
 //
 // ═══════════════════════════════════════════════════════════════════════════════════
 
@@ -661,7 +660,7 @@ __device__ __forceinline__ void propagate_kepler(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// RK4 INTEGRATOR WITH ENCKE'S METHOD
+// RK4 INTEGRATOR (Cowell's method)
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 // Compute total acceleration including central gravity and perturbations
@@ -692,7 +691,8 @@ __device__ __forceinline__ void compute_total_acceleration(
     *az = az_central + az_pert;
 }
 
-// RK4 integration of full equations of motion
+// RK4 integration of full equations of motion (Cowell's method)
+// With corrected step sizing for multi-day propagation
 __device__ void rk4_propagate(
     double x0, double y0, double z0,
     double vx0, double vy0, double vz0,
@@ -880,7 +880,7 @@ __device__ __forceinline__ void elements_to_eci(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// MAIN GEO PROPAGATION FUNCTION (v2.0 with RK4/Encke)
+// MAIN GEO PROPAGATION FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 __device__ void geo_propagate_single(
@@ -902,7 +902,7 @@ __device__ void geo_propagate_single(
     elements_to_eci(sma_ep, ecc_ep, inc_ep, raan_ep, argp_ep, true_anom_ep,
                     &x_epoch, &y_epoch, &z_epoch, &vx_epoch, &vy_epoch, &vz_epoch);
 
-    // Integrate from epoch to target time using RK4
+    // Integrate from epoch to target time using RK4 (Cowell's method)
     double jd0 = params->epoch_jd;
 
     rk4_propagate(

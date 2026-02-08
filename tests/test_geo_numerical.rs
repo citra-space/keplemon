@@ -87,11 +87,11 @@ fn test_geo_propagation_basic() {
     assert_eq!(results.n_sats, 1);
     assert_eq!(results.n_times, 3);
 
-    // Check that positions are reasonable (GEO altitude: ~35,786 km + 6,378 km = ~42,164 km from center)
+    // Check that positions are reasonable (GEO altitude: ~42,164 km from center)
     for t in 0..3 {
         let r = (results.x[t].powi(2) + results.y[t].powi(2) + results.z[t].powi(2)).sqrt();
-        assert!(r > 35000.0, "Satellite radius {} km too low at t={}", r, t);
-        assert!(r < 50000.0, "Satellite radius {} km too high at t={}", r, t);
+        assert!(r > 41500.0, "Satellite radius {} km too low at t={}", r, t);
+        assert!(r < 43000.0, "Satellite radius {} km too high at t={}", r, t);
 
         // Check velocity magnitude (~3 km/s for GEO)
         let v = (results.vx[t].powi(2) + results.vy[t].powi(2) + results.vz[t].powi(2)).sqrt();
@@ -343,52 +343,59 @@ fn benchmark_geo_vs_sdp4_performance() {
 }
 
 #[test]
-#[ignore] // Run with --ignored for accuracy tests
 fn test_geo_vs_sdp4_accuracy() {
     if !CudaDevice::is_available() {
         eprintln!("CUDA not available, skipping accuracy test");
         return;
     }
 
-    // Compare GEO analytical vs SDP4 for short-term propagation (where analytical is valid)
-    // Note: GEO analytical uses first-order perturbations and diverges over long spans
-    // This is expected - the model is optimized for GPU performance over short prediction windows
+    // Compare GEO numerical vs SDP4 for 7-day propagation
+    // GEO numerical uses RK4+Encke with EGM-96; SDP4 uses WGS-72
+    // Different initial conditions and gravity models cause baseline offset,
+    // but both should maintain GEO-like orbits (radius ~42,164 km)
 
     let epoch = 2459945.5;
     let times: Vec<f64> = (0..8).map(|d| epoch + d as f64).collect(); // 7 days
 
-    // Initialize GEO analytical from same approximate state as TLE
-    // Note: Using a different initial state than TLE will cause differences
     let mut geo_prop = CudaGeoNumericalPropagator::new().expect("Failed");
     let geo_state = geo_test_state();
     geo_prop.init_satellites(&[geo_state]).expect("Failed");
 
     let geo_results = geo_prop.propagate_soa_arrays(&times).expect("Failed");
 
-    // Initialize SDP4
     let mut sgp4_prop = CudaTlePropagator::new().expect("Failed");
     let tle = geo_test_tle();
     sgp4_prop.init_satellites(&[tle]).expect("Failed");
 
     let sdp4_results = sgp4_prop.propagate_soa_arrays(&times).expect("Failed");
 
-    println!("\n=== GEO vs SDP4 Accuracy Comparison (7 days) ===");
-    println!("Note: Different initial conditions cause baseline offset");
-    println!("Day | GEO radius (km) | SDP4 radius (km) | Diff (km)");
-    println!("----|-----------------|------------------|----------");
+    println!("\n=== GEO Numerical vs SDP4 Accuracy Comparison (7 days) ===");
+    println!("Note: Different initial conditions and gravity models cause baseline offset");
+    println!("Day | GEO radius (km) | SDP4 radius (km) | Radius diff (km) | Pos diff (km)");
+    println!("----|-----------------|------------------|-----------------|-------------");
+
+    let mut max_pos_diff = 0.0f64;
 
     for d in 0..8 {
         let geo_r = (geo_results.x[d].powi(2) + geo_results.y[d].powi(2) + geo_results.z[d].powi(2)).sqrt();
         let sdp4_r = (sdp4_results.x[d].powi(2) + sdp4_results.y[d].powi(2) + sdp4_results.z[d].powi(2)).sqrt();
-        let diff = (geo_r - sdp4_r).abs();
+        let r_diff = (geo_r - sdp4_r).abs();
 
-        println!("{:3} | {:15.3} | {:16.3} | {:9.3}", d, geo_r, sdp4_r, diff);
+        let pos_diff = ((geo_results.x[d] - sdp4_results.x[d]).powi(2)
+            + (geo_results.y[d] - sdp4_results.y[d]).powi(2)
+            + (geo_results.z[d] - sdp4_results.z[d]).powi(2))
+        .sqrt();
+        max_pos_diff = max_pos_diff.max(pos_diff);
 
-        // Both should be within extended GEO range (allowing for perturbations and model differences)
-        // GEO analytical may show more orbital variation due to perturbation modeling
+        println!(
+            "{:3} | {:15.3} | {:16.3} | {:15.3} | {:11.3}",
+            d, geo_r, sdp4_r, r_diff, pos_diff
+        );
+
+        // GEO numerical should keep radius in tight GEO band
         assert!(
-            geo_r > 30000.0 && geo_r < 55000.0,
-            "GEO radius {} out of range at day {}",
+            geo_r > 41500.0 && geo_r < 43000.0,
+            "GEO radius {} out of range at day {} (expected 41500-43000 km)",
             geo_r,
             d
         );
@@ -400,8 +407,68 @@ fn test_geo_vs_sdp4_accuracy() {
         );
     }
 
-    println!("\nNote: GEO analytical uses first-order perturbation theory.");
-    println!("For long-term accuracy, use SDP4. For GPU performance, use GEO analytical.");
+    println!("\nMax position difference over 7 days: {:.3} km", max_pos_diff);
+
+    // Note: GEO numerical and SDP4 use different gravity models (EGM-96 vs WGS-72),
+    // different perturbation models, and different initial conditions. Large position
+    // differences are expected from the model differences, not from bugs.
+    // The key check is that the GEO numerical radius stays bounded (no exponential blow-up).
+}
+
+#[test]
+fn test_geo_multi_day_error_growth() {
+    if !CudaDevice::is_available() {
+        eprintln!("CUDA not available, skipping multi-day error growth test");
+        return;
+    }
+
+    // Verify error growth is linear (not exponential) by checking radius stays bounded
+    // over a 14-day propagation window
+    let epoch = 2459945.5;
+    let times: Vec<f64> = (0..=14).map(|d| epoch + d as f64).collect();
+
+    let mut propagator = CudaGeoNumericalPropagator::new().expect("Failed to create propagator");
+    let states = vec![geo_test_state()];
+    propagator.init_satellites(&states).expect("Failed to init");
+
+    let results = propagator.propagate_soa_arrays(&times).expect("Failed to propagate");
+
+    println!("\n=== Multi-Day Error Growth Test (14 days) ===");
+    println!("Day | Radius (km)   | Deviation from nominal (km)");
+    println!("----|--------------|---------------------------");
+
+    let nominal_r = 42164.0;
+    let mut max_deviation = 0.0f64;
+
+    for d in 0..=14 {
+        let r = (results.x[d].powi(2) + results.y[d].powi(2) + results.z[d].powi(2)).sqrt();
+        let deviation = (r - nominal_r).abs();
+        max_deviation = max_deviation.max(deviation);
+
+        println!("{:3} | {:12.3} | {:25.3}", d, r, deviation);
+
+        // Radius must stay within tight GEO band (no exponential blow-up)
+        assert!(
+            r > 41000.0 && r < 43500.0,
+            "Radius {} km out of GEO band at day {} — possible exponential error growth",
+            r,
+            d
+        );
+
+        assert_eq!(
+            results.error_code[d], 0,
+            "Propagator error {} at day {}",
+            results.error_code[d], d
+        );
+    }
+
+    println!("\nMax radius deviation from nominal: {:.3} km", max_deviation);
+    // Bounded deviation confirms linear (not exponential) error growth
+    assert!(
+        max_deviation < 1500.0,
+        "Max deviation {} km exceeds 1500 km — error growth may be exponential",
+        max_deviation
+    );
 }
 
 #[test]

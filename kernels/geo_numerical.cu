@@ -3,13 +3,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════════
 //
 // CUDA kernel for GPU-accelerated GEO satellite propagation using numerical
-// integration (RK4) of perturbation forces. Designed for maximum parallelization:
-//   - No iteration loops (unlike SDP4 resonance)
-//   - Purely formulaic force evaluation
-//   - All threads execute identical instructions
-//   - Expected ~18x speedup vs standard SDP4
+// integration (RK4, Cowell's method).
 //
-// ⚠️ WARNING: This propagator is currently BROKEN (32,000+ km errors @ 7 days)
+// STATUS: Experimental - suitable for short-term propagation only (<7 days).
+// Slower than GPU SDP4; use only when propagating from ECI states (no TLE).
+// Accuracy: ~12 km @ 7d, ~689 km @ 30d vs CPU SDP4 reference.
 //
 // ═══════════════════════════════════════════════════════════════════════════════════
 

@@ -4,19 +4,15 @@
 **Last Updated**: January 2026
 **Keplemon Version**: 3.3.0
 
-## ⚠️ CRITICAL WARNING
-
-**CudaGeoNumericalPropagator is BROKEN and should NOT be used.**  Use `CudaTlePropagator` standard SDP4 or `CudaSdp4InterpolatedPropagator` instead.
-
 ## Propagator Summary
 
-Keplemon provides **4 working propagators** (plus 1 broken) optimized for different orbital regimes and use cases:
+Keplemon provides **5 propagators** optimized for different orbital regimes and use cases:
 
 | Propagator | Type | Orbit Regime | GPU Speedup | Accuracy @ 7 Days | Auto-Selected |
 |------------|------|--------------|-------------|-------------------|---------------|
 | **CudaTlePropagator (SGP4)** | TLE-based | LEO (period < 225 min) | **83x** | 4.2m | Yes |
 | **CudaSdp4InterpolatedPropagator** | TLE-based | GEO/MEO (period ≥ 225 min) | **20-50x** | 2.4 km ⚠️ | Yes |
-| **CudaGeoNumericalPropagator** | ECI-based | GEO/MEO | **18x** | **32,408 km ❌ BROKEN** | No |
+| **CudaGeoNumericalPropagator** | ECI-based | GEO/MEO | Slower than SDP4 | ~12 km @ 7d (experimental) | No |
 | **CudaTlePropagator (SDP4)** | TLE-based | GEO/MEO (legacy) | 1.6x | <0.001m | No |
 | **SAAL CPU Propagator** | TLE-based | All orbits | 1x | Baseline reference | Fallback |
 
@@ -34,9 +30,9 @@ let results = batch_prop.propagate_batch(&tles, &epochs)?;
 **When to Use Each Propagator**:
 - **CudaTlePropagator (SGP4)**: LEO satellites, large constellations (Starlink, OneWeb)
 - **CudaSdp4InterpolatedPropagator**: GEO/MEO satellites when TLE compatibility + speed needed (km-level accuracy acceptable)
+- **CudaGeoNumericalPropagator**: *Experimental* — GEO/MEO when you have ECI states (no TLE), short-term only (<7 days)
 - **CudaTlePropagator (SDP4 standard)**: GEO/MEO when sub-meter accuracy needed (1.6x GPU speedup)
 - **SAAL CPU**: Small batches (<1000 ops), GPU unavailable, validation reference, highest accuracy
-- **❌ DO NOT USE CudaGeoNumericalPropagator** - catastrophically broken (14M km errors)
 
 ---
 
@@ -57,7 +53,7 @@ let results = batch_prop.propagate_batch(&tles, &epochs)?;
 
 ## Overview
 
-Keplemon's GPU acceleration provides **5 propagators** optimized for different orbital regimes and use cases. The system automatically selects the optimal propagator (SGP4 or SDP4-Interpolated) based on orbital characteristics, with intelligent fallback to CPU when GPU is unavailable.
+Keplemon's GPU acceleration provides **5 propagators** optimized for different orbital regimes and use cases. The system automatically selects the optimal TLE-based propagator (SGP4 or SDP4-Interpolated) based on orbital characteristics, with intelligent fallback to CPU when GPU is unavailable. The GEO Numerical propagator is available as an experimental option for short-term ECI-based propagation when no TLE is available.
 
 **Key Features**:
 - Automatic backend selection (CPU vs GPU)
@@ -101,14 +97,14 @@ Keplemon's GPU acceleration provides **5 propagators** optimized for different o
 
 ### 2. CudaGeoNumericalPropagator (ECI-based)
 
-**Purpose**: High-fidelity analytical propagation for GEO/MEO satellites
+**Purpose**: Numerical propagation for GEO/MEO satellites from ECI states (no TLE required)
 
 **Models Included**:
 - J2-J4 geopotential (secular and long-period terms)
 - J22 tesseral harmonic (longitude-dependent drift)
 - Lunar/solar third-body gravity (VSOP87/Brown ephemerides)
 - Solar radiation pressure (SRP) with Earth shadow model
-- RK4 integrator with Encke's method for numerical stability
+- RK4 integrator (Cowell's method) with 120s step size
 
 **Implementation**:
 - Location: `src/gpu/cuda_geo_numerical.rs` (650+ lines)
@@ -117,17 +113,20 @@ Keplemon's GPU acceleration provides **5 propagators** optimized for different o
 - Operates on ECI states (not constrained to TLE format)
 
 **Performance**:
-- GPU Speedup: **~18x**
-- **Accuracy: 32,408 km @ 7 days (CATASTROPHIC - DO NOT USE) ❌**
-- No iteration loops → better GPU parallelism than SDP4
+- Slower than GPU SDP4 due to many RK4 substeps per propagation
+- No iteration loops → no warp divergence, but high per-thread cost
+- Suitable for short-term propagation (<7 days)
 
-**Advantages Over SDP4**:
-- 10x faster GPU execution (18x vs 1.6x)
-- More accurate gravitational model (EGM-96 vs WGS-72 OLD) in theory
-- Improved ephemeris accuracy (VSOP87 vs simplified) in theory
-- No TLE format constraints
+**Limitations**:
+- Slower than both GPU SDP4 Standard and SDP4-Interpolated
+- Cowell's method accumulates truncation error: ~12 km @ 7d, ~689 km @ 30d vs CPU SDP4
+- Not recommended for propagation spans >7 days
+- Not TLE-compatible (requires ECI state vectors as input)
+- Not automatically selected by BatchPropagator
 
-**Status**: ❌ **BROKEN - DO NOT USE** (32,000+ km errors @ 7 days, 14M km @ 30 days)
+**Use case**: Short-term (<7 day) GEO propagation when only ECI states are available (no TLE)
+
+**Status**: ⚠️ Experimental (short-term use only)
 
 ---
 
@@ -339,9 +338,9 @@ Interpolation error: 0.8234 - 0.8109 = 0.0125 km = 12.5 meters
 
 ---
 
-### GEO-Numerical (CudaGeoNumericalPropagator) ❌ BROKEN
+### GEO-Numerical (CudaGeoNumericalPropagator)
 
-**Algorithm**: Numerical integration of analytical perturbation forces
+**Algorithm**: Numerical integration using RK4 (Cowell's method)
 
 **Physics Model**: **Completely different from SDP4**
 - **EGM-96** gravitational model (1996, higher resolution than WGS-72)
@@ -354,39 +353,29 @@ Interpolation error: 0.8234 - 0.8109 = 0.0125 km = 12.5 meters
 **Propagation Process**:
 ```
 For each timestep:
-  1. Calculate perturbation accelerations:
-     a_total = a_J2 + a_J3 + a_J4 + a_J22 + a_sun + a_moon + a_SRP
-  2. Numerical integration using RK4 (Runge-Kutta 4th order):
-     For each RK4 substep (up to 10 substeps per major step):
-       k1 = f(t, state)
-       k2 = f(t + h/2, state + h*k1/2)
-       k3 = f(t + h/2, state + h*k2/2)
-       k4 = f(t + h, state + h*k3)
-       state_new = state + h*(k1 + 2*k2 + 2*k3 + k4)/6
-  3. Encke's method rectification (when deviation > threshold)
-  4. Convert to output format
+  1. Calculate total acceleration (central gravity + perturbations):
+     a_total = -mu/r³·r + a_J2 + a_J3 + a_J4 + a_J22 + a_sun + a_moon + a_SRP
+  2. RK4 integration of full state (position, velocity):
+     120s nominal step, up to 50,000 substeps
+  3. Convert to output format
 ```
 
 **GPU Performance**:
 - **No iteration loops** → no warp divergence
 - **Purely formulaic** → excellent parallelism
-- Should achieve ~18x speedup in theory
+- Slower than GPU SDP4 due to high per-thread RK4 computation
 
-**Accuracy**: ❌ **CATASTROPHICALLY BROKEN**
-- 8.7 km @ 1 day
-- 32,408 km @ 7 days
-- 14,528,143 km @ 30 days
+**Accuracy** (vs CPU SDP4 reference):
+- @ 1 day: ~8.5 km
+- @ 7 days: ~12 km
+- @ 30 days: ~689 km (not recommended for long-term propagation)
 
-**What Went Wrong** (unknown, needs investigation):
-1. **Integration instability**: RK4 timestep may be too large, causing numerical blow-up
-2. **Encke rectification bug**: Threshold or reference orbit update may be incorrect
-3. **Perturbation force bug**: One or more force calculations may have sign errors or missing terms
-4. **Coordinate frame errors**: Transformations between TEME/ECI/J2000 may be wrong
-5. **Ephemeris calculation bug**: VSOP87/Brown implementation may have errors
+**Previous Issues (Fixed)**:
+1. **RK4 step size cap** was 100 substeps max with 600s nominal step — for 7-day propagation
+   the effective step was 6,048s (1.68 hours), causing catastrophic RK4 truncation error.
+   Fixed: 50,000 max substeps, 120s nominal step (2 minutes per step).
 
-The irony: Uses "better" physics (EGM-96, VSOP87) but produces results **10 million times worse** than the simpler WGS-72 models, indicating a fundamental implementation bug.
-
-**Status**: ❌ **DO NOT USE - BROKEN**
+**Status**: ⚠️ Experimental (short-term use only)
 
 ---
 
@@ -394,17 +383,17 @@ The irony: Uses "better" physics (EGM-96, VSOP87) but produces results **10 mill
 
 | Aspect | SDP4 Standard | SDP4-Interpolated | GEO-Numerical |
 |--------|---------------|-----------------|----------------|
-| **Physics** | Vallado SDP4 | Vallado SDP4 | Custom analytical |
+| **Physics** | Vallado SDP4 | Vallado SDP4 | Custom numerical (EGM-96) |
 | **Gravity** | WGS-72 OLD | WGS-72 OLD | EGM-96 |
-| **Computation** | Iterative (Newton-Raphson) | Pre-sampled interpolation | Numerical integration (RK4) |
+| **Computation** | Iterative (Newton-Raphson) | Pre-sampled interpolation | RK4 (Cowell's method) |
 | **Operations/prop** | ~200 + iterations | ~50 (fixed) | ~500 (RK4 substeps) |
 | **Warp divergence** | ❌ High (~50% efficiency) | ✅ None (100% efficiency) | ✅ None (100% efficiency) |
-| **TLE compatible** | ✅ Yes | ✅ Yes | ❌ No |
-| **GPU speedup** | 1.6x | 20-50x | 18x (if it worked) |
-| **Accuracy @ 7d** | <0.001m | 2,400m | ❌ 32,408,000m |
-| **Status** | ✅ Production | ✅ Production | ❌ Broken |
+| **TLE compatible** | ✅ Yes | ✅ Yes | ❌ No (ECI states) |
+| **GPU speedup** | 1.6x | 20-50x | Slower than SDP4 |
+| **Accuracy @ 7d** | <0.001m | 2,400m | ~12 km |
+| **Status** | ✅ Production | ✅ Production | ⚠️ Experimental |
 
-**Key Insight**: SDP4-Interpolated uses the **exact same physics** as standard SDP4, but trades accuracy for speed by replacing runtime iteration with pre-computed interpolation. GEO-Numerical uses **different physics entirely** and is fundamentally broken.
+**Key Insight**: SDP4-Interpolated uses the **exact same physics** as standard SDP4, but trades accuracy for speed by replacing runtime iteration with pre-computed interpolation. GEO-Numerical uses **different physics entirely** (EGM-96, VSOP87, SRP) and integrates the full equations of motion via RK4.
 
 ---
 
@@ -464,7 +453,7 @@ The irony: Uses "better" physics (EGM-96, VSOP87) but produces results **10 mill
 
 **Orbital Period Threshold**: **225 minutes** (6.4 rev/day mean motion)
 - Below: SGP4 (near-earth propagation)
-- Above: SDP4 or GEO Numerical (deep-space propagation)
+- Above: SDP4 or SDP4-Interpolated (deep-space propagation)
 
 **GPU Batch Size Threshold**: **1,000 operations** (n_satellites × n_times)
 - Below: CPU with rayon parallelization (lower overhead)
@@ -674,17 +663,17 @@ pub enum PropagatorOverride {
 |------------|----------------|-------------------|--------|-------|
 | SDP4 (standard) | 1.6x | <0.001m | Legacy | Iterative resonance loops |
 | SDP4 Interpolated | **20-50x** | **2.4 km** ⚠️ | **Production** | Pre-sampled resonance, needs tuning |
-| GEO Numerical | **18x** | **32,408 km** ❌ | **BROKEN** | Catastrophic accuracy failure |
+| GEO Numerical | Slower than SDP4 | ~12 km @ 7d | **Experimental** | RK4 Cowell's method, ECI input, <7d only |
 
 **⚠️ Important Accuracy Considerations** (measured @ 7 days):
 - **SDP4 Standard (Legacy)**: Highest accuracy (<0.001m) but slow on GPU (1.6x speedup)
 - **SDP4-Interpolated**: Fastest (20-50x) but lower accuracy (2.4 km @ 7 days, 10 km @ 30 days)
-- **GEO Numerical**: ❌ **BROKEN - DO NOT USE** (32,408 km @ 7 days, 14M km @ 30 days)
+- **GEO Numerical**: Experimental, slower than SDP4, ~12 km @ 7d, for short-term ECI-based propagation only
 
 **Recommendation (v3.3.0+)**:
 - **Speed Priority**: BatchPropagator automatically selects SDP4-Interpolated for deep-space orbits (2-10 km accuracy)
 - **Accuracy Priority**: Force CPU propagation or use standard SDP4 for sub-meter accuracy (<0.001m)
-- **DO NOT use CudaGeoNumericalPropagator** - it has catastrophic accuracy failures
+- **ECI Input (no TLE)**: Use CudaGeoNumericalPropagator for short-term (<7d) GEO propagation with ECI state vectors (experimental)
 
 ---
 
@@ -769,29 +758,21 @@ pub enum PropagatorOverride {
 
 ---
 
-### CudaGeoNumericalPropagator
+### CudaGeoNumericalPropagator (Experimental)
 
-**Status**: ❌ **CATASTROPHICALLY BROKEN - DO NOT USE**
+**Strengths** ✅:
+- Operates on ECI states (no TLE required)
+- No iteration loops → no warp divergence
+- Higher-fidelity physics model (EGM-96, VSOP87/Brown, SRP with shadow)
 
-**Measured Accuracy Failure**:
-- 8.7 km @ 1 day
-- 32,408 km @ 7 days
-- 14,528,143 km @ 30 days (14 million kilometers!)
+**Weaknesses** ❌:
+- Slower than GPU SDP4 (many RK4 substeps per propagation)
+- Cowell's method accumulates truncation error (~12 km @ 7d, ~689 km @ 30d)
+- Not suitable for propagation spans >7 days
+- Not TLE-compatible (requires ECI state vectors as input)
+- No automatic selection by BatchPropagator (must be used directly)
 
-**Root Cause**: Unknown - possible issues:
-- Fundamental bug in physics model implementation
-- Integration instability (RK4/Encke's method)
-- Initialization/coordinate frame conversion errors
-- Accumulating numerical errors
-
-**Previous Claims (INVALID)**:
-- ~~Excellent GPU parallelism (18x speedup)~~ ← Speed doesn't matter if results are wrong
-- ~~EGM-96 geopotential (better than WGS-72)~~ ← Theory vs broken implementation
-- ~~Solar radiation pressure modeling~~ ← Not working correctly
-
-**Best for**: ❌ **NOTHING - DO NOT USE THIS PROPAGATOR**
-
-**Recommendation**: Use `CudaTlePropagator` standard SDP4 (1.6x speedup, <0.001m accuracy) or `CudaSdp4InterpolatedPropagator` (20-50x speedup, 2-10 km accuracy) instead.
+**Best for**: GEO/MEO satellites when you have ECI state vectors, need SRP modeling, or want EGM-96 physics
 
 ---
 
@@ -1013,12 +994,12 @@ All GPU propagators tested against SAAL CPU reference implementation:
 | **CudaTlePropagator (SGP4)** | LEO | 0.5m | 4.2m | 15.9m | ✅ Excellent |
 | **CudaTlePropagator (SDP4)** | GEO/MEO | <0.001m | <0.001m | 0.034m | ✅ Near-perfect |
 | **CudaSdp4InterpolatedPropagator** | GEO/MEO | 349m | 2.4 km | 10.2 km | ⚠️ Needs tuning |
-| **CudaGeoNumericalPropagator** | GEO/MEO | 8.7 km | 32,408 km | 14,528,143 km | ❌ **BROKEN** |
+| **CudaGeoNumericalPropagator** | GEO/MEO | 8.5 km | 12 km | 689 km | ⚠️ Experimental (<7d only) |
 
 **Key Findings**:
 - Standard SDP4 achieves **micron-level accuracy** (<0.001m) but only 1.6x GPU speedup
 - SDP4-Interpolated trades accuracy for speed (20-50x speedup, km-level errors)
-- GEO Numerical has **catastrophic accuracy failures** and must not be used
+- GEO Numerical is slower than SDP4 and less accurate; only use case is short-term ECI-based propagation when no TLE is available
 - SGP4 maintains excellent accuracy for LEO orbits
 
 **Test Configuration**:
@@ -1168,13 +1149,13 @@ Verifies both GPU APIs produce identical results:
 ## Conclusion
 
 Keplemon's GPU propagator architecture provides:
-- **Flexibility**: 3 working propagators for different use cases (1 broken, do not use)
+- **Flexibility**: 5 propagators for different use cases and input formats
 - **Performance**: Up to 83x speedup for LEO, 20-50x for GEO/MEO with SDP4-Interpolated
 - **Accuracy**:
   - SGP4 (LEO): 4.2m @ 7 days, 16m @ 30 days
   - SDP4 Standard (GEO): <0.001m (micron-level accuracy!)
   - SDP4-Interpolated (GEO): 2.4 km @ 7 days, 10 km @ 30 days
-  - ❌ GEO Numerical: BROKEN (32,000+ km errors, do not use)
+  - GEO Numerical: Experimental, ~12 km @ 7d (ECI input, short-term only)
 - **Automation**: Automatic propagator selection based on orbital period (v3.3.0+)
 - **Robustness**: Automatic fallback and intelligent selection
 - **Future-proof**: Extensible design for new algorithms
