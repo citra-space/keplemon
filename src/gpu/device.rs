@@ -14,6 +14,11 @@ impl CudaDevice {
         Self::new_with_device_id(0)
     }
 
+    /// Wrap an existing CUDA device (for sharing between components)
+    pub fn from_arc(device: Arc<CudarcDevice>) -> Self {
+        Self { device }
+    }
+
     /// Create CUDA device with specific device ID
     pub fn new_with_device_id(device_id: usize) -> Result<Self, CudaError> {
         let device = CudarcDevice::new(device_id).map_err(|e| CudaError::DeviceInitialization(e.to_string()))?;

@@ -7,6 +7,7 @@ use crate::time::Epoch;
 use rayon::prelude::*;
 
 /// Orbit classification for propagator selection
+#[cfg(feature = "cuda")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OrbitType {
     /// Near-earth orbit (period < 225 minutes) - use SGP4
@@ -16,6 +17,7 @@ enum OrbitType {
 }
 
 /// Classify orbit type based on mean motion
+#[cfg(feature = "cuda")]
 fn classify_orbit(mean_motion: f64) -> OrbitType {
     let period_minutes = orbital_period_minutes(mean_motion);
     if period_minutes < 225.0 {
@@ -73,6 +75,8 @@ pub struct BatchPropagator {
     config: BatchPropagatorConfig,
     #[cfg(feature = "cuda")]
     gpu_available: bool,
+    #[cfg(feature = "cuda")]
+    cached_propagator: Option<CudaTlePropagator>,
 }
 
 impl BatchPropagator {
@@ -90,7 +94,32 @@ impl BatchPropagator {
             config,
             #[cfg(feature = "cuda")]
             gpu_available,
+            #[cfg(feature = "cuda")]
+            cached_propagator: None,
         }
+    }
+
+    /// Create a batch propagator that shares a CUDA device with other components
+    ///
+    /// This avoids creating a separate CUDA context, allowing the propagator
+    /// to share GPU memory and synchronization with other GPU consumers.
+    #[cfg(feature = "cuda")]
+    pub fn with_device(device: std::sync::Arc<cudarc::driver::CudaDevice>) -> Result<Self, String> {
+        let cuda_device = crate::gpu::CudaDevice::from_arc(device);
+        let propagator = CudaTlePropagator::new_with_device(cuda_device)
+            .map_err(|e| format!("Failed to initialize CUDA propagator: {}", e))?;
+
+        Ok(Self {
+            config: BatchPropagatorConfig::default(),
+            gpu_available: true,
+            cached_propagator: Some(propagator),
+        })
+    }
+
+    /// Get reference to the underlying CUDA device (if GPU is active)
+    #[cfg(feature = "cuda")]
+    pub fn cuda_device(&self) -> Option<&std::sync::Arc<cudarc::driver::CudaDevice>> {
+        self.cached_propagator.as_ref().map(|p| p.cuda_device())
     }
 
     /// Set the backend selection strategy
@@ -540,6 +569,14 @@ impl BatchPropagator {
         }
     }
 
+    /// GPU-resident propagation using CudaTlePropagator's two-kernel indexed scatter.
+    ///
+    /// Mixed LEO/GEO batches are fully supported — CudaTlePropagator partitions
+    /// satellites by orbit type and launches separate SGP4/SDP4 kernels that
+    /// scatter results into the correct output positions.
+    ///
+    /// Note: deep-space satellites use standard SDP4 (~1.6x GPU speedup) rather
+    /// than SDP4-Interpolated (~20-50x) for accuracy in GPU pipelines.
     #[cfg(feature = "cuda")]
     fn propagate_batch_gpu_resident_impl(
         &mut self,
@@ -548,11 +585,13 @@ impl BatchPropagator {
     ) -> Result<crate::gpu::Sgp4StateSoABuffers, String> {
         use crate::gpu::TleDataGpu;
 
-        // Classify orbits to determine propagator
-        let orbit_types: Vec<OrbitType> = tles.iter().map(|tle| classify_orbit(tle.get_mean_motion())).collect();
+        // Lazily create the propagator if not cached
+        if self.cached_propagator.is_none() {
+            self.cached_propagator =
+                Some(CudaTlePropagator::new().map_err(|e| format!("Failed to initialize CUDA: {}", e))?);
+        }
 
-        let all_near_earth = orbit_types.iter().all(|t| matches!(t, OrbitType::NearEarth));
-        let all_deep_space = orbit_types.iter().all(|t| matches!(t, OrbitType::DeepSpace));
+        let propagator = self.cached_propagator.as_mut().unwrap();
 
         // Convert TLEs to GPU format
         let tle_data: Vec<TleDataGpu> = tles.iter().map(|tle| TleDataGpu::from(tle)).collect();
@@ -563,28 +602,13 @@ impl BatchPropagator {
             .map(|epoch| TleDataGpu::jd_from_ds50(epoch.days_since_1950))
             .collect();
 
-        if all_near_earth {
-            let mut gpu_propagator =
-                CudaTlePropagator::new().map_err(|e| format!("Failed to initialize CUDA SGP4: {}", e))?;
+        propagator
+            .init_satellites(&tle_data)
+            .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
 
-            gpu_propagator
-                .init_satellites(&tle_data)
-                .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
-
-            gpu_propagator
-                .propagate_soa_resident(&jd_times)
-                .map_err(|e| format!("GPU propagation failed: {}", e))
-        } else if all_deep_space {
-            // Note: SDP4-Analytical doesn't yet have GPU-resident method
-            // Fall back to regular propagation with download
-            Err("GPU-resident propagation not yet implemented for SDP4-Analytical. \
-                 Use propagate_batch() instead."
-                .to_string())
-        } else {
-            Err("GPU-resident propagation not supported for mixed orbit types. \
-                 Use propagate_batch() instead."
-                .to_string())
-        }
+        propagator
+            .propagate_soa_resident(&jd_times)
+            .map_err(|e| format!("GPU propagation failed: {}", e))
     }
 }
 

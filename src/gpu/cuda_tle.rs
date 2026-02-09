@@ -9,6 +9,7 @@ use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 // Include the PTX at compile time
 const TLE_PROPAGATOR_INIT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/tle_propagator_init.ptx"));
 const TLE_PROPAGATOR_BATCH_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/tle_propagator_batch.ptx"));
+const SCALE_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/scale.ptx"));
 
 /// Raw TLE data that matches CUDA structure
 #[repr(C)]
@@ -359,6 +360,110 @@ impl Sgp4StateSoABuffers {
         Ok(results)
     }
 
+    /// Download a single timestep from GPU (all satellites at one time index)
+    ///
+    /// Uses GPU sub-range views to transfer only `n_sats` elements per buffer,
+    /// avoiding downloading the entire multi-timestep result set.
+    ///
+    /// # Arguments
+    /// * `dev` - CUDA device reference
+    /// * `time_idx` - Which timestep to download (0-based)
+    pub fn download_timestep(
+        &self,
+        dev: &std::sync::Arc<cudarc::driver::CudaDevice>,
+        time_idx: usize,
+    ) -> Result<TimestepData, CudaError> {
+        if time_idx >= self.n_times {
+            return Err(CudaError::InvalidParameter(format!(
+                "time_idx {} >= n_times {}",
+                time_idx, self.n_times
+            )));
+        }
+
+        let offset = time_idx * self.n_sats;
+        let len = self.n_sats;
+
+        Ok(TimestepData {
+            x: dev
+                .dtoh_sync_copy(&self.x.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            y: dev
+                .dtoh_sync_copy(&self.y.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            z: dev
+                .dtoh_sync_copy(&self.z.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vx: dev
+                .dtoh_sync_copy(&self.vx.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vy: dev
+                .dtoh_sync_copy(&self.vy.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vz: dev
+                .dtoh_sync_copy(&self.vz.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            error_code: dev
+                .dtoh_sync_copy(&self.error_code.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            n_sats: self.n_sats,
+        })
+    }
+
+    /// Download a range of timesteps from GPU
+    ///
+    /// Downloads timesteps `[start..end)` and returns them as `SoAArrays`
+    /// with `n_times = end - start`.
+    ///
+    /// # Arguments
+    /// * `dev` - CUDA device reference
+    /// * `start` - First timestep index (inclusive)
+    /// * `end` - Last timestep index (exclusive)
+    pub fn download_timestep_range(
+        &self,
+        dev: &std::sync::Arc<cudarc::driver::CudaDevice>,
+        start: usize,
+        end: usize,
+    ) -> Result<SoAArrays, CudaError> {
+        if start >= end {
+            return Err(CudaError::InvalidParameter(format!("start {} >= end {}", start, end)));
+        }
+        if end > self.n_times {
+            return Err(CudaError::InvalidParameter(format!(
+                "end {} > n_times {}",
+                end, self.n_times
+            )));
+        }
+
+        let offset = start * self.n_sats;
+        let len = (end - start) * self.n_sats;
+
+        Ok(SoAArrays {
+            x: dev
+                .dtoh_sync_copy(&self.x.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            y: dev
+                .dtoh_sync_copy(&self.y.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            z: dev
+                .dtoh_sync_copy(&self.z.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vx: dev
+                .dtoh_sync_copy(&self.vx.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vy: dev
+                .dtoh_sync_copy(&self.vy.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            vz: dev
+                .dtoh_sync_copy(&self.vz.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            error_code: dev
+                .dtoh_sync_copy(&self.error_code.slice(offset..offset + len))
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?,
+            n_sats: self.n_sats,
+            n_times: end - start,
+        })
+    }
+
     /// Get raw SoA arrays (in time-major order) without conversion
     ///
     /// Returns (x, y, z, vx, vy, vz, error_code) arrays where index = time_idx * n_sats + sat_idx
@@ -388,6 +493,54 @@ impl Sgp4StateSoABuffers {
             n_sats: self.n_sats,
             n_times: self.n_times,
         })
+    }
+
+    /// Scale all position and velocity buffers in-place on the GPU
+    ///
+    /// Multiplies all 6 position/velocity components (x, y, z, vx, vy, vz)
+    /// by `factor`. Error codes are not modified.
+    ///
+    /// This is useful for in-VRAM unit conversion (e.g., km → m with factor 1000.0)
+    /// without downloading and re-uploading the data.
+    pub fn scale_inplace(
+        &mut self,
+        dev: &std::sync::Arc<cudarc::driver::CudaDevice>,
+        factor: f64,
+    ) -> Result<(), CudaError> {
+        // Load scale PTX on-demand (cudarc's load_ptx is idempotent)
+        dev.load_ptx(SCALE_PTX.into(), "scale", &["scale_f64_kernel"])
+            .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
+
+        let scale_kernel = dev
+            .get_func("scale", "scale_f64_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("scale_f64_kernel not found".into()))?;
+
+        let n = self.n_sats * self.n_times;
+        let cfg = CudaDevice::launch_config_1d(n);
+
+        // Scale all 6 position/velocity buffers
+        let buffers: [&mut CudaSlice<f64>; 6] = [
+            &mut self.x,
+            &mut self.y,
+            &mut self.z,
+            &mut self.vx,
+            &mut self.vy,
+            &mut self.vz,
+        ];
+
+        for buf in buffers {
+            unsafe {
+                scale_kernel
+                    .clone()
+                    .launch(cfg, (buf as &CudaSlice<f64>, n as i32, factor))
+                    .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
+            }
+        }
+
+        dev.synchronize()
+            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+
+        Ok(())
     }
 }
 
@@ -423,6 +576,22 @@ impl SoAArrays {
             _padding: 0,
         }
     }
+}
+
+/// Host-side data for a single timestep (all satellites)
+///
+/// Downloaded from GPU via `Sgp4StateSoABuffers::download_timestep()`.
+/// Each vector has `n_sats` elements, indexed by satellite index.
+#[derive(Debug, Clone)]
+pub struct TimestepData {
+    pub x: Vec<f64>,
+    pub y: Vec<f64>,
+    pub z: Vec<f64>,
+    pub vx: Vec<f64>,
+    pub vy: Vec<f64>,
+    pub vz: Vec<f64>,
+    pub error_code: Vec<i32>,
+    pub n_sats: usize,
 }
 
 /// Mean motion threshold for deep space (225 min period = 6.4 rev/day)
@@ -489,6 +658,16 @@ impl CudaTlePropagator {
     /// Create a new CUDA SGP4 propagator
     pub fn new() -> Result<Self, CudaError> {
         let device = CudaDevice::new()?;
+        Self::init_with_device(device)
+    }
+
+    /// Create a new CUDA SGP4 propagator with a shared device
+    pub fn new_with_device(device: CudaDevice) -> Result<Self, CudaError> {
+        Self::init_with_device(device)
+    }
+
+    /// Internal: load PTX and cache kernels on the given device
+    fn init_with_device(device: CudaDevice) -> Result<Self, CudaError> {
         let dev = device.device();
 
         // Load PTX modules

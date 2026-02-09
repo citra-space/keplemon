@@ -13,7 +13,6 @@ try:
     from keplemon.propagation import BatchPropagator, PropagationBackend
     from keplemon.elements import TLE
     from keplemon.time import Epoch, TimeSpan
-    from keplemon.bodies import Constellation
     from keplemon.enums import TimeSystem
 
 except ImportError as e:
@@ -152,40 +151,6 @@ def test_batch_propagator():
         print(f"  ✓ CPU: {len(results)} satellites × {len(results[0])} epochs")
 
 
-def test_constellation_batch():
-    """Test Constellation batch methods"""
-    print("\n=== Testing Constellation batch methods ===")
-
-    tle1 = TLE.from_lines(ISS_LINE1, ISS_LINE2)
-    tle2 = TLE.from_lines(STARLINK_LINE1, STARLINK_LINE2)
-
-    constellation = Constellation()
-    constellation.add("ISS", tle1.to_satellite())
-    constellation.add("Starlink", tle2.to_satellite())
-
-    print(f"  Constellation has {constellation.get_count()} satellites")
-
-    # Test batch ephemeris
-    start = Epoch.from_iso("2024-01-18T12:00:00.000000Z", TimeSystem.UTC)
-    end = start + TimeSpan.from_hours(2.0)
-    step = TimeSpan.from_minutes(10.0)
-
-    print("  Computing batch ephemeris...")
-
-    # Try with Auto backend
-    results = constellation.get_batch_ephemeris(start, end, step, PropagationBackend.Auto)
-
-    print(f"  ✓ Got results for {len(results)} satellites")
-
-    for sat_id, states in results.items():
-        valid_states = [s for s in states if s is not None]
-        print(f"  ✓ {sat_id}: {len(valid_states)}/{len(states)} valid states")
-
-    # Test GPU availability
-    gpu_available = Constellation.is_gpu_available()
-    print(f"  ✓ GPU available (static method): {gpu_available}")
-
-
 def main():
     print("=" * 60)
     print("GPU-Accelerated Batch Propagation Python Tests")
@@ -195,8 +160,6 @@ def main():
         test_tle_propagate_batch()
         test_tle_propagate_to_epochs()
         test_batch_propagator()
-        # test_constellation_batch()  # Commented out - needs to_satellite() method
-
         print("\n" + "=" * 60)
         print("✓ All tests passed!")
         print("=" * 60)

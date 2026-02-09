@@ -113,6 +113,9 @@ fn compile_cuda_kernels() {
     println!("cargo:rerun-if-changed=kernels/sdp4_interpolated.cuh");
     println!("cargo:rerun-if-changed=kernels/sdp4_interpolated_types.cuh");
 
+    // Scale kernel
+    println!("cargo:rerun-if-changed=kernels/scale.cu");
+
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
 
     // Find nvcc - check CUDA_PATH or common locations
@@ -142,6 +145,7 @@ fn compile_cuda_kernels() {
         fs::write(format!("{}/geo_numerical.ptx", out_dir), stub_ptx).expect("Failed to write stub geo_numerical.ptx");
         fs::write(format!("{}/sdp4_interpolated.ptx", out_dir), stub_ptx)
             .expect("Failed to write stub sdp4_interpolated.ptx");
+        fs::write(format!("{}/scale.ptx", out_dir), stub_ptx).expect("Failed to write stub scale.ptx");
 
         return;
     }
@@ -175,6 +179,9 @@ fn compile_cuda_kernels() {
         "kernels/sdp4_interpolated.cu",
         &format!("{}/sdp4_interpolated.ptx", out_dir),
     );
+
+    // Compile scale kernel (for in-VRAM unit conversion)
+    compile_kernel(nvcc_cmd, "kernels/scale.cu", &format!("{}/scale.ptx", out_dir));
 
     println!("cargo:info=CUDA kernels compiled successfully");
 }

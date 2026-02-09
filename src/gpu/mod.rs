@@ -76,7 +76,7 @@ pub mod device;
 #[cfg(feature = "cuda")]
 pub use cuda_tle::{
     CudaTlePropagator, PropagatorOverride, PropagatorType, Sgp4ParamsGpu, Sgp4StateGpu, Sgp4StateSoABuffers, SoAArrays,
-    TleDataGpu,
+    TimestepData, TleDataGpu,
 };
 
 #[cfg(feature = "cuda")]
