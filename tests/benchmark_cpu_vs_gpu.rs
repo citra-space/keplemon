@@ -551,3 +551,71 @@ fn test_benchmark_geo_analytical() {
     println!("GEO Analytical Benchmark Complete!");
     println!("{}", "=".repeat(70));
 }
+
+/// Quick GPU SDP4 benchmark: CPU parallel vs GPU (precomputed resonance)
+///
+/// Baseline GPU SDP4 (without precomputed resonance) was ~1.6x vs CPU parallel.
+/// This test measures the new precomputed resonance GPU SDP4 speedup.
+#[test]
+#[ignore]
+fn test_benchmark_sdp4_precomputed() {
+    if !CudaTlePropagator::is_cuda_available() {
+        eprintln!("CUDA not available, skipping SDP4 precomputed benchmark");
+        return;
+    }
+
+    println!("\n");
+    println!("{}", "#".repeat(70));
+    println!("# GPU SDP4 (Precomputed Resonance) vs CPU Parallel SDP4");
+    println!("# Baseline GPU SDP4 was ~1.6x vs CPU parallel");
+    println!("{}", "#".repeat(70));
+
+    let satellite_counts = vec![100, 500, 1000];
+    let n_times = 10_080; // 7 days at 1-minute intervals
+
+    for &n_sats in &satellite_counts {
+        println!("\n{}", "=".repeat(70));
+        println!(
+            "Satellites: {} | Timesteps: {} | Total: {} propagations",
+            n_sats,
+            n_times,
+            n_sats * n_times
+        );
+        println!("{}", "=".repeat(70));
+
+        let tles = generate_tles(n_sats, OrbitRegime::GeoOnly);
+        let satellites: Vec<Satellite> = tles.iter().map(|tle| Satellite::from(tle.clone())).collect();
+
+        let base_epoch = tles[0].get_keplerian_state().epoch;
+        let times: Vec<Epoch> = (0..n_times)
+            .map(|i| base_epoch + TimeSpan::from_minutes(i as f64))
+            .collect();
+        let base_jd = base_epoch.days_since_1950 + JD_1950;
+        let times_jd: Vec<f64> = (0..n_times).map(|i| base_jd + (i as f64) / 1440.0).collect();
+
+        // CPU Parallel SDP4
+        print!("CPU SDP4 (parallel):       ");
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+        let cpu_par_time = benchmark_cpu_parallel(&satellites, &times);
+        println!("{:>10.3} ms", cpu_par_time.as_secs_f64() * 1000.0);
+
+        // GPU SDP4 (precomputed resonance)
+        let gpu_result = benchmark_gpu(&tles, &times_jd);
+        match &gpu_result {
+            Ok(result) => {
+                let kernel_ms = result.kernel_time.as_secs_f64() * 1000.0;
+                let total_ms = result.total_time.as_secs_f64() * 1000.0;
+                println!("GPU SDP4 (kernel+precomp):  {:>10.3} ms", kernel_ms);
+                println!("GPU SDP4 (+ transfer):     {:>10.3} ms", total_ms);
+
+                let speedup_kernel = cpu_par_time.as_secs_f64() / result.kernel_time.as_secs_f64();
+                let speedup_total = cpu_par_time.as_secs_f64() / result.total_time.as_secs_f64();
+                println!("\nSpeedup vs CPU Parallel:");
+                println!("  GPU (kernel+precomp):  {:>6.1}x", speedup_kernel);
+                println!("  GPU (+ transfer):      {:>6.1}x", speedup_total);
+                println!("  (Baseline was ~1.6x without precomputed resonance)");
+            }
+            Err(e) => println!("GPU SDP4: ERROR - {}", e),
+        }
+    }
+}

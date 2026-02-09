@@ -606,3 +606,93 @@ extern "C" __global__ void sgp4_propagate_soa_indexed_kernel(
     state_vz[out_idx] = state.vz;
     state_error[out_idx] = state.error_code;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRECOMPUTED RESONANCE INDEXED SoA KERNEL (SDP4 optimization)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Same as sgp4_propagate_soa_indexed_kernel but patches the resonance state
+// (atime, xli, xni) from a CPU-precomputed boundary table before propagation.
+//
+// The CPU pre-walks the resonance at 720-minute boundaries per satellite and
+// uploads a small table: resonance_boundaries[sat_idx * max_boundaries + step].
+// The GPU computes step_idx = floor(tsince / 720) to look up the nearest
+// boundary, so the DSPACE loop exits in ZERO iterations (already within STEP).
+//
+// This uses O(n_sats * max_boundaries) memory instead of O(n_sats * n_times),
+// reducing upload from ~242MB to ~360KB for typical workloads.
+
+extern "C" __global__ void sdp4_propagate_precomputed_soa_indexed_kernel(
+    const Sgp4Params* __restrict__ params,              // [n_partition_sats] SDP4 params
+    const double* __restrict__ jd_times,                // [n_times] Julian Dates
+    const int* __restrict__ original_indices,           // [n_partition_sats] index mapping
+    const ResonanceState* __restrict__ resonance_boundaries, // [n_partition_sats * max_boundaries]
+    int max_boundaries,                                 // max boundary steps per satellite
+    double* __restrict__ state_x,                       // [n_total_sats * n_times] shared output
+    double* __restrict__ state_y,
+    double* __restrict__ state_z,
+    double* __restrict__ state_vx,
+    double* __restrict__ state_vy,
+    double* __restrict__ state_vz,
+    int* __restrict__ state_error,
+    long long packed_dims,                              // high 32: n_partition_sats, low 32: n_total_sats
+    int n_times
+) {
+    int n_partition_sats = (int)(packed_dims >> 32);
+    int n_total_sats = (int)(packed_dims & 0xFFFFFFFF);
+    __shared__ double shared_times[MAX_TIMES_SHARED];
+
+    int sat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int time_idx = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int thread_id = threadIdx.y * blockDim.x + threadIdx.x;
+    int block_size = blockDim.x * blockDim.y;
+
+    // Cooperatively load time values into shared memory
+    int time_block_start = blockIdx.y * blockDim.y;
+    int time_block_end = min(time_block_start + (int)blockDim.y, n_times);
+    int times_to_load = time_block_end - time_block_start;
+
+    for (int i = thread_id; i < times_to_load && i < MAX_TIMES_SHARED; i += block_size) {
+        int global_time_idx = time_block_start + i;
+        if (global_time_idx < n_times) {
+            shared_times[i] = jd_times[global_time_idx];
+        }
+    }
+    __syncthreads();
+
+    if (sat_idx >= n_partition_sats || time_idx >= n_times) return;
+
+    Sgp4Params p = params[sat_idx];
+
+    int local_time_idx = time_idx - time_block_start;
+    double jd = shared_times[local_time_idx];
+    double tsince = (jd - p.epoch_jd) * MINUTES_PER_DAY;
+
+    // Patch resonance state from boundary table lookup
+    // For positive tsince with resonant satellites, look up the nearest
+    // 720-min boundary. For negative tsince, let DSPACE handle it normally.
+    if (p.irez != 0 && tsince >= 0.0 && max_boundaries > 0) {
+        int step_idx = (int)(tsince / 720.0);
+        if (step_idx >= max_boundaries) step_idx = max_boundaries - 1;
+        ResonanceState rs = resonance_boundaries[sat_idx * max_boundaries + step_idx];
+        p.atime = rs.atime;
+        p.xli = rs.xli;
+        p.xni = rs.xni;
+    }
+
+    Sgp4State state;
+    sgp4_propagate_single(p, tsince, state, sat_idx, time_idx);
+
+    // Write to indexed position in shared output buffer
+    int original_sat_idx = original_indices[sat_idx];
+    int out_idx = time_idx * n_total_sats + original_sat_idx;
+
+    state_x[out_idx] = state.x;
+    state_y[out_idx] = state.y;
+    state_z[out_idx] = state.z;
+    state_vx[out_idx] = state.vx;
+    state_vy[out_idx] = state.vy;
+    state_vz[out_idx] = state.vz;
+    state_error[out_idx] = state.error_code;
+}

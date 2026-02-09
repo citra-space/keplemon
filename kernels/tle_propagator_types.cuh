@@ -153,6 +153,14 @@ struct Sgp4State {
     int _padding;          // Alignment padding to 8-byte boundary
 };
 
+// Pre-computed resonance state for CPU-side DSPACE pre-computation
+// Allows bypassing the iterative resonance loop on GPU
+struct ResonanceState {
+    double atime;       // Accumulated resonance time (minutes)
+    double xli;         // Integrated mean longitude
+    double xni;         // Integrated mean motion
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // STRUCT OF ARRAYS (SoA) LAYOUT FOR OPTIMIZED MEMORY COALESCING
 // ═══════════════════════════════════════════════════════════════════════════

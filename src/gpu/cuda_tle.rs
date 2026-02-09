@@ -4,7 +4,7 @@
 //! supporting both SGP4 (near-earth) and SDP4 (deep-space) algorithms.
 
 use super::device::{CudaDevice, CudaError};
-use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaFunction, CudaSlice, DeviceRepr, LaunchAsync, LaunchConfig};
 
 // Include the PTX at compile time
 const TLE_PROPAGATOR_INIT_PTX: &str = include_str!(concat!(env!("OUT_DIR"), "/tle_propagator_init.ptx"));
@@ -266,6 +266,20 @@ pub struct Sgp4ParamsGpu {
 unsafe impl cudarc::driver::DeviceRepr for Sgp4ParamsGpu {}
 // SAFETY: Sgp4ParamsGpu is composed entirely of f64, i32, and arrays thereof, all valid as zero
 unsafe impl cudarc::driver::ValidAsZeroBits for Sgp4ParamsGpu {}
+
+/// Pre-computed resonance state for CPU-side DSPACE optimization
+/// Must match CUDA ResonanceState struct exactly
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ResonanceStateGpu {
+    pub atime: f64,
+    pub xli: f64,
+    pub xni: f64,
+}
+
+unsafe impl cudarc::driver::DeviceRepr for ResonanceStateGpu {}
+// SAFETY: ResonanceStateGpu is composed entirely of f64 fields, all valid as zero
+unsafe impl cudarc::driver::ValidAsZeroBits for ResonanceStateGpu {}
 
 /// Output state (position and velocity)
 #[repr(C)]
@@ -598,6 +612,177 @@ pub struct TimestepData {
 /// Satellites with period >= 225 min use SDP4, others use SGP4
 const DEEP_SPACE_MEAN_MOTION_THRESHOLD: f64 = 6.4; // rev/day
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CPU-SIDE RESONANCE PRE-COMPUTATION
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// These functions port the DSPACE resonance stepping loop from CUDA to Rust,
+// allowing the iterative resonance walk to be done on the CPU with rayon
+// parallelism. This eliminates GPU warp divergence for SDP4 satellites.
+
+/// DSPACE resonance integration step size (minutes) - matches CUDA STEP constant
+const DSPACE_STEP: f64 = 720.0;
+/// STEP^2 / 2 for the integration - matches CUDA STEP2 constant
+const DSPACE_STEP2: f64 = 259200.0;
+
+/// Resonance phase constants (matching sdp4_deepspace.cuh)
+const FASX2: f64 = 0.13130908;
+const FASX4: f64 = 2.8843198;
+const FASX6: f64 = 0.37448087;
+
+/// G-coefficients for half-day resonance (matching tle_propagator_constants.cuh)
+const G22: f64 = 5.7686396;
+const G32: f64 = 0.95240898;
+const G44: f64 = 1.8014998;
+const G52: f64 = 1.0508330;
+const G54: f64 = 4.4108898;
+
+/// Compute resonance derivatives for synchronous (irez==1) resonance
+///
+/// Returns (xndt, xnddt, xldot) matching sdp4_deepspace.cuh lines 566-575
+#[inline]
+fn resonance_derivatives_sync(xli: f64, xni: f64, del1: f64, del2: f64, del3: f64, xfact: f64) -> (f64, f64, f64) {
+    let xndt = del1 * (xli - FASX2).sin() + del2 * (2.0 * (xli - FASX4)).sin() + del3 * (3.0 * (xli - FASX6)).sin();
+    let xldot = xni + xfact;
+    let xnddt = del1 * (xli - FASX2).cos()
+        + 2.0 * del2 * (2.0 * (xli - FASX4)).cos()
+        + 3.0 * del3 * (3.0 * (xli - FASX6)).cos();
+    (xndt, xnddt * xldot, xldot)
+}
+
+/// Compute resonance derivatives for half-day (irez==2) resonance
+///
+/// Returns (xndt, xnddt, xldot) matching sdp4_deepspace.cuh lines 584-610
+#[inline]
+fn resonance_derivatives_halfd(xli: f64, xni: f64, atime: f64, p: &Sgp4ParamsGpu) -> (f64, f64, f64) {
+    let xomi = p.argpo + p.argpdot * atime;
+    let x2omi = xomi + xomi;
+    let x2li = xli + xli;
+    let xndt = p.d2201 * (x2omi + xli - G22).sin()
+        + p.d2211 * (xli - G22).sin()
+        + p.d3210 * (xomi + xli - G32).sin()
+        + p.d3222 * (-xomi + xli - G32).sin()
+        + p.d4410 * (x2omi + x2li - G44).sin()
+        + p.d4422 * (x2li - G44).sin()
+        + p.d5220 * (xomi + xli - G52).sin()
+        + p.d5232 * (-xomi + xli - G52).sin()
+        + p.d5421 * (xomi + x2li - G54).sin()
+        + p.d5433 * (-xomi + x2li - G54).sin();
+    let xldot = xni + p.xfact;
+    let xnddt = p.d2201 * (x2omi + xli - G22).cos()
+        + p.d2211 * (xli - G22).cos()
+        + p.d3210 * (xomi + xli - G32).cos()
+        + p.d3222 * (-xomi + xli - G32).cos()
+        + p.d5220 * (xomi + xli - G52).cos()
+        + p.d5232 * (-xomi + xli - G52).cos()
+        + 2.0
+            * (p.d4410 * (x2omi + x2li - G44).cos()
+                + p.d4422 * (x2li - G44).cos()
+                + p.d5421 * (xomi + x2li - G54).cos()
+                + p.d5433 * (-xomi + x2li - G54).cos());
+    (xndt, xnddt * xldot, xldot)
+}
+
+/// Compute resonance boundary table for a single satellite.
+///
+/// Walks the resonance in 720-minute steps from atime=0 forward, storing the
+/// resonance state (atime, xli, xni) at each boundary. The GPU can then look up
+/// the nearest boundary via `step_idx = floor(tsince / 720)`.
+///
+/// For non-resonant satellites (irez==0), returns default states.
+fn compute_boundaries_for_satellite(p: &Sgp4ParamsGpu, max_boundaries: usize) -> Vec<ResonanceStateGpu> {
+    let mut boundaries = Vec::with_capacity(max_boundaries);
+
+    if p.irez == 0 {
+        // Non-resonant: DSPACE skips the resonance loop entirely.
+        let default = ResonanceStateGpu {
+            atime: 0.0,
+            xli: p.xlamo,
+            xni: p.no_unkozai,
+        };
+        boundaries.resize(max_boundaries, default);
+        return boundaries;
+    }
+
+    // Walk resonance from atime=0 forward in 720-minute steps
+    let mut atime = 0.0;
+    let mut xli = p.xlamo;
+    let mut xni = p.no_unkozai;
+
+    // Store boundary at atime=0
+    boundaries.push(ResonanceStateGpu { atime, xli, xni });
+
+    for _ in 1..max_boundaries {
+        // Compute derivatives at current state
+        let (xndt, xnddt, xldot) = if p.irez == 1 {
+            resonance_derivatives_sync(xli, xni, p.del1, p.del2, p.del3, p.xfact)
+        } else {
+            resonance_derivatives_halfd(xli, xni, atime, p)
+        };
+
+        // Advance one 720-minute step
+        xli = xli + xldot * DSPACE_STEP + xndt * DSPACE_STEP2;
+        xni = xni + xndt * DSPACE_STEP + xnddt * DSPACE_STEP2;
+        atime += DSPACE_STEP;
+
+        boundaries.push(ResonanceStateGpu { atime, xli, xni });
+    }
+
+    boundaries
+}
+
+/// Compute resonance boundary tables for all SDP4 satellites.
+///
+/// Uses rayon for parallelism across satellites. Each satellite gets a table of
+/// resonance states at 720-minute boundaries. The GPU looks up the nearest
+/// boundary for each (satellite, time) pair.
+///
+/// Returns `(boundaries, max_boundaries)` where boundaries is in sat-major layout:
+/// `boundaries[sat_idx * max_boundaries + step_idx]`
+///
+/// Data size: O(n_sats * max_boundaries) ≈ n_sats * 15 * 24 bytes for 7 days,
+/// vs. O(n_sats * n_times) for the per-time approach.
+fn compute_resonance_boundaries(sdp4_params: &[Sgp4ParamsGpu], jd_times: &[f64]) -> (Vec<ResonanceStateGpu>, usize) {
+    use rayon::prelude::*;
+
+    let n_sats = sdp4_params.len();
+
+    if n_sats == 0 || jd_times.is_empty() {
+        return (Vec::new(), 0);
+    }
+
+    // Compute max positive tsince across all satellites to determine boundary count
+    let max_tsince: f64 = sdp4_params
+        .iter()
+        .map(|p| {
+            jd_times
+                .iter()
+                .map(|&jd| (jd - p.epoch_jd) * 1440.0)
+                .fold(0.0f64, f64::max)
+        })
+        .fold(0.0f64, f64::max);
+
+    let max_boundaries = if max_tsince > 0.0 {
+        (max_tsince / DSPACE_STEP).floor() as usize + 1
+    } else {
+        1 // at least one boundary at t=0
+    };
+
+    // Compute per-satellite boundary tables in parallel
+    let per_sat: Vec<Vec<ResonanceStateGpu>> = sdp4_params
+        .par_iter()
+        .map(|p| compute_boundaries_for_satellite(p, max_boundaries))
+        .collect();
+
+    // Flatten to sat-major layout: boundaries[sat_idx * max_boundaries + step_idx]
+    let mut output = Vec::with_capacity(n_sats * max_boundaries);
+    for sat_boundaries in &per_sat {
+        output.extend_from_slice(sat_boundaries);
+    }
+
+    (output, max_boundaries)
+}
+
 /// GPU-accelerated SGP4 batch propagator
 ///
 /// Uses two-kernel launch optimization to eliminate warp divergence when
@@ -619,6 +804,7 @@ pub struct CudaTlePropagator {
     init_kernel: CudaFunction,
     propagate_soa_kernel: CudaFunction,
     propagate_soa_indexed_kernel: CudaFunction,
+    propagate_precomputed_kernel: CudaFunction,
 
     // ═══════════════════════════════════════════════════════════════════════════════
     // TWO-KERNEL LAUNCH OPTIMIZATION
@@ -636,6 +822,8 @@ pub struct CudaTlePropagator {
     sgp4_indices_gpu: Option<CudaSlice<i32>>,
     /// GPU-resident index mapping for SDP4 partition
     sdp4_indices_gpu: Option<CudaSlice<i32>>,
+    /// CPU-side copy of SDP4 initialized params (for resonance pre-computation)
+    sdp4_params_cpu: Option<Vec<Sgp4ParamsGpu>>,
     /// Cached SoA buffers for SGP4 partition
     cached_soa_sgp4: Option<CachedSoABuffers>,
     /// Cached SoA buffers for SDP4 partition
@@ -681,7 +869,11 @@ impl CudaTlePropagator {
         dev.load_ptx(
             TLE_PROPAGATOR_BATCH_PTX.into(),
             "tle_propagator_batch",
-            &["sgp4_propagate_soa_kernel", "sgp4_propagate_soa_indexed_kernel"],
+            &[
+                "sgp4_propagate_soa_kernel",
+                "sgp4_propagate_soa_indexed_kernel",
+                "sdp4_propagate_precomputed_soa_indexed_kernel",
+            ],
         )
         .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
 
@@ -698,6 +890,10 @@ impl CudaTlePropagator {
             .get_func("tle_propagator_batch", "sgp4_propagate_soa_indexed_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_soa_indexed_kernel not found".into()))?;
 
+        let propagate_precomputed_kernel = dev
+            .get_func("tle_propagator_batch", "sdp4_propagate_precomputed_soa_indexed_kernel")
+            .ok_or_else(|| CudaError::KernelLoad("sdp4_propagate_precomputed_soa_indexed_kernel not found".into()))?;
+
         Ok(Self {
             device,
             n_satellites: 0,
@@ -709,6 +905,7 @@ impl CudaTlePropagator {
             init_kernel,
             propagate_soa_kernel,
             propagate_soa_indexed_kernel,
+            propagate_precomputed_kernel,
             // Two-kernel optimization fields
             sgp4_indices: Vec::new(),
             sdp4_indices: Vec::new(),
@@ -716,6 +913,7 @@ impl CudaTlePropagator {
             params_sdp4_gpu: None,
             sgp4_indices_gpu: None,
             sdp4_indices_gpu: None,
+            sdp4_params_cpu: None,
             cached_soa_sgp4: None,
             cached_soa_sdp4: None,
         })
@@ -890,6 +1088,19 @@ impl CudaTlePropagator {
             self.sdp4_indices_gpu = None;
         }
 
+        // Download SDP4 params to CPU for resonance pre-computation
+        if let Some(params_sdp4) = &self.params_sdp4_gpu {
+            // Sync to ensure SDP4 init kernel has completed
+            dev.synchronize()
+                .map_err(|e| CudaError::Synchronization(e.to_string()))?;
+            let params_cpu = dev
+                .dtoh_sync_copy(params_sdp4)
+                .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
+            self.sdp4_params_cpu = Some(params_cpu);
+        } else {
+            self.sdp4_params_cpu = None;
+        }
+
         // ═══════════════════════════════════════════════════════════════════
         // ALSO INIT LEGACY UNIFIED BUFFER (for backward compatibility)
         // ═══════════════════════════════════════════════════════════════════
@@ -1016,6 +1227,8 @@ impl CudaTlePropagator {
                 .htod_sync_copy(&params)
                 .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
             self.params_sdp4_gpu = Some(new_params_gpu);
+            // Keep CPU copy in sync for resonance pre-computation
+            self.sdp4_params_cpu = Some(params);
         }
 
         // Synchronize to ensure updates complete
@@ -1191,11 +1404,21 @@ impl CudaTlePropagator {
 
         // ═══════════════════════════════════════════════════════════════════
         // PROPAGATE SDP4 PARTITION (deep-space satellites)
-        // Uses indexed kernel to write directly to correct positions
+        // Uses precomputed resonance kernel to eliminate GPU DSPACE loop
         // ═══════════════════════════════════════════════════════════════════
 
-        if let (Some(params_sdp4), Some(indices_gpu)) = (&self.params_sdp4_gpu, &self.sdp4_indices_gpu) {
+        if let (Some(params_sdp4), Some(indices_gpu), Some(sdp4_params_cpu)) =
+            (&self.params_sdp4_gpu, &self.sdp4_indices_gpu, &self.sdp4_params_cpu)
+        {
             let n_sdp4 = self.sdp4_indices.len();
+
+            // Compute resonance boundary table on CPU (O(n_sats * ~15) entries)
+            let (boundaries, max_boundaries) = compute_resonance_boundaries(sdp4_params_cpu, jd_times);
+
+            // Upload boundary table to GPU (typically ~360KB for 1000 sats × 7 days)
+            let resonance_gpu = dev
+                .htod_sync_copy(&boundaries)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
             let block_x = 16u32;
             let block_y = 16u32;
@@ -1210,27 +1433,31 @@ impl CudaTlePropagator {
 
             // Pack dimensions: high 32-bits = n_partition_sats, low 32-bits = n_total_sats
             let packed_dims: i64 = ((n_sdp4 as i64) << 32) | (self.n_satellites as i64);
+            // Bind scalars to named variables so their addresses remain valid through launch()
+            let max_boundaries_i32 = max_boundaries as i32;
+            let n_times_i32 = n_times as i32;
 
+            // 14 params exceeds cudarc's 12-element tuple limit, so use raw param array
             unsafe {
-                self.propagate_soa_indexed_kernel
+                let mut params_vec = vec![
+                    params_sdp4.as_kernel_param(),
+                    (&times_gpu).as_kernel_param(),
+                    indices_gpu.as_kernel_param(),
+                    (&resonance_gpu).as_kernel_param(),
+                    max_boundaries_i32.as_kernel_param(),
+                    (&soa.x).as_kernel_param(),
+                    (&soa.y).as_kernel_param(),
+                    (&soa.z).as_kernel_param(),
+                    (&soa.vx).as_kernel_param(),
+                    (&soa.vy).as_kernel_param(),
+                    (&soa.vz).as_kernel_param(),
+                    (&soa.error_code).as_kernel_param(),
+                    packed_dims.as_kernel_param(),
+                    n_times_i32.as_kernel_param(),
+                ];
+                self.propagate_precomputed_kernel
                     .clone()
-                    .launch(
-                        cfg,
-                        (
-                            params_sdp4,
-                            &times_gpu,
-                            indices_gpu,
-                            &soa.x,
-                            &soa.y,
-                            &soa.z,
-                            &soa.vx,
-                            &soa.vy,
-                            &soa.vz,
-                            &soa.error_code,
-                            packed_dims,
-                            n_times as i32,
-                        ),
-                    )
+                    .launch(cfg, &mut params_vec)
                     .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
         }
@@ -1587,8 +1814,19 @@ impl CudaTlePropagator {
         }
 
         // PROPAGATE SDP4 PARTITION (deep-space satellites)
-        if let (Some(params_sdp4), Some(indices_gpu)) = (&self.params_sdp4_gpu, &self.sdp4_indices_gpu) {
+        // Uses precomputed resonance boundary table to eliminate GPU DSPACE loop
+        if let (Some(params_sdp4), Some(indices_gpu), Some(sdp4_params_cpu)) =
+            (&self.params_sdp4_gpu, &self.sdp4_indices_gpu, &self.sdp4_params_cpu)
+        {
             let n_sdp4 = self.sdp4_indices.len();
+
+            // Compute resonance boundary table on CPU (O(n_sats * ~15) entries)
+            let (boundaries, max_boundaries) = compute_resonance_boundaries(sdp4_params_cpu, jd_times);
+
+            // Upload boundary table to GPU
+            let resonance_gpu = dev
+                .htod_sync_copy(&boundaries)
+                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
 
             let block_x = 16u32;
             let block_y = 16u32;
@@ -1602,27 +1840,31 @@ impl CudaTlePropagator {
             };
 
             let packed_dims: i64 = ((n_sdp4 as i64) << 32) | (self.n_satellites as i64);
+            // Bind scalars to named variables so their addresses remain valid through launch()
+            let max_boundaries_i32 = max_boundaries as i32;
+            let n_times_i32 = n_times as i32;
 
+            // 14 params exceeds cudarc's 12-element tuple limit, so use raw param array
             unsafe {
-                self.propagate_soa_indexed_kernel
+                let mut params_vec = vec![
+                    params_sdp4.as_kernel_param(),
+                    times_gpu.as_kernel_param(),
+                    indices_gpu.as_kernel_param(),
+                    (&resonance_gpu).as_kernel_param(),
+                    max_boundaries_i32.as_kernel_param(),
+                    (&soa.x).as_kernel_param(),
+                    (&soa.y).as_kernel_param(),
+                    (&soa.z).as_kernel_param(),
+                    (&soa.vx).as_kernel_param(),
+                    (&soa.vy).as_kernel_param(),
+                    (&soa.vz).as_kernel_param(),
+                    (&soa.error_code).as_kernel_param(),
+                    packed_dims.as_kernel_param(),
+                    n_times_i32.as_kernel_param(),
+                ];
+                self.propagate_precomputed_kernel
                     .clone()
-                    .launch(
-                        cfg,
-                        (
-                            params_sdp4,
-                            times_gpu,
-                            indices_gpu,
-                            &soa.x,
-                            &soa.y,
-                            &soa.z,
-                            &soa.vx,
-                            &soa.vy,
-                            &soa.vz,
-                            &soa.error_code,
-                            packed_dims,
-                            n_times as i32,
-                        ),
-                    )
+                    .launch(cfg, &mut params_vec)
                     .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
             }
         }
