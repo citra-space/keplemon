@@ -572,7 +572,7 @@ impl BatchPropagator {
                 .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
 
             gpu_propagator
-                .propagate_resident(&jd_times)
+                .propagate_soa_resident(&jd_times)
                 .map_err(|e| format!("GPU propagation failed: {}", e))
         } else if all_deep_space {
             // Note: SDP4-Analytical doesn't yet have GPU-resident method

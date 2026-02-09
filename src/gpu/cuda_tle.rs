@@ -1277,7 +1277,7 @@ impl CudaTlePropagator {
     /// let cpu_results = propagator.propagate_soa_arrays(&times)?;
     ///
     /// // Option 2: GPU-resident (new API, for GPU pipelines)
-    /// let gpu_results = propagator.propagate_resident(&times)?;
+    /// let gpu_results = propagator.propagate_soa_resident(&times)?;
     /// // Keep data on GPU for subsequent processing
     /// // let device = propagator.cuda_device();
     /// // custom_kernel.launch(cfg, (&gpu_results.x, &gpu_results.y))?;
@@ -1297,7 +1297,7 @@ impl CudaTlePropagator {
     ///
     /// # Returns
     /// GPU-resident SoA buffers in time-major order: buffer[time_idx * n_sats + sat_idx]
-    pub fn propagate_resident(&mut self, jd_times: &[f64]) -> Result<Sgp4StateSoABuffers, CudaError> {
+    pub fn propagate_soa_resident(&mut self, jd_times: &[f64]) -> Result<Sgp4StateSoABuffers, CudaError> {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
@@ -1478,7 +1478,7 @@ impl CudaTlePropagator {
     /// # let times: Vec<f64> = vec![2459945.5];
     /// let mut propagator = CudaTlePropagator::new()?;
     /// propagator.init_satellites(&tle_data)?;
-    /// let gpu_states = propagator.propagate_resident(&times)?;
+    /// let gpu_states = propagator.propagate_soa_resident(&times)?;
     ///
     /// // Launch custom kernel on same device
     /// let device = propagator.cuda_device();
