@@ -444,14 +444,10 @@ pub struct CudaTlePropagator {
     /// Cached JD times on GPU for repeated propagations
     cached_times_gpu: Option<CudaSlice<f64>>,
     cached_n_times: usize,
-    /// Cached output buffer for repeated propagations with same dimensions
-    cached_states_gpu: Option<CudaSlice<Sgp4StateGpu>>,
-    cached_n_results: usize,
     /// Cached SoA output buffers for SoA propagation
     cached_soa_buffers: Option<CachedSoABuffers>,
     /// Cached kernel functions to avoid lookup overhead
     init_kernel: CudaFunction,
-    propagate_kernel: CudaFunction,
     propagate_soa_kernel: CudaFunction,
     propagate_soa_indexed_kernel: CudaFunction,
 
@@ -506,11 +502,7 @@ impl CudaTlePropagator {
         dev.load_ptx(
             TLE_PROPAGATOR_BATCH_PTX.into(),
             "tle_propagator_batch",
-            &[
-                "sgp4_propagate_kernel",
-                "sgp4_propagate_soa_kernel",
-                "sgp4_propagate_soa_indexed_kernel",
-            ],
+            &["sgp4_propagate_soa_kernel", "sgp4_propagate_soa_indexed_kernel"],
         )
         .map_err(|e| CudaError::KernelLoad(e.to_string()))?;
 
@@ -518,10 +510,6 @@ impl CudaTlePropagator {
         let init_kernel = dev
             .get_func("tle_propagator_init", "sgp4_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("sgp4_init_kernel not found".into()))?;
-
-        let propagate_kernel = dev
-            .get_func("tle_propagator_batch", "sgp4_propagate_kernel")
-            .ok_or_else(|| CudaError::KernelLoad("sgp4_propagate_kernel not found".into()))?;
 
         let propagate_soa_kernel = dev
             .get_func("tle_propagator_batch", "sgp4_propagate_soa_kernel")
@@ -538,11 +526,8 @@ impl CudaTlePropagator {
             params_gpu: None,
             cached_times_gpu: None,
             cached_n_times: 0,
-            cached_states_gpu: None,
-            cached_n_results: 0,
             cached_soa_buffers: None,
             init_kernel,
-            propagate_kernel,
             propagate_soa_kernel,
             propagate_soa_indexed_kernel,
             // Two-kernel optimization fields
@@ -861,102 +846,6 @@ impl CudaTlePropagator {
         Ok(())
     }
 
-    /// Propagate all initialized satellites to given Julian Date times
-    ///
-    /// # Arguments
-    /// * `jd_times` - Array of Julian Dates to propagate to
-    ///
-    /// # Returns
-    /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
-    /// The kernel internally computes tsince for each satellite based on its TLE epoch.
-    pub fn propagate(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
-        if self.n_satellites == 0 {
-            return Err(CudaError::NotInitialized);
-        }
-
-        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
-
-        let dev = self.device.device();
-        let n_times = jd_times.len();
-        let n_results = self.n_satellites * n_times;
-
-        // Always upload times to GPU (caching requires value comparison which is expensive)
-        // The time array is typically small, so the overhead is minimal
-        let times_gpu = dev
-            .htod_sync_copy(jd_times)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-
-        // Reuse output buffer if same size, otherwise allocate new
-        if self.cached_n_results != n_results || self.cached_states_gpu.is_none() {
-            let new_states_gpu: CudaSlice<Sgp4StateGpu> = dev
-                .alloc_zeros(n_results)
-                .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-            self.cached_states_gpu = Some(new_states_gpu);
-            self.cached_n_results = n_results;
-        }
-        let states_gpu = self.cached_states_gpu.as_ref().unwrap();
-
-        // Launch config: 2D grid (satellites x times)
-        // Use 16x16 = 256 threads per block - balanced for various batch sizes
-        let block_x = 16u32;
-        let block_y = 16u32;
-        let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
-        let grid_y = (n_times as u32 + block_y - 1) / block_y;
-
-        let cfg = LaunchConfig {
-            grid_dim: (grid_x, grid_y, 1),
-            block_dim: (block_x, block_y, 1),
-            shared_mem_bytes: 0,
-        };
-
-        // Launch with cached kernel function
-        unsafe {
-            self.propagate_kernel
-                .clone()
-                .launch(
-                    cfg,
-                    (
-                        params_gpu,
-                        &times_gpu,
-                        states_gpu,
-                        self.n_satellites as i32,
-                        n_times as i32,
-                    ),
-                )
-                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
-        }
-
-        // Sync and copy results back
-        dev.synchronize()
-            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
-
-        let results = dev
-            .dtoh_sync_copy(states_gpu)
-            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-
-        Ok(results)
-    }
-
-    /// Pre-load Julian Date times to GPU for repeated propagations
-    ///
-    /// Use this when you want to propagate multiple satellite sets to the same times.
-    /// After calling this, propagate() will reuse the cached times without re-uploading.
-    pub fn cache_times(&mut self, jd_times: &[f64]) -> Result<(), CudaError> {
-        let dev = self.device.device();
-        let times_gpu = dev
-            .htod_sync_copy(jd_times)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        self.cached_times_gpu = Some(times_gpu);
-        self.cached_n_times = jd_times.len();
-        Ok(())
-    }
-
-    /// Clear cached times to free GPU memory
-    pub fn clear_time_cache(&mut self) {
-        self.cached_times_gpu = None;
-        self.cached_n_times = 0;
-    }
-
     /// Get initialized SGP4 parameters from GPU for debugging
     ///
     /// This copies the initialized parameters back from GPU memory,
@@ -976,7 +865,7 @@ impl CudaTlePropagator {
     // SoA (STRUCT OF ARRAYS) PROPAGATION METHODS
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    /// Propagate all initialized satellites to given Julian Date times using SoA kernel
+    /// Propagate all initialized satellites to given Julian Date times
     ///
     /// This uses the optimized SoA (Struct of Arrays) kernel which provides:
     /// - Coalesced memory writes (adjacent threads write adjacent memory)
@@ -989,7 +878,7 @@ impl CudaTlePropagator {
     /// # Returns
     /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
     /// (Same ordering as the AoS kernel for compatibility)
-    pub fn propagate_soa(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
+    pub fn propagate(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
         // Get SoA arrays then convert to AoS
         let soa = self.propagate_soa_arrays(jd_times)?;
 
@@ -1388,7 +1277,7 @@ impl CudaTlePropagator {
     /// let cpu_results = propagator.propagate_soa_arrays(&times)?;
     ///
     /// // Option 2: GPU-resident (new API, for GPU pipelines)
-    /// let gpu_results = propagator.propagate_soa_gpu_resident(&times)?;
+    /// let gpu_results = propagator.propagate_resident(&times)?;
     /// // Keep data on GPU for subsequent processing
     /// // let device = propagator.cuda_device();
     /// // custom_kernel.launch(cfg, (&gpu_results.x, &gpu_results.y))?;
@@ -1408,7 +1297,7 @@ impl CudaTlePropagator {
     ///
     /// # Returns
     /// GPU-resident SoA buffers in time-major order: buffer[time_idx * n_sats + sat_idx]
-    pub fn propagate_soa_gpu_resident(&mut self, jd_times: &[f64]) -> Result<Sgp4StateSoABuffers, CudaError> {
+    pub fn propagate_resident(&mut self, jd_times: &[f64]) -> Result<Sgp4StateSoABuffers, CudaError> {
         if self.n_satellites == 0 {
             return Err(CudaError::NotInitialized);
         }
@@ -1589,7 +1478,7 @@ impl CudaTlePropagator {
     /// # let times: Vec<f64> = vec![2459945.5];
     /// let mut propagator = CudaTlePropagator::new()?;
     /// propagator.init_satellites(&tle_data)?;
-    /// let gpu_states = propagator.propagate_soa_gpu_resident(&times)?;
+    /// let gpu_states = propagator.propagate_resident(&times)?;
     ///
     /// // Launch custom kernel on same device
     /// let device = propagator.cuda_device();

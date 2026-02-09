@@ -239,9 +239,7 @@ fn test_pr_cuda_validation() {
 
     // Mode 2: GPU-resident (new API)
     let gpu_resident_start = Instant::now();
-    let gpu_resident = gpu
-        .propagate_soa_gpu_resident(&jd_times)
-        .expect("propagate_soa_gpu_resident failed");
+    let gpu_resident = gpu.propagate_resident(&jd_times).expect("propagate_resident failed");
     let gpu_resident_time = gpu_resident_start.elapsed();
 
     // Convert GPU-resident to host for comparison

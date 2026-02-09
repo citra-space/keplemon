@@ -449,38 +449,11 @@ __device__ void sgp4_propagate_single(
     }
 }
 
-// Main batch propagation kernel
-// Takes Julian Dates and computes tsince per satellite
-extern "C" __global__ void sgp4_propagate_kernel(
-    const Sgp4Params* __restrict__ params,  // [n_sats]
-    const double* __restrict__ jd_times,     // [n_times] Julian Dates
-    Sgp4State* __restrict__ states,          // [n_sats * n_times]
-    int n_sats,
-    int n_times
-) {
-    int sat_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int time_idx = blockIdx.y * blockDim.y + threadIdx.y;
-    
-    if (sat_idx >= n_sats || time_idx >= n_times) return;
-    
-    // Create a local copy of params for this thread
-    // Deep space propagation modifies atime/xli/xni, so each thread needs its own copy
-    Sgp4Params p = params[sat_idx];
-    
-    // Compute tsince (minutes since this satellite's TLE epoch)
-    double jd = jd_times[time_idx];
-    double tsince = (jd - p.epoch_jd) * MINUTES_PER_DAY;
-    
-    Sgp4State& state = states[sat_idx * n_times + time_idx];
-    
-    sgp4_propagate_single(p, tsince, state, sat_idx, time_idx);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SoA (STRUCT OF ARRAYS) PROPAGATION KERNEL
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Optimizations vs the AoS kernel:
+// Optimizations:
 // 1. Shared memory caching for jd_times - all threads in a block share time values
 // 2. SoA output layout - coalesced writes with time-major ordering
 // 3. Reduced global memory transactions per warp

@@ -25,7 +25,7 @@
 //! let results = propagator.propagate_soa_arrays(&times)?;
 //! ```
 
-use super::cuda_tle::{Sgp4StateGpu, SoAArrays, TleDataGpu};
+use super::cuda_tle::{SoAArrays, TleDataGpu};
 use super::device::{CudaDevice, CudaError};
 use cudarc::driver::{CudaFunction, CudaSlice, LaunchAsync, LaunchConfig};
 
@@ -516,27 +516,6 @@ impl CudaSdp4InterpolatedPropagator {
             n_sats: self.n_satellites,
             n_times,
         })
-    }
-
-    /// Propagate and return results as a vector of state structures
-    pub fn propagate(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
-        let soa = self.propagate_soa_arrays(jd_times)?;
-
-        let mut states = Vec::with_capacity(soa.x.len());
-        for i in 0..soa.x.len() {
-            states.push(Sgp4StateGpu {
-                x: soa.x[i],
-                y: soa.y[i],
-                z: soa.z[i],
-                vx: soa.vx[i],
-                vy: soa.vy[i],
-                vz: soa.vz[i],
-                error_code: soa.error_code[i],
-                _padding: 0,
-            });
-        }
-
-        Ok(states)
     }
 
     /// Get params for debugging (downloads from GPU)

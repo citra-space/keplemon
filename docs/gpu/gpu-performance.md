@@ -81,11 +81,11 @@ state_x[out_idx] = state.x;
 
 **Problem**: For GPU pipeline use cases (e.g., propagate then run collision detection), downloading results to CPU and re-uploading is wasteful.
 
-**Solution**: `propagate_soa_gpu_resident()` returns `CudaSlice<f64>` buffers that remain on GPU memory.
+**Solution**: `propagate_resident()` returns `CudaSlice<f64>` buffers that remain on GPU memory.
 
 ```rust
 // GPU-resident mode - no transfer
-let gpu_results = propagator.propagate_soa_gpu_resident(&times)?;
+let gpu_results = propagator.propagate_resident(&times)?;
 // Use directly in next GPU operation
 collision_kernel.launch(cfg, (&gpu_results.x, &gpu_results.y, ...))?;
 ```
@@ -185,7 +185,7 @@ println!("Position: ({}, {}, {})", results.x[0], results.y[0], results.z[0]);
 
 ```rust
 // Returns CudaSlice<f64> buffers on GPU
-let gpu_results = propagator.propagate_soa_gpu_resident(&julian_dates)?;
+let gpu_results = propagator.propagate_resident(&julian_dates)?;
 
 // Use directly with other GPU operations
 let device = propagator.cuda_device();

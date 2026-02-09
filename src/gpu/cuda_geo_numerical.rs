@@ -218,12 +218,9 @@ pub struct CudaGeoNumericalPropagator {
     n_satellites: usize,
     states_gpu: Option<CudaSlice<GeoStateGpu>>,
     params_gpu: Option<CudaSlice<GeoNumericalParamsGpu>>,
-    cached_times_gpu: Option<CudaSlice<f64>>,
-    cached_n_times: usize,
     cached_soa_buffers: Option<CachedGeoSoABuffers>,
     // Cached kernel functions
     init_kernel: CudaFunction,
-    propagate_kernel: CudaFunction,
     propagate_soa_kernel: CudaFunction,
     propagate_eci_kernel: CudaFunction,
     // Index mappings for partitioned propagation
@@ -243,7 +240,6 @@ impl CudaGeoNumericalPropagator {
             "geo_numerical",
             &[
                 "geo_init_kernel",
-                "geo_propagate_kernel",
                 "geo_propagate_soa_kernel",
                 "geo_propagate_eci_kernel",
             ],
@@ -254,10 +250,6 @@ impl CudaGeoNumericalPropagator {
         let init_kernel = dev
             .get_func("geo_numerical", "geo_init_kernel")
             .ok_or_else(|| CudaError::KernelLoad("geo_init_kernel not found".into()))?;
-
-        let propagate_kernel = dev
-            .get_func("geo_numerical", "geo_propagate_kernel")
-            .ok_or_else(|| CudaError::KernelLoad("geo_propagate_kernel not found".into()))?;
 
         let propagate_soa_kernel = dev
             .get_func("geo_numerical", "geo_propagate_soa_kernel")
@@ -272,11 +264,8 @@ impl CudaGeoNumericalPropagator {
             n_satellites: 0,
             states_gpu: None,
             params_gpu: None,
-            cached_times_gpu: None,
-            cached_n_times: 0,
             cached_soa_buffers: None,
             init_kernel,
-            propagate_kernel,
             propagate_soa_kernel,
             propagate_eci_kernel,
             original_indices: Vec::new(),
@@ -390,71 +379,6 @@ impl CudaGeoNumericalPropagator {
             .collect();
 
         self.init_satellites(&states)
-    }
-
-    /// Propagate all initialized satellites to given Julian Date times
-    ///
-    /// Returns positions and velocities at each time for each satellite.
-    ///
-    /// # Returns
-    /// Vector of states: [sat0_t0, sat0_t1, ..., sat0_tn, sat1_t0, ...]
-    pub fn propagate(&mut self, jd_times: &[f64]) -> Result<Vec<Sgp4StateGpu>, CudaError> {
-        if self.n_satellites == 0 {
-            return Err(CudaError::NotInitialized);
-        }
-
-        let params_gpu = self.params_gpu.as_ref().ok_or(CudaError::NotInitialized)?;
-
-        let dev = self.device.device();
-        let n_times = jd_times.len();
-        let n_results = self.n_satellites * n_times;
-
-        // Upload times
-        let times_gpu = dev
-            .htod_sync_copy(jd_times)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-
-        // Allocate output
-        let states_gpu: CudaSlice<Sgp4StateGpu> = dev
-            .alloc_zeros(n_results)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-
-        // Launch propagation kernel
-        let block_x = 16u32;
-        let block_y = 16u32;
-        let grid_x = (self.n_satellites as u32 + block_x - 1) / block_x;
-        let grid_y = (n_times as u32 + block_y - 1) / block_y;
-
-        let cfg = LaunchConfig {
-            grid_dim: (grid_x, grid_y, 1),
-            block_dim: (block_x, block_y, 1),
-            shared_mem_bytes: 0,
-        };
-
-        unsafe {
-            self.propagate_kernel
-                .clone()
-                .launch(
-                    cfg,
-                    (
-                        params_gpu,
-                        &times_gpu,
-                        &states_gpu,
-                        self.n_satellites as i32,
-                        n_times as i32,
-                    ),
-                )
-                .map_err(|e| CudaError::KernelLaunch(e.to_string()))?;
-        }
-
-        dev.synchronize()
-            .map_err(|e| CudaError::Synchronization(e.to_string()))?;
-
-        let results = dev
-            .dtoh_sync_copy(&states_gpu)
-            .map_err(|e| CudaError::MemoryAllocation(e.to_string()))?;
-
-        Ok(results)
     }
 
     /// Propagate using SoA kernel and return raw SoA arrays
@@ -693,22 +617,6 @@ impl CudaGeoNumericalPropagator {
     }
 
     /// Pre-load Julian Date times to GPU for repeated propagations
-    pub fn cache_times(&mut self, jd_times: &[f64]) -> Result<(), CudaError> {
-        let dev = self.device.device();
-        let times_gpu = dev
-            .htod_sync_copy(jd_times)
-            .map_err(|e| CudaError::AllocationFailed(e.to_string()))?;
-        self.cached_times_gpu = Some(times_gpu);
-        self.cached_n_times = jd_times.len();
-        Ok(())
-    }
-
-    /// Clear cached times to free GPU memory
-    pub fn clear_time_cache(&mut self) {
-        self.cached_times_gpu = None;
-        self.cached_n_times = 0;
-    }
-
     /// Clear cached SoA buffers to free GPU memory
     pub fn clear_soa_cache(&mut self) {
         self.cached_soa_buffers = None;

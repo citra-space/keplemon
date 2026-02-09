@@ -46,10 +46,9 @@ fn load_tles_from_catalog(path: &str) -> Result<Vec<TleDataGpu>, String> {
     Ok(catalog.values().map(TleDataGpu::from).collect())
 }
 
-/// Benchmark comparing AoS vs SoA GPU kernel implementations
+/// Benchmark SoA GPU kernel implementations
 ///
-/// This directly benchmarks the CUDA kernels to measure the performance
-/// improvement from Struct of Arrays memory layout optimization.
+/// This directly benchmarks the CUDA kernels with Struct of Arrays memory layout.
 #[cfg(feature = "cuda")]
 fn bench_aos_vs_soa_kernel(c: &mut Criterion) {
     // Load test TLEs
@@ -85,18 +84,9 @@ fn bench_aos_vs_soa_kernel(c: &mut Criterion) {
 
         let label = format!("{}sats_{}times", n_sats, n_times);
 
-        // Benchmark AoS kernel (original)
-        group.bench_with_input(BenchmarkId::new("AoS", &label), &jd_times, |b, times| {
-            b.iter(|| propagator.propagate(black_box(times)).expect("AoS propagation failed"));
-        });
-
-        // Benchmark SoA kernel (optimized)
+        // Benchmark SoA kernel
         group.bench_with_input(BenchmarkId::new("SoA", &label), &jd_times, |b, times| {
-            b.iter(|| {
-                propagator
-                    .propagate_soa(black_box(times))
-                    .expect("SoA propagation failed")
-            });
+            b.iter(|| propagator.propagate(black_box(times)).expect("SoA propagation failed"));
         });
 
         // Benchmark SoA with direct array output (no conversion)
@@ -153,14 +143,6 @@ fn bench_soa_scaling(c: &mut Criterion) {
                         .propagate_soa_arrays(black_box(times))
                         .expect("SoA propagation failed")
                 });
-            },
-        );
-
-        group.bench_with_input(
-            BenchmarkId::new("AoS", format!("{}sats", n_sats)),
-            &jd_times,
-            |b, times| {
-                b.iter(|| propagator.propagate(black_box(times)).expect("AoS propagation failed"));
             },
         );
     }

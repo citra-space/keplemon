@@ -263,7 +263,7 @@ fn test_gpu_cpu_parity_all_regimes() {
 
 /// Test dual-mode API equivalence: GPU-resident vs CPU-copy modes
 ///
-/// Verifies that the new `propagate_soa_gpu_resident()` method produces
+/// Verifies that the new `propagate_resident()` method produces
 /// identical results to the existing `propagate_soa_arrays()` method.
 /// This ensures both APIs are correct and interchangeable.
 #[test]
@@ -326,8 +326,8 @@ fn test_dual_mode_equivalence_leo_geo() {
             .expect("Failed to init propagator 2");
 
         let gpu_resident = propagator2
-            .propagate_soa_gpu_resident(&jd_times)
-            .expect("propagate_soa_gpu_resident failed");
+            .propagate_resident(&jd_times)
+            .expect("propagate_resident failed");
 
         // Convert GPU-resident to host for comparison
         let device = propagator2.cuda_device();

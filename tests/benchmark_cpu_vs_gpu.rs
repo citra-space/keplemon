@@ -223,7 +223,7 @@ fn benchmark_gpu(tles: &[TLE], times_jd: &[f64]) -> Result<GpuBenchmarkResult, S
     // Benchmark 2: GPU-resident (kernel only, no transfer)
     let start_kernel = Instant::now();
     let _gpu_resident = gpu_propagator
-        .propagate_soa_gpu_resident(times_jd)
+        .propagate_resident(times_jd)
         .map_err(|e| format!("Failed to propagate (GPU-resident): {}", e))?;
     let kernel_time = start_kernel.elapsed();
 

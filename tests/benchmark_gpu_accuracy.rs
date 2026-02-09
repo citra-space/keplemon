@@ -189,8 +189,8 @@ fn benchmark_sdp4_analytical_geo_accuracy() {
             gpu_prop.init_satellites(&tle_data).unwrap();
 
             let jd_time = TleDataGpu::jd_from_ds50(test_time.days_since_1950);
-            let gpu_states = gpu_prop.propagate(&vec![jd_time]).unwrap();
-            let gpu_state = &gpu_states[0];
+            let soa_arrays = gpu_prop.propagate_soa_arrays(&vec![jd_time]).unwrap();
+            let gpu_state = soa_arrays.get(0, 0);
 
             // Calculate errors
             let dx = gpu_state.x - cpu_state.position[0];
@@ -443,8 +443,8 @@ fn benchmark_geo_analytical_accuracy() {
 
             // Propagate (jd_times, not elapsed seconds)
             let jd_time = TleDataGpu::jd_from_ds50(test_time.days_since_1950);
-            let gpu_states = gpu_prop.propagate(&vec![jd_time]).unwrap();
-            let gpu_state = &gpu_states[0];
+            let soa_arrays = gpu_prop.propagate_soa_arrays(&vec![jd_time]).unwrap();
+            let gpu_state = soa_arrays.get(0, 0);
 
             // Calculate errors
             let dx = gpu_state.x - cpu_state.position[0];

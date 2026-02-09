@@ -903,7 +903,7 @@ let mut propagator = CudaTlePropagator::new()?;
 propagator.init_satellites(&tle_data)?;
 
 // Keep results on GPU
-let gpu_results = propagator.propagate_soa_gpu_resident(&times)?;
+let gpu_results = propagator.propagate_resident(&times)?;
 
 // Chain with other GPU operations (no download)
 collision_kernel.launch(cfg, (
@@ -1065,7 +1065,7 @@ All GPU propagators tested against SAAL CPU reference implementation:
 
 Verifies both GPU APIs produce identical results:
 - `propagate_soa_arrays()` (downloads to CPU)
-- `propagate_soa_gpu_resident()` (keeps on GPU)
+- `propagate_resident()` (keeps on GPU)
 
 **Tolerance**: 1e-10 km position, 1e-13 km/s velocity (floating-point precision)
 
@@ -1090,7 +1090,7 @@ Verifies both GPU APIs produce identical results:
 ### Short-Term (Next Release)
 
 **1. GPU-Resident Methods for SDP4 Interpolated** (Priority: High)
-- Add `propagate_soa_gpu_resident()` to `CudaSdp4InterpolatedPropagator`
+- Add `propagate_resident()` to `CudaSdp4InterpolatedPropagator`
 - Enable zero-copy GPU pipelines for deep-space satellites
 - **Expected impact**: 2-10x additional speedup for chained GPU operations
 

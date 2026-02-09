@@ -2,7 +2,7 @@
 
 use crate::elements::{CartesianState, TLE};
 #[cfg(feature = "cuda")]
-use crate::gpu::{CudaTlePropagator, TleDataGpu};
+use crate::gpu::{CudaTlePropagator, Sgp4StateGpu, TleDataGpu};
 use crate::time::Epoch;
 use rayon::prelude::*;
 
@@ -362,9 +362,23 @@ impl BatchPropagator {
             .collect();
 
         // Propagate using SDP4-Analytical
-        let gpu_states = propagator
-            .propagate(&jd_times)
+        let soa = propagator
+            .propagate_soa_arrays(&jd_times)
             .map_err(|e| format!("SDP4-Analytical propagation failed: {}", e))?;
+
+        // Convert SoA to AoS
+        let gpu_states: Vec<Sgp4StateGpu> = (0..soa.x.len())
+            .map(|i| Sgp4StateGpu {
+                x: soa.x[i],
+                y: soa.y[i],
+                z: soa.z[i],
+                vx: soa.vx[i],
+                vy: soa.vy[i],
+                vz: soa.vz[i],
+                error_code: soa.error_code[i],
+                _padding: 0,
+            })
+            .collect();
 
         // Convert to CartesianState format (same layout as SGP4)
         let n_epochs = epochs.len();
@@ -558,7 +572,7 @@ impl BatchPropagator {
                 .map_err(|e| format!("Failed to initialize satellites on GPU: {}", e))?;
 
             gpu_propagator
-                .propagate_soa_gpu_resident(&jd_times)
+                .propagate_resident(&jd_times)
                 .map_err(|e| format!("GPU propagation failed: {}", e))
         } else if all_deep_space {
             // Note: SDP4-Analytical doesn't yet have GPU-resident method
