@@ -86,6 +86,37 @@ fn main() {
 }
 
 #[cfg(feature = "cuda")]
+fn detect_cuda_arch() -> Option<String> {
+    // Try to detect GPU compute capability using nvidia-smi
+    let output = Command::new("nvidia-smi")
+        .args(&["--query-gpu=compute_cap", "--format=csv,noheader"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let cap = String::from_utf8(output.stdout).ok()?
+        .lines()
+        .next()?
+        .trim()
+        .to_string();
+
+    // Convert compute capability (e.g., "12.0") to arch (e.g., "sm_120")
+    let parts: Vec<&str> = cap.split('.').collect();
+    if parts.len() == 2 {
+        let major = parts[0].parse::<u32>().ok()?;
+        let minor = parts[1].parse::<u32>().ok()?;
+        let arch = format!("sm_{}{}", major, minor);
+        println!("cargo:warning=Auto-detected GPU architecture: {} (compute capability {})", arch, cap);
+        Some(arch)
+    } else {
+        None
+    }
+}
+
+#[cfg(feature = "cuda")]
 fn compile_cuda_kernels() {
     // TLE propagator files (SGP4/SDP4)
     println!("cargo:rerun-if-changed=kernels/tle_propagator_init.cu");
@@ -189,10 +220,16 @@ fn compile_cuda_kernels() {
 #[cfg(feature = "cuda")]
 fn compile_kernel(nvcc: &str, input: &str, output: &str) {
     // Allow override of compute architecture via environment variable
-    // Prioritize KEPLEMON_CUDA_ARCH, fallback to CUDA_ARCH, then default to sm_70
+    // Prioritize KEPLEMON_CUDA_ARCH, fallback to CUDA_ARCH, then auto-detect, then default
     let arch = env::var("KEPLEMON_CUDA_ARCH")
         .or_else(|_| env::var("CUDA_ARCH"))
-        .unwrap_or_else(|_| "sm_70".to_string());
+        .unwrap_or_else(|_| {
+            detect_cuda_arch().unwrap_or_else(|| {
+                println!("cargo:warning=Could not auto-detect GPU architecture, defaulting to sm_75 (Turing+)");
+                println!("cargo:warning=Set CUDA_ARCH environment variable to override (e.g., sm_120 for RTX 50-series)");
+                "sm_75".to_string()
+            })
+        });
     let arch_flag = format!("-arch={}", arch);
 
     let status = Command::new(nvcc)
