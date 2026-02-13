@@ -188,12 +188,19 @@ fn compile_cuda_kernels() {
 
 #[cfg(feature = "cuda")]
 fn compile_kernel(nvcc: &str, input: &str, output: &str) {
+    // Allow override of compute architecture via environment variable
+    // Prioritize KEPLEMON_CUDA_ARCH, fallback to CUDA_ARCH, then default to sm_70
+    let arch = env::var("KEPLEMON_CUDA_ARCH")
+        .or_else(|_| env::var("CUDA_ARCH"))
+        .unwrap_or_else(|_| "sm_70".to_string());
+    let arch_flag = format!("-arch={}", arch);
+
     let status = Command::new(nvcc)
         .args(&[
             "-ptx",            // Compile to PTX
             "-O3",             // Optimization level 3
             "--use_fast_math", // Use fast math operations
-            "-arch=sm_50",     // Target compute capability 5.0+ (Maxwell and newer)
+            &arch_flag,        // Target compute capability (sm_70 = Volta, works with CUDA 9-13+)
             "--std=c++14",     // C++14 standard
             "-I",
             "kernels", // Include directory for headers
@@ -208,5 +215,5 @@ fn compile_kernel(nvcc: &str, input: &str, output: &str) {
         panic!("nvcc compilation failed for {}", input);
     }
 
-    println!("cargo:info=Compiled {} to {}", input, output);
+    println!("cargo:info=Compiled {} to {} with {}", input, output, arch_flag);
 }
