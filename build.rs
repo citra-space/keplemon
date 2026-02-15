@@ -97,7 +97,8 @@ fn detect_cuda_arch() -> Option<String> {
         return None;
     }
 
-    let cap = String::from_utf8(output.stdout).ok()?
+    let cap = String::from_utf8(output.stdout)
+        .ok()?
         .lines()
         .next()?
         .trim()
@@ -109,7 +110,10 @@ fn detect_cuda_arch() -> Option<String> {
         let major = parts[0].parse::<u32>().ok()?;
         let minor = parts[1].parse::<u32>().ok()?;
         let arch = format!("sm_{}{}", major, minor);
-        println!("cargo:warning=Auto-detected GPU architecture: {} (compute capability {})", arch, cap);
+        println!(
+            "cargo:info=Auto-detected GPU architecture: {} (compute capability {})",
+            arch, cap
+        );
         Some(arch)
     } else {
         None
@@ -226,7 +230,9 @@ fn compile_kernel(nvcc: &str, input: &str, output: &str) {
         .unwrap_or_else(|_| {
             detect_cuda_arch().unwrap_or_else(|| {
                 println!("cargo:warning=Could not auto-detect GPU architecture, defaulting to sm_75 (Turing+)");
-                println!("cargo:warning=Set CUDA_ARCH environment variable to override (e.g., sm_120 for RTX 50-series)");
+                println!(
+                    "cargo:warning=Set CUDA_ARCH environment variable to override (e.g., sm_120 for RTX 50-series)"
+                );
                 "sm_75".to_string()
             })
         });
