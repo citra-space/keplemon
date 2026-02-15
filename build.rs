@@ -86,6 +86,41 @@ fn main() {
 }
 
 #[cfg(feature = "cuda")]
+fn detect_cuda_version() -> Option<(u32, u32)> {
+    // Try to detect CUDA version using nvcc
+    let output = Command::new("nvcc").arg("--version").output().ok()?;
+
+    if !output.status.success() {
+        println!("cargo:warning=nvcc command failed");
+        return None;
+    }
+
+    let version_text = String::from_utf8(output.stdout).ok()?;
+    // Parse "release X.Y" from nvcc output
+    for line in version_text.lines() {
+        if line.contains("release") {
+            // Example: "Cuda compilation tools, release 12.8, V12.8.93"
+            if let Some(release_part) = line.split("release").nth(1) {
+                if let Some(version_str) = release_part.split(',').next() {
+                    let version_str = version_str.trim();
+                    let parts: Vec<&str> = version_str.split('.').collect();
+                    if parts.len() >= 2 {
+                        if let (Some(major), Some(minor)) = (parts[0].parse::<u32>().ok(), parts[1].parse::<u32>().ok())
+                        {
+                            println!("cargo:info=Detected CUDA toolkit version: {}.{}", major, minor);
+                            return Some((major, minor));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    println!("cargo:warning=Failed to parse CUDA version from nvcc output");
+    println!("cargo:warning=nvcc output: {}", version_text);
+    None
+}
+
+#[cfg(feature = "cuda")]
 fn detect_cuda_arch() -> Option<String> {
     // Try to detect GPU compute capability using nvidia-smi
     let output = Command::new("nvidia-smi")
@@ -104,15 +139,70 @@ fn detect_cuda_arch() -> Option<String> {
         .trim()
         .to_string();
 
-    // Convert compute capability (e.g., "12.0") to arch (e.g., "sm_120")
+    // Convert compute capability (e.g., "8.9") to arch (e.g., "sm_89")
     let parts: Vec<&str> = cap.split('.').collect();
     if parts.len() == 2 {
         let major = parts[0].parse::<u32>().ok()?;
         let minor = parts[1].parse::<u32>().ok()?;
-        let arch = format!("sm_{}{}", major, minor);
+
+        // Detect CUDA toolkit version
+        // Allow override via KEPLEMON_CUDA_VERSION (format: "12.8")
+        let (cuda_major, cuda_minor) = if let Ok(version_str) = env::var("KEPLEMON_CUDA_VERSION") {
+            let parts: Vec<&str> = version_str.split('.').collect();
+            if parts.len() >= 2 {
+                if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                    println!(
+                        "cargo:info=Using CUDA version from KEPLEMON_CUDA_VERSION: {}.{}",
+                        major, minor
+                    );
+                    (major, minor)
+                } else {
+                    println!("cargo:warning=Invalid KEPLEMON_CUDA_VERSION format, falling back to auto-detection");
+                    detect_cuda_version().unwrap_or_else(|| {
+                        println!("cargo:warning=Could not detect CUDA version, assuming 12.8");
+                        (12, 8)
+                    })
+                }
+            } else {
+                println!("cargo:warning=Invalid KEPLEMON_CUDA_VERSION format, falling back to auto-detection");
+                detect_cuda_version().unwrap_or_else(|| {
+                    println!("cargo:warning=Could not detect CUDA version, assuming 12.8");
+                    (12, 8)
+                })
+            }
+        } else {
+            detect_cuda_version().unwrap_or_else(|| {
+                println!("cargo:warning=Could not detect CUDA version, assuming 12.8");
+                println!("cargo:warning=Set KEPLEMON_CUDA_VERSION to override (format: major.minor)");
+                (12, 8)
+            })
+        };
+
+        // CUDA 12.8+ supports compute capability 12.0 (sm_120) for Blackwell/RTX 50-series
+        // CUDA 12.6-12.7 supports up to compute capability 9.0 (sm_90)
+        let max_supported_cc = if cuda_major > 12 || (cuda_major == 12 && cuda_minor >= 8) {
+            12 // CUDA 12.8+ supports sm_120
+        } else {
+            9 // Older CUDA versions support up to sm_90
+        };
+
+        let (arch, actual_cap) = if major > max_supported_cc {
+            println!(
+                "cargo:warning=Detected GPU compute capability {} which is not supported by CUDA {}.{}",
+                cap, cuda_major, cuda_minor
+            );
+            println!("cargo:warning=Falling back to sm_89 (Ada Lovelace) for forward compatibility");
+            println!("cargo:warning=Your GPU will run the code but may not achieve peak performance");
+            println!("cargo:warning=To target your GPU natively, upgrade your CUDA toolkit to 12.8+");
+            ("sm_89".to_string(), cap)
+        } else {
+            let detected_arch = format!("sm_{}{}", major, minor);
+            (detected_arch.clone(), cap)
+        };
+
         println!(
-            "cargo:info=Auto-detected GPU architecture: {} (compute capability {})",
-            arch, cap
+            "cargo:info=Using GPU architecture: {} (detected capability: {})",
+            arch, actual_cap
         );
         Some(arch)
     } else {
@@ -231,7 +321,7 @@ fn compile_kernel(nvcc: &str, input: &str, output: &str) {
             detect_cuda_arch().unwrap_or_else(|| {
                 println!("cargo:warning=Could not auto-detect GPU architecture, defaulting to sm_75 (Turing+)");
                 println!(
-                    "cargo:warning=Set CUDA_ARCH environment variable to override (e.g., sm_120 for RTX 50-series)"
+                    "cargo:warning=Set CUDA_ARCH environment variable to override (e.g., sm_89 for RTX 40-series)"
                 );
                 "sm_75".to_string()
             })
