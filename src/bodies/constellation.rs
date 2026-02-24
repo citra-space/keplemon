@@ -419,7 +419,7 @@ impl Constellation {
         if purge_on_fail {
             let failed_ids: Vec<String> = self
                 .satellites
-                .par_iter_mut()
+                .iter_mut()
                 .filter_map(|(id, sat)| {
                     if sat.get_ephemeris(start, end, step).is_some() {
                         None
@@ -433,7 +433,7 @@ impl Constellation {
                 self.satellites.remove(&id);
             }
         } else {
-            self.satellites.par_iter_mut().for_each(|(_, sat)| {
+            self.satellites.iter_mut().for_each(|(_, sat)| {
                 let _ = sat.get_ephemeris(start, end, step);
             });
         }
