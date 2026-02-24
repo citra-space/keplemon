@@ -47,7 +47,7 @@ jobs:
               PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
               PIP="${PY_BIN%/python}/pip" && \
               $PIP install --upgrade pip setuptools wheel auditwheel && \
-              maturin build --release --compatibility manylinux_2_28 -i $PY_BIN
+              maturin build --release --compatibility manylinux_2_31 -i $PY_BIN
             '
 
       - name: Upload wheel
@@ -92,7 +92,7 @@ jobs:
               PY_BIN=/opt/python/cp${TAG}-cp${TAG}/bin/python && \
               PIP="${PY_BIN%/python}/pip" && \
               $PIP install --upgrade pip setuptools wheel auditwheel && \
-              maturin build --release --compatibility manylinux_2_28 -i $PY_BIN
+              maturin build --release --compatibility manylinux_2_31 -i $PY_BIN
             '
 
       - name: Upload wheel
