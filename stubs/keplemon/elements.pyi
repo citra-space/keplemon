@@ -262,6 +262,23 @@ class TLE:
         """
         ...
 
+    @classmethod
+    def from_ephemeris(cls, ephemeris: Ephemeris, tle_type: KeplerianType) -> TLE:
+        """
+        Fit a TLE to an ephemeris using batch least squares.
+
+        Generates synthetic observations from the ephemeris and uses batch least
+        squares estimation to produce a TLE of the specified type.
+
+        Args:
+            ephemeris: Ephemeris containing position/velocity states to fit
+            tle_type: The type of mean elements for the output TLE
+
+        Returns:
+            TLE fitted to the ephemeris
+        """
+        ...
+
     @property
     def lines(self) -> tuple[str, str]:
         """
@@ -481,11 +498,29 @@ class KeplerianState:
         ...
 
 class Ephemeris:
+    def __init__(self, satellite_id: str, norad_id: Optional[int], state: CartesianState) -> None: ...
+
+    def add_state(self, state: CartesianState) -> None:
+        """Add a state to the ephemeris."""
+        ...
+
     def get_close_approach(
         self,
         other: Ephemeris,
         distance_threshold: float,
     ) -> CloseApproach: ...
+
+    def to_observations(self) -> list[Observation]:
+        """
+        Generate angular observations from the ephemeris states.
+
+        Steps through the ephemeris epoch range at regular intervals, creating
+        synthetic observations from each interpolated state.
+
+        Returns:
+            List of angular observations derived from the ephemeris
+        """
+        ...
 
 class TopocentricElements:
     """

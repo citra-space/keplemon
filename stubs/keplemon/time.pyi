@@ -146,6 +146,9 @@ class Epoch:
     day_of_year: float
     """Decimal day of the year (1-365.999...)"""
 
+    gst: float
+    """Greenwich Sidereal Time in radians"""
+
     def to_datetime(self) -> datetime:
         """
         Returns:

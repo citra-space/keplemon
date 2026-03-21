@@ -1,6 +1,6 @@
 [package]
 name = "keplemon"
-version = "3.6.4"
+version = "3.7.0"
 edition = "2024"
 build = "build.rs"
 description = "Expanded functionality for the Standardized Astrodynamics Algorithms Library (SAAL)"

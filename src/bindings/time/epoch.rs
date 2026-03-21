@@ -156,6 +156,11 @@ impl PyEpoch {
         self.inner.get_day_of_year()
     }
 
+    #[getter]
+    pub fn get_gst(&self) -> f64 {
+        self.inner.get_gst()
+    }
+
     pub fn to_fk4_greenwich_angle(&self) -> f64 {
         self.inner.to_fk4_greenwich_angle()
     }

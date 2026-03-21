@@ -1,4 +1,5 @@
 use crate::bindings::elements::PyCartesianState;
+use crate::bindings::estimation::PyObservation;
 use crate::bindings::events::PyCloseApproach;
 use crate::bindings::events::PyHorizonAccess;
 use crate::bindings::time::PyEpoch;
@@ -33,10 +34,6 @@ impl PyEphemeris {
 
     pub fn get_number_of_states(&self) -> Result<i32, String> {
         self.inner.get_number_of_states()
-    }
-
-    pub fn add_state(&self, state: PyCartesianState) -> Result<(), String> {
-        self.inner.add_state(state.into())
     }
 
     pub fn new(satellite_id: String, norad_id: Option<i32>, state: PyCartesianState) -> Result<Self, String> {
@@ -86,5 +83,16 @@ impl PyEphemeris {
 
     pub fn get_norad_id(&self) -> i32 {
         self.inner.get_norad_id()
+    }
+
+    pub fn add_state(&self, state: PyCartesianState) -> PyResult<()> {
+        self.inner.add_state(state.into()).map_err(PyException::new_err)
+    }
+
+    pub fn to_observations(&self) -> PyResult<Vec<PyObservation>> {
+        self.inner
+            .to_observations()
+            .map(|obs| obs.into_iter().map(PyObservation::from).collect())
+            .map_err(PyException::new_err)
     }
 }

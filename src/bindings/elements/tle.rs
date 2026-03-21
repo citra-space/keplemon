@@ -1,10 +1,11 @@
 use super::{PyCartesianState, PyKeplerianState};
+use crate::bindings::elements::PyEphemeris;
 use crate::bindings::enums::{PyClassification, PyKeplerianType};
 use crate::bindings::estimation::PyObservation;
 use crate::bindings::propagation::PyForceProperties;
 use crate::bindings::time::PyEpoch;
 use crate::elements::TLE;
-use crate::enums::Classification;
+use crate::enums::{Classification, KeplerianType};
 use crate::propagation::ForceProperties;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -85,6 +86,18 @@ impl PyTLE {
             Ok(tle) => Ok(PyTLE::from(tle)),
             Err(e) => Err(PyValueError::new_err(e)),
         }
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (ephemeris, tle_type))]
+    pub fn from_ephemeris(py: Python<'_>, ephemeris: PyEphemeris, tle_type: PyKeplerianType) -> PyResult<PyTLE> {
+        let tle_type: KeplerianType = tle_type.into();
+        let ephemeris: crate::elements::Ephemeris = ephemeris.into();
+        py.detach(|| {
+            TLE::from_ephemeris(&ephemeris, tle_type)
+                .map(PyTLE::from)
+                .map_err(PyValueError::new_err)
+        })
     }
 
     #[getter]

@@ -1,6 +1,6 @@
-use super::{CartesianState, CartesianVector, EquinoctialElements, KeplerianElements, KeplerianState};
+use super::{CartesianState, CartesianVector, Ephemeris, EquinoctialElements, KeplerianElements, KeplerianState};
 use crate::bodies::{Observatory, Satellite, Sensor};
-use crate::configs::TLE_OBSERVATION_ANGULAR_NOISE;
+use crate::configs::{TLE_OBSERVATION_ANGULAR_NOISE, TLE_OBSERVATION_RANGE_NOISE};
 use crate::elements::TopocentricElements;
 use crate::enums::{Classification, KeplerianType, ReferenceFrame};
 use crate::estimation::Observation;
@@ -283,11 +283,11 @@ impl TLE {
         let observer_teme = site.get_state_at_epoch(epoch);
         let lst = epoch.get_gst() + lla[1].to_radians();
         let xa_topo = astro::teme_to_topo(lst, lla[0], &observer_teme.position.into(), &teme_state.into())?;
-        let ra = xa_topo[astro::XA_TOPO_RA];
-        let dec = xa_topo[astro::XA_TOPO_DEC];
-        let topo_els = TopocentricElements::new(ra, dec);
+        let mut topo_els = TopocentricElements::new(xa_topo[astro::XA_TOPO_RA], xa_topo[astro::XA_TOPO_DEC]);
+        topo_els.range = Some(xa_topo[astro::XA_TOPO_RANGE]);
 
-        let sensor = Sensor::new(TLE_OBSERVATION_ANGULAR_NOISE);
+        let mut sensor = Sensor::new(TLE_OBSERVATION_ANGULAR_NOISE);
+        sensor.range_noise = Some(TLE_OBSERVATION_RANGE_NOISE);
         Ok(Observation::new(sensor, epoch, topo_els, observer_teme.position))
     }
 
@@ -598,6 +598,45 @@ impl TLE {
             None => Self::from_two_lines(line_1, line_2),
         }?;
         Ok(tle)
+    }
+
+    pub fn from_ephemeris(ephemeris: &Ephemeris, tle_type: KeplerianType) -> Result<TLE, String> {
+        use crate::configs::ATMOSPHERE_BOUNDARY_RADIUS;
+        use crate::estimation::BatchLeastSquares;
+
+        let obs = ephemeris.to_observations()?;
+
+        // Use the midpoint state for the a-priori estimate
+        let (start_epoch, end_epoch) = ephemeris.get_epoch_range().ok_or("Ephemeris has no states")?;
+        let mid_days = (start_epoch.days_since_1950 + end_epoch.days_since_1950) / 2.0;
+        let mid_epoch = Epoch::from_days_since_1950(mid_days, start_epoch.get_time_system());
+        let mid_state = ephemeris
+            .get_state_at_epoch(mid_epoch)
+            .ok_or("Cannot interpolate ephemeris at midpoint")?;
+
+        // Convert to Keplerian elements and create a-priori TLE
+        let osc_kep: KeplerianState = mid_state.into();
+        let a_priori_state = KeplerianState::new(osc_kep.epoch, osc_kep.elements, ReferenceFrame::TEME, tle_type);
+        let a_priori_tle = TLE::new(
+            ephemeris.get_satellite_id(),
+            ephemeris.get_norad_id(),
+            None,
+            Classification::Unclassified,
+            String::new(),
+            a_priori_state,
+            ForceProperties::default(),
+        )?;
+
+        let a_priori_satellite = Satellite::from(a_priori_tle);
+        let use_drag = a_priori_satellite.get_periapsis().unwrap_or(0.0) < ATMOSPHERE_BOUNDARY_RADIUS;
+        let use_srp = a_priori_satellite.get_apoapsis().unwrap_or(0.0) > ATMOSPHERE_BOUNDARY_RADIUS;
+
+        let mut bls = BatchLeastSquares::new(obs, &a_priori_satellite);
+        bls.set_output_type(tle_type);
+        bls.set_estimate_drag(use_drag);
+        bls.set_estimate_srp(use_srp);
+        bls.solve()?;
+        Ok(bls.get_current_estimate().into())
     }
 
     pub fn get_lines(&self) -> Result<(String, String), String> {

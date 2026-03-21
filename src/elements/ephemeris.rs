@@ -1,11 +1,14 @@
+use crate::bodies::{Observatory, Sensor};
 use crate::configs::{
     CONJUNCTION_STEP_MINUTES, DEFAULT_NORAD_ANALYST_ID, DEFAULT_STEP_MINUTES, MAX_NEWTON_ITERATIONS, NEWTON_TOLERANCE,
-    ZERO_TOLERANCE,
+    TLE_OBSERVATION_ANGULAR_NOISE, TLE_OBSERVATION_MIN_COUNT, TLE_OBSERVATION_RANGE_NOISE, ZERO_TOLERANCE,
 };
-use crate::elements::{CartesianState, CartesianVector, HorizonState};
+use crate::elements::{CartesianState, CartesianVector, HorizonState, TopocentricElements};
 use crate::enums::ReferenceFrame;
+use crate::estimation::Observation;
 use crate::events::{CloseApproach, HorizonAccess, ManeuverEvent, ProximityEvent};
 use crate::time::{Epoch, TimeSpan};
+use saal::astro;
 use saal::satellite;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -72,6 +75,45 @@ impl Ephemeris {
         let states = self.handle.states.read().ok()?;
         let uniform_grid = self.handle.uniform_grid.read().ok()?;
         interpolate_state_with_grid(&states, epoch, &uniform_grid)
+    }
+
+    pub fn to_observations(&self) -> Result<Vec<Observation>, String> {
+        let (start_epoch, end_epoch) = self.get_epoch_range().ok_or("Ephemeris has no states")?;
+        let span_minutes = (end_epoch.days_since_1950 - start_epoch.days_since_1950) * 1440.0;
+        let step_minutes = (span_minutes / TLE_OBSERVATION_MIN_COUNT as f64).min(DEFAULT_STEP_MINUTES);
+        let step = TimeSpan::from_minutes(step_minutes);
+
+        let mut sensor = Sensor::new(TLE_OBSERVATION_ANGULAR_NOISE);
+        sensor.range_noise = Some(TLE_OBSERVATION_RANGE_NOISE);
+
+        let mut obs = Vec::new();
+        let mut current_epoch = start_epoch;
+
+        while current_epoch <= end_epoch {
+            if let Some(state) = self.get_state_at_epoch(current_epoch) {
+                let teme_state = state.to_frame(ReferenceFrame::TEME);
+                let efg = teme_state.to_frame(ReferenceFrame::EFG).position;
+                let lla = astro::efg_to_lla(&efg.into())?;
+                let site = Observatory::new(lla[0], lla[1], 0.0);
+                let observer_teme = site.get_state_at_epoch(current_epoch);
+                let lst = current_epoch.get_gst() + lla[1].to_radians();
+                let xa_topo = astro::teme_to_topo(lst, lla[0], &observer_teme.position.into(), &teme_state.into())?;
+                let mut topo_els = TopocentricElements::new(xa_topo[astro::XA_TOPO_RA], xa_topo[astro::XA_TOPO_DEC]);
+                topo_els.range = Some(xa_topo[astro::XA_TOPO_RANGE]);
+                obs.push(Observation::new(
+                    sensor.clone(),
+                    current_epoch,
+                    topo_els,
+                    observer_teme.position,
+                ));
+            }
+            current_epoch += step;
+        }
+
+        if obs.is_empty() {
+            return Err("No valid observations generated from ephemeris".to_string());
+        }
+        Ok(obs)
     }
 
     pub fn get_next_horizon_crossing(
